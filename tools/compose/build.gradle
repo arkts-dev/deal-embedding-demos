@@ -18,6 +18,7 @@ configurations.androidRuntime.resolutionStrategy.eachDependency { details ->
 }
 dependencies {
     androidRuntime 'androidx.compose.material3:material3-android:1.5.0-alpha06'
+    androidRuntime 'androidx.compose.material:material-icons-extended-android:1.7.8'
     androidRuntime 'androidx.compose.foundation:foundation-android:1.9.3'
     androidRuntime 'androidx.compose.ui:ui-android:1.9.3'
     androidRuntime 'androidx.activity:activity-compose:1.11.0'

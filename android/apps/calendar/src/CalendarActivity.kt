@@ -55,7 +55,7 @@ class CalendarActivity : ComponentActivity() {
         })
         refreshEvents()
         setContent {
-            AppTheme(Color(0xff326955)) {
+            AppTheme(Accent.Calendar) {
                 Page("A DAY WITH ROOM", "Good plans.\nEasy departures.", "Your calendar, with a little breathing room.") {
                     Panel {
                         Text("Coming up", style = MaterialTheme.typography.headlineSmall)

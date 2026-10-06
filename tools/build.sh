@@ -102,7 +102,7 @@ if [[ ! -f build/debug.keystore ]]; then
 fi
 "$TOOLS/apksigner" sign --ks build/debug.keystore --ks-pass pass:android --out build/calendar.apk build/aligned.apk
 if [[ "${1:-all}" == calendar ]]; then printf 'Built build/calendar.apk\n'; exit 0; fi
-for app in vehicle todo tests; do
+for app in vehicle todo organizer rental pizza tests; do
     rm -rf "build/$app"
     mkdir -p "build/$app/classes" "build/$app/dex"
     if [[ "$app" == tests ]]; then
@@ -127,4 +127,4 @@ for app in vehicle todo tests; do
     "$TOOLS/zipalign" -f 4 "build/$app/unsigned.apk" "build/$app/aligned.apk"
     "$TOOLS/apksigner" sign --ks build/debug.keystore --ks-pass pass:android --out "build/$app.apk" "build/$app/aligned.apk"
 done
-printf 'Built build/{calendar,vehicle,todo,tests}.apk\n'
+printf 'Built build/{calendar,vehicle,todo,organizer,rental,pizza,tests}.apk\n'

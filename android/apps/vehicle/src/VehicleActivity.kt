@@ -15,7 +15,7 @@ class VehicleActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         val prefs = getSharedPreferences("provider", 0)
         setContent {
-            AppTheme(Color(0xff276570)) {
+            AppTheme(Accent.Rental) {
                 var allowed by remember { mutableStateOf(prefs.getBoolean("allowed", false)) }
                 var distance by remember { mutableFloatStateOf(12f) }
                 Page("ON THE MOVE", "The road\nahead.", "A simple estimate. A little more certainty.") {
