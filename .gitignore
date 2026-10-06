@@ -1,0 +1,5 @@
+/build/
+/dependencies/
+__pycache__/
+/tools/compose/.gradle/
+/tools/compose/build/

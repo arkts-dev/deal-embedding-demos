@@ -1,0 +1,8 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="dev.deal.apps.vehicle">
+ <uses-sdk android:minSdkVersion="36" android:targetSdkVersion="36" />
+ <queries><package android:name="dev.deal.apps.calendar" /></queries>
+ <application android:label="Vehicle" android:theme="@android:style/Theme.Material.Light.NoActionBar" android:allowBackup="false" android:debuggable="true">
+  <activity android:name=".VehicleActivity" android:exported="true"><intent-filter><action android:name="android.intent.action.MAIN"/><category android:name="android.intent.category.LAUNCHER"/></intent-filter></activity>
+  <service android:name=".VehicleService" android:exported="true"><intent-filter><action android:name="dev.deal.embedding.CAPABILITIES_V1" /></intent-filter></service>
+ </application>
+</manifest>

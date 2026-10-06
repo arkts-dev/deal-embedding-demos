@@ -1,0 +1,78 @@
+import * as trip from "host/trip";
+import * as todo from "host/todo";
+import * as calendar from "host/calendar";
+
+export class Task { id: string = ""; title: string = ""; minutes: int = 0; selected: boolean = true; }
+export class DepartureState {
+  departure: string = "Ready when you are";
+  message: string = "Combine your event, preparation and travel into one calm plan.";
+  loading: boolean = false;
+  buffer: int = 5;
+  distance: int = 12;
+  minute: int = -1;
+  tasks: Task[] = [];
+}
+export class Calculate {}
+export class AddBuffer {}
+export class AddDistance {}
+export class SelectTask { id: string = ""; }
+export class Completed { departure: string = ""; message: string = ""; minute: int = -1; tasks: Task[] = []; }
+export function initialState(): DepartureState { return {}; }
+
+// @ui-update
+export function begin(state: DepartureState, action: Calculate): DepartureState {
+  return { departure: state.departure, message: "Checking your connected apps…", loading: true, buffer: state.buffer, distance: state.distance, minute: -1, tasks: state.tasks };
+}
+// @ui-update
+export function adjust(state: DepartureState, action: AddBuffer): DepartureState {
+  if (state.loading) { return state; }
+  return { departure: state.departure, message: "Extra breathing room added. Recalculate when ready.", loading: false, buffer: state.buffer + 5, distance: state.distance, minute: -1, tasks: state.tasks };
+}
+// @ui-update
+export function distance(state: DepartureState, action: AddDistance): DepartureState {
+  if (state.loading) { return state; }
+  return { departure: state.departure, message: "Route adjusted. Recalculate when ready.", loading: false, buffer: state.buffer, distance: state.distance + 2, minute: -1, tasks: state.tasks };
+}
+// @ui-update
+export function selectTask(state: DepartureState, action: SelectTask): DepartureState {
+  if (state.loading) { return state; }
+  let tasks: Task[] = [];
+  for (let task: Task of state.tasks) {
+    let selected: boolean = task.selected;
+    if (task.id === action.id) { selected = !selected; }
+    tasks[tasks.length] = { id: task.id, title: task.title, minutes: task.minutes, selected: selected };
+  }
+  return { departure: state.departure, message: "Preparation updated. Recalculate when ready.", loading: false, buffer: state.buffer, distance: state.distance, minute: -1, tasks: tasks };
+}
+// @ui-effect
+export async function calculate(state: DepartureState, action: Calculate): Completed {
+  try {
+    let start: int = await calendar.start();
+    let records: table[] = await todo.tasks();
+    let tasks: Task[] = [];
+    let preparation: int = 0;
+    for (let record: table of records) {
+      let done: boolean = record.done;
+      if (!done) {
+        let id: string = record.id;
+        let title: string = record.title;
+        let minutes: int = record.minutes;
+        let selected: boolean = true;
+        for (let previous: Task of state.tasks) { if (previous.id === id) { selected = previous.selected; } }
+        tasks[tasks.length] = { id: id, title: title, minutes: minutes, selected: selected };
+        if (selected) { preparation = preparation + minutes; }
+      }
+    }
+    let travel: int = await trip.estimate(state.distance);
+    let minute: int = start - preparation - travel - state.buffer;
+    await calendar.propose(minute);
+    return { departure: "Leave at", minute: minute, message: "Includes your selected preparation, simulated travel and breathing room.", tasks: tasks };
+  } catch (error) {
+    return { departure: "Let’s reconnect", message: error.message, tasks: state.tasks };
+  }
+}
+// @ui-update
+export function complete(state: DepartureState, action: Completed): DepartureState {
+  return { departure: action.departure, message: action.message, loading: false, buffer: state.buffer, distance: state.distance, minute: action.minute, tasks: action.tasks };
+}
+export function main(): null { return null; }

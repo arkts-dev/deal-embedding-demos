@@ -1,0 +1,29 @@
+import * as app from "./departure";
+import * as ui from "./platform.dealui-pack";
+
+// @ui-root
+export view Departure(state: app.DepartureState): View {
+  ui.Column() {
+    ui.Text(value: "YOUR DEPARTURE PLAN")
+    When(state.minute >= 0) { ui.Time(value: state.minute) } Else { ui.Hero(value: state.departure) }
+    ui.Text(value: state.message)
+    ui.Card() {
+      ui.Text(value: "A little breathing room")
+      ui.IntText(value: state.buffer)
+      ui.Text(value: "minutes before departure")
+      ui.Button(text: "Add 5 minutes", accessibilityLabel: "Add five minutes breathing room", onClick: action app.AddBuffer {})
+    }
+    ui.Card() {
+      ui.Text(value: "Your route")
+      ui.IntText(value: state.distance)
+      ui.Text(value: "kilometres · simulated estimate")
+      ui.Button(text: "Add 2 kilometres", accessibilityLabel: "Increase route distance by two kilometres", onClick: action app.AddDistance {})
+    }
+    ForEach(state.tasks, task: app.Task, key: task.id) {
+      ui.Toggle(value: task.id, text: task.title, checked: task.selected, accessibilityLabel: task.title, onChange: action app.SelectTask { id: payload })
+    }
+    When(state.loading) { ui.Spinner() } Else {
+      ui.Button(text: "Calculate departure", accessibilityLabel: "Calculate departure using connected apps", onClick: action app.Calculate {})
+    }
+  }
+}
