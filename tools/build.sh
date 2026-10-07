@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
+# Build the library when needed, then only the requested targets.
+# Runtime dex is built once per profile and reused, because dexing Compose dominates build time.
 set -euo pipefail
 cd "$(dirname "$0")/.."
+TARGETS=("$@")
+[[ ${#TARGETS[@]} -eq 0 ]] && TARGETS=(calendar vehicle todo organizer rental pizza tests)
 SDK="${ANDROID_SDK_ROOT:-$HOME/Android/Sdk}"
 TOOLS="$SDK/build-tools/36.0.0"
 ANDROID="$SDK/platforms/android-37.0/android.jar"
@@ -25,15 +29,19 @@ if [[ ! -f build/toolchain/r8.jar ]]; then
 fi
 printf '%s  %s\n' 51af0a9d41cc541d619064224aec628923bd779cbcc5a62cb914ea2d669c4063 build/toolchain/r8.jar | sha256sum -c -
 unzip -p build/toolchain/desugar_jdk_libs_configuration_nio.jar META-INF/desugar/d8/desugar.json > build/toolchain/desugar.json
-while read -r digest file url; do
-    if [[ ! -f "build/toolchain/$file" ]]; then
-        curl -fL --max-time 120 "$url" -o "build/toolchain/$file.tmp"
-        mv "build/toolchain/$file.tmp" "build/toolchain/$file"
-    fi
-    printf '%s  %s\n' "$digest" "build/toolchain/$file" | sha256sum -c -
-done < tools/runtime-dependencies.txt
+STAMP=build/toolchain/.verified
+if [[ ! -f "$STAMP" || tools/runtime-dependencies.txt -nt "$STAMP" ]]; then
+    while read -r digest file url; do
+        if [[ ! -f "build/toolchain/$file" ]]; then
+            curl -fL --max-time 120 "$url" -o "build/toolchain/$file.tmp"
+            mv "build/toolchain/$file.tmp" "build/toolchain/$file"
+        fi
+        printf '%s  %s\n' "$digest" "build/toolchain/$file" | sha256sum -c -
+    done < tools/runtime-dependencies.txt
+    touch "$STAMP"
+fi
 for library in jsengine core lifecycle-runtime versionedparcelable arch-runtime; do
-    unzip -p "build/toolchain/$library.aar" classes.jar > "build/toolchain/$library.jar"
+    [[ -f "build/toolchain/$library.jar" ]] || unzip -p "build/toolchain/$library.aar" classes.jar > "build/toolchain/$library.jar"
 done
 if [[ ! -d build/compose/dependencies ]]; then
     if [[ ! -x build/toolchain/gradle-9.2.1/bin/gradle ]]; then
@@ -43,8 +51,12 @@ if [[ ! -d build/compose/dependencies ]]; then
     fi
     build/toolchain/gradle-9.2.1/bin/gradle -p tools/compose copyRuntime --no-daemon
 fi
-(cd build/compose/dependencies && sha256sum -c ../../../tools/compose/dependencies.sha256)
-python3 tools/compose/prepare.py
+COMPOSE_STAMP=build/compose/.prepared
+if [[ ! -f "$COMPOSE_STAMP" || tools/compose/dependencies.sha256 -nt "$COMPOSE_STAMP" ]]; then
+    (cd build/compose/dependencies && sha256sum -c ../../../tools/compose/dependencies.sha256)
+    python3 tools/compose/prepare.py
+    touch "$COMPOSE_STAMP"
+fi
 COMPOSE_CP=$(<build/compose/classpath.txt)
 IFS=: read -ra COMPOSE_JARS <<< "$COMPOSE_CP"
 RUNTIME_JARS=(build/toolchain/{jsengine,guava,failureaccess}.jar "${COMPOSE_JARS[@]}")
@@ -56,75 +68,90 @@ resource_link() {
     mkdir -p "build/$app/rjava"
     mapfile -t resources < build/compose/resources.txt
     local args=()
-    [[ "$app" == calendar ]] && args+=(-A build/assets)
+    [[ -d "build/assets/$app" ]] && args+=(-A "build/assets/$app")
     for res in "${resources[@]}"; do args+=(-R "$res"); done
     "$TOOLS/aapt2" link --auto-add-overlay -I "$ANDROID" --manifest "$manifest" \
         --java "build/$app/rjava" --extra-packages "$(<build/compose/packages.txt)" "${args[@]}" -o "$output"
-} 
-rm -rf build/kotlin build/dex build/desugar-dex build/assets build/embedding-consumer
-mkdir -p build/kotlin build/dex build/desugar-dex build/assets build/embedding-consumer
-if [[ -z "${EMBEDDING_AAR:-}" ]]; then
+}
+sign() {
+    local app="$1"
+    "$TOOLS/zipalign" -f 4 "build/$app/unsigned.apk" "build/$app/aligned.apk"
+    if [[ ! -f build/debug.keystore ]]; then
+        keytool -genkeypair -keystore build/debug.keystore -storepass android -keypass android \
+            -alias androiddebugkey -keyalg RSA -keysize 2048 -validity 3650 -dname 'CN=Android Debug'
+    fi
+    "$TOOLS/apksigner" sign --ks build/debug.keystore --ks-pass pass:android --out "build/$app.apk" "build/$app/aligned.apk"
+    printf 'Built build/%s.apk\n' "$app"
+}
+mkdir -p build/embedding-consumer
+if [[ ! -f build/capability-api.jar || ! -f build/embedding-consumer/classes.jar || -n "$(find dependencies/deal-embedding -newer build/embedding-consumer/classes.jar -type f 2>/dev/null)" ]]; then
     DEAL_ROOT="$DEAL" DEAL_UI_ROOT="$PWD/dependencies/deal-ui" ANDROID_JAR="$ANDROID" \
         AIDL="$TOOLS/aidl" RUNTIME_CP="$RUNTIME_CP" OUTPUT_DIR="$PWD/build/embedding-library" KOTLIN_HOME="$KOTLIN_HOME" \
         dependencies/deal-embedding/build.sh
-    EMBEDDING_AAR="$PWD/build/embedding-library/deal-embedding.aar"
+    rm -rf build/embedding-consumer build/capability-api
+    mkdir -p build/embedding-consumer build/capability-api
+    unzip -q build/embedding-library/deal-embedding.aar -d build/embedding-consumer
+    (cd build/capability-api && unzip -q ../embedding-consumer/classes.jar 'dev/deal/embedding/capabilities/*')
+    jar --create --file build/capability-api.jar -C build/capability-api .
 fi
-unzip -q "$EMBEDDING_AAR" -d build/embedding-consumer
-cp -r build/embedding-consumer/assets/* build/assets/
 EMBEDDING_JAR=build/embedding-consumer/classes.jar
-# Providers consume only the library's generic capability API, not compiler/renderer classes.
-rm -rf build/capability-api; mkdir -p build/capability-api
-(cd build/capability-api && unzip -q ../embedding-consumer/classes.jar 'dev/deal/embedding/capabilities/*')
-jar --create --file build/capability-api.jar -C build/capability-api .
-resource_link calendar build/unsigned.apk
-find build/calendar/rjava -name '*.java' > build/r-sources.txt
-javac --release 21 -d build/kotlin @build/r-sources.txt
-"$KOTLIN_HOME/bin/kotlinc" -Xplugin="$KOTLIN_HOME/lib/compose-compiler-plugin.jar" -jvm-target 21 -no-reflect -classpath "$ANDROID:$EMBEDDING_JAR:$RUNTIME_CP" -d build/kotlin android/apps/shared-ui/*.kt android/apps/development/*.kt android/apps/calendar/src/*.kt
-jar --create --file build/app.jar -C build/kotlin .
-java -Xmx2g -XX:ActiveProcessorCount=4 -cp build/toolchain/r8.jar com.android.tools.r8.D8 --min-api 36 --lib "$ANDROID" --desugared-lib build/toolchain/desugar.json --output build/dex \
-    "$EMBEDDING_JAR" build/app.jar "${RUNTIME_JARS[@]}" "$KOTLIN_HOME/lib/kotlin-stdlib.jar"
-java -Xmx2g -XX:ActiveProcessorCount=4 -cp build/toolchain/r8.jar com.android.tools.r8.L8 --min-api 36 --lib "$ANDROID" \
-    --desugared-lib build/toolchain/desugar.json --output build/desugar-dex \
-    build/toolchain/desugar_jdk_libs_nio.jar build/toolchain/desugar_jdk_libs_configuration_nio.jar
-next=$(find build/dex -name 'classes*.dex' | wc -l)
-for dex in build/desugar-dex/classes*.dex; do
-    next=$((next + 1))
-    cp "$dex" "build/dex/classes$next.dex"
-done
-mkdir -p build/assets/experience
-cp android/apps/calendar/experiences/departure/*.deal android/apps/calendar/experiences/departure/*.dealui build/assets/experience/
-resource_link calendar build/unsigned.apk
-(cd build/dex && zip -q ../unsigned.apk classes*.dex)
-"$TOOLS/zipalign" -f 4 build/unsigned.apk build/aligned.apk
-if [[ ! -f build/debug.keystore ]]; then
-    keytool -genkeypair -keystore build/debug.keystore -storepass android -keypass android \
-        -alias androiddebugkey -keyalg RSA -keysize 2048 -validity 3650 -dname 'CN=Android Debug'
-fi
-"$TOOLS/apksigner" sign --ks build/debug.keystore --ks-pass pass:android --out build/calendar.apk build/aligned.apk
-if [[ "${1:-all}" == calendar ]]; then printf 'Built build/calendar.apk\n'; exit 0; fi
-for app in vehicle todo organizer rental pizza tests; do
-    rm -rf "build/$app"
-    mkdir -p "build/$app/classes" "build/$app/dex"
-    if [[ "$app" == tests ]]; then
-        sources=(android/tests/*.kt android/apps/development/*.kt)
-        app_apis=("$EMBEDDING_JAR")
-        app_runtime=("${RUNTIME_JARS[@]}")
-    else
-        sources=(android/apps/shared-ui/*.kt "android/apps/$app/src/"*.kt)
-        app_apis=(build/capability-api.jar)
-        app_runtime=("${COMPOSE_JARS[@]}")
+# Desugared platform libraries and the JS engine are identical for every target: dex them once.
+profile_dex() {
+    local profile="$1"; shift
+    local out="build/runtime-dex/$profile"
+    if [[ -d "$out" && "$out" -nt build/toolchain/desugar_jdk_libs_nio.jar && -z "$(printf '%s\n' "$@" | while read -r j; do [[ "$j" -nt "$out/classes.dex" ]] && echo stale; done)" ]]; then
+        return
     fi
-    app_cp=$(IFS=:; echo "${app_apis[*]}")
+    rm -rf "$out" build/desugar-dex; mkdir -p "$out" build/desugar-dex
+    java -Xmx2g -XX:ActiveProcessorCount=4 -cp build/toolchain/r8.jar com.android.tools.r8.D8 --min-api 36 --lib "$ANDROID" \
+        --desugared-lib build/toolchain/desugar.json --output "$out" "$@" "$KOTLIN_HOME/lib/kotlin-stdlib.jar"
+    java -Xmx2g -XX:ActiveProcessorCount=4 -cp build/toolchain/r8.jar com.android.tools.r8.L8 --min-api 36 --lib "$ANDROID" \
+        --desugared-lib build/toolchain/desugar.json --output build/desugar-dex \
+        build/toolchain/desugar_jdk_libs_nio.jar build/toolchain/desugar_jdk_libs_configuration_nio.jar
+    local next
+    next=$(find "$out" -name 'classes*.dex' | wc -l)
+    for dex in build/desugar-dex/classes*.dex; do
+        next=$((next + 1)); cp "$dex" "$out/classes$next.dex"
+    done
+}
+for app in "${TARGETS[@]}"; do
+    case "$app" in
+        calendar) profile="host";   sources=(android/apps/shared-ui/*.kt android/apps/development/*.kt android/apps/calendar/src/*.kt); app_apis=("$EMBEDDING_JAR"); profile_jars=("$EMBEDDING_JAR" "${RUNTIME_JARS[@]}") ;;
+        organizer) profile="host";  sources=(android/apps/shared-ui/*.kt android/apps/development/*.kt android/apps/organizer/src/*.kt); app_apis=("$EMBEDDING_JAR"); profile_jars=("$EMBEDDING_JAR" "${RUNTIME_JARS[@]}") ;;
+        tests) profile="host";      sources=(android/tests/*.kt android/apps/development/*.kt); app_apis=("$EMBEDDING_JAR"); profile_jars=("$EMBEDDING_JAR" "${RUNTIME_JARS[@]}") ;;
+        *) profile="provider";      sources=(android/apps/shared-ui/*.kt "android/apps/$app/src/"*.kt); app_apis=(build/capability-api.jar); profile_jars=("${COMPOSE_JARS[@]}") ;;
+    esac
+    profile_dex "$profile" "${profile_jars[@]}"
+    rm -rf "build/$app"; mkdir -p "build/$app/classes" "build/$app/dex"
+    if [[ "$profile" == "host" ]]; then
+        rm -rf "build/assets/$app"; mkdir -p "build/assets/$app"
+        cp -r build/embedding-consumer/assets/* "build/assets/$app/"
+        if [[ "$app" == calendar ]]; then
+            mkdir -p "build/assets/$app/experience"
+            cp android/apps/calendar/experiences/departure/*.deal "build/assets/$app/experience/" 2>/dev/null || true
+            cp android/apps/calendar/experiences/departure/*.dealui "build/assets/$app/experience/" 2>/dev/null || true
+        fi
+    fi
     resource_link "$app" "build/$app/unsigned.apk"
     find "build/$app/rjava" -name '*.java' > build/r-sources.txt
     javac --release 21 -d "build/$app/classes" @build/r-sources.txt
+    app_cp=$(IFS=:; echo "${app_apis[*]}")
+    profile_cp="${profile_jars[*]}"
     "$KOTLIN_HOME/bin/kotlinc" -Xplugin="$KOTLIN_HOME/lib/compose-compiler-plugin.jar" -jvm-target 21 -no-reflect -classpath "$ANDROID:$app_cp:$RUNTIME_CP" \
         -d "build/$app/classes" "${sources[@]}"
     jar --create --file "build/$app/app.jar" -C "build/$app/classes" .
-    java -Xmx2g -XX:ActiveProcessorCount=4 -cp build/toolchain/r8.jar com.android.tools.r8.D8 --min-api 36 --lib "$ANDROID" --output "build/$app/dex" \
-        "build/$app/app.jar" "${app_apis[@]}" "${app_runtime[@]}" "$KOTLIN_HOME/lib/kotlin-stdlib.jar"
-    (cd "build/$app/dex" && zip -q ../unsigned.apk classes*.dex)
-    "$TOOLS/zipalign" -f 4 "build/$app/unsigned.apk" "build/$app/aligned.apk"
-    "$TOOLS/apksigner" sign --ks build/debug.keystore --ks-pass pass:android --out "build/$app.apk" "build/$app/aligned.apk"
+    # The app is dexed on its own so only app code is re-done on each iteration.
+    java -Xmx2g -XX:ActiveProcessorCount=4 -cp build/toolchain/r8.jar com.android.tools.r8.D8 --min-api 36 --lib "$ANDROID" \
+        --desugared-lib build/toolchain/desugar.json --classpath $profile_cp \
+        --output "build/$app/dex" "build/$app/app.jar"
+    test -n "$(find "build/$app/dex" -name 'classes*.dex')" || { echo "D8 produced no dex for $app" >&2; exit 1; }
+    # Merge the shared runtime dex without overwriting the app dex names.
+    rm -rf "build/$app/merged"; mkdir -p "build/$app/merged"
+    cp "build/$app/dex"/classes*.dex "build/$app/merged/"
+    next=$(find "build/$app/dex" -name 'classes*.dex' | wc -l)
+    for dex in "build/runtime-dex/$profile"/classes*.dex; do
+        next=$((next + 1)); cp "$dex" "build/$app/merged/classes$next.dex"
+    done
+    (cd "build/$app/merged" && zip -q ../unsigned.apk classes*.dex)
+    sign "$app"
 done
-printf 'Built build/{calendar,vehicle,todo,organizer,rental,pizza,tests}.apk\n'

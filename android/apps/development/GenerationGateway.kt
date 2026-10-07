@@ -2,32 +2,52 @@ package dev.deal.apps.development
 
 import dev.deal.embedding.ModelClient
 import dev.deal.embedding.GenerationCancellation
-
 import org.json.JSONObject
-import java.net.HttpURLConnection
-import java.net.URL
+import java.io.BufferedOutputStream
+import java.io.ByteArrayOutputStream
+import java.net.InetSocketAddress
+import java.net.Socket
 
-/** Credential-free demo client. The development gateway holds provider credentials. */
+/**
+ * Credential-free demo client for the loopback development gateway.
+ *
+ * Uses a raw socket: HttpURLConnection buffers a POST body unless the response is read
+ * concurrently, which leaves client and server waiting on each other.
+ */
 class GenerationGateway(private val endpoint: String) : ModelClient {
     init { require(endpoint == "http://127.0.0.1:8787/generate") { "Development gateway must use loopback forwarding" } }
+
     override fun complete(input: String, previous: String, diagnostics: String, cancellation: GenerationCancellation): String {
         cancellation.check()
-        val connection = URL(endpoint).openConnection() as HttpURLConnection
-        var registration: AutoCloseable? = null
+        val body = JSONObject().put("input", input).put("previous", previous).put("diagnostics", diagnostics).toString().toByteArray()
+        val socket = Socket()
+        val registration = cancellation.onCancel { runCatching { socket.close() } }
         try {
-            registration = cancellation.onCancel { connection.disconnect() }
-            connection.requestMethod = "POST"; connection.doOutput = true
-            connection.connectTimeout = 5000; connection.readTimeout = 180000
-            connection.setRequestProperty("Content-Type", "application/json")
-            connection.outputStream.use { it.write(JSONObject().put("input", input).put("previous", previous).put("diagnostics", diagnostics).toString().toByteArray()) }
-            check(connection.responseCode == 200) { "Generation gateway unavailable (${connection.responseCode})" }
-            val bytes = connection.inputStream.use { it.readNBytes(256 * 1024 + 1) }
-            require(bytes.size <= 256 * 1024)
+            socket.connect(InetSocketAddress("127.0.0.1", 8787), 5000)
+            socket.soTimeout = 420_000
+            val request = buildString {
+                append("POST /generate HTTP/1.1\r\n")
+                append("Host: 127.0.0.1:8787\r\n")
+                append("Content-Type: application/json\r\n")
+                append("Content-Length: ").append(body.size).append("\r\n")
+                append("Connection: close\r\n\r\n")
+            }.toByteArray()
+            // Closing this stream closes the socket, so flush without closing it.
+            val out = BufferedOutputStream(socket.getOutputStream())
+            out.write(request); out.write(body); out.flush()
+            android.util.Log.e("Embedding", "gateway: request sent (${body.size} bytes)")
+            val raw = ByteArrayOutputStream().also { buffer -> socket.getInputStream().use { it.copyTo(buffer) } }.toByteArray()
+            val text = raw.toString(Charsets.ISO_8859_1)
+            val headerEnd = text.indexOf("\r\n\r\n")
+            check(headerEnd > 0) { "Malformed gateway response" }
+            val statusLine = text.substringBefore("\r\n")
+            val status = statusLine.split(' ').getOrNull(1)?.trim()?.toIntOrNull() ?: 0
+            android.util.Log.e("Embedding", "gateway: status $status (\"$statusLine\"), ${raw.size} bytes")
+            check(status == 200) { "Generation gateway unavailable ($status)" }
+            val payload = raw.copyOfRange(headerEnd + 4, raw.size)
             cancellation.check()
-            return bytes.toString(Charsets.UTF_8)
-        } catch (error: Exception) {
-            cancellation.check() // A disconnected transport reports cancellation, not an inference failure.
-            throw error
-        } finally { registration?.close(); connection.disconnect() }
+            require(payload.size <= 256 * 1024) { "Gateway response too large" }
+            return payload.toString(Charsets.UTF_8)
+        } finally { registration.close(); runCatching { socket.close() } }
     }
 }

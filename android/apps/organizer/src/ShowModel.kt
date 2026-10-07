@@ -193,3 +193,7 @@ class ShowState(
         }
     }
 }
+
+/** A readable deadline for intent text; the stored instant stays authoritative. */
+fun Requirement.end(withDay: Boolean = false): String =
+    java.time.Instant.ofEpochMilli(until).atZone(SHOW_ZONE).let { if (withDay) "${it.toLocalDate()} ${it.toLocalTime().toString().take(5)}" else it.toLocalTime().toString().take(5) }

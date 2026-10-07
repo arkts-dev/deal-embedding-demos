@@ -18,8 +18,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import dev.deal.embedding.*
 import dev.deal.shell.*
+import org.json.JSONObject
 import java.time.LocalDate
+import java.util.concurrent.Executors
+import java.util.concurrent.CancellationException
 
 private enum class Destination(val label: String, val icon: androidx.compose.ui.graphics.vector.ImageVector) {
     Overview("Overview", Icons.Outlined.Dashboard), Riders("Riders", Icons.Outlined.Assignment), Resources("Resources", Icons.Outlined.Inventory2), Fulfilment("Fulfilment", Icons.Outlined.Checklist)
@@ -27,9 +31,21 @@ private enum class Destination(val label: String, val icon: androidx.compose.ui.
 
 class OrganizerActivity : ComponentActivity() {
     private val store by lazy { ShowStore(this) }
+    private val host by lazy { OrganizerHost(this) }
+    private val worker = Executors.newSingleThreadExecutor()
+    override fun onDestroy() { worker.execute { host.close() }; worker.shutdown(); super.onDestroy() }
     override fun onCreate(state: Bundle?) {
         super.onCreate(state)
         var show by mutableStateOf(store.load())
+        var request by mutableStateOf<List<String>?>(null)
+        var generating by mutableStateOf(false)
+        var status by mutableStateOf("")
+        var live by mutableStateOf<List<LiveWorkspace>>(emptyList())
+        var open by mutableStateOf<LiveWorkspace?>(null)
+        var tree by mutableStateOf<JSONObject?>(null)
+        var fault by mutableStateOf("")
+        var review by mutableStateOf(false)
+        var cancellation by mutableStateOf<GenerationCancellation?>(null)
         fun update(block: (ShowState) -> Unit) { val current = show ?: return; block(current); store.save(current); show = current }
         setContent {
             AppTheme(Accent.Organizer) {
@@ -51,11 +67,53 @@ class OrganizerActivity : ComponentActivity() {
                         Column(Modifier.padding(padding).fillMaxSize()) {
                             when {
                                 show == null -> EmptyPlan(onInitialize = { show = store.initialize() })
+                                request != null -> RequestSheet(
+                                    title = request!!.mapNotNull { id -> show!!.requirement(id)?.name }.joinToString(", "),
+                                    requirements = request!!.mapNotNull { id -> show!!.requirement(id) }, host = host, status = status, building = generating,
+                                    onCancel = { request = null },
+                                    onBuild = { goal, instruction ->
+                                        android.util.Log.e("Organizer", "onBuild fired: $goal")
+                                        generating = true; status = "Discovering capabilities…"
+                                        val selected = request!!.mapNotNull { id -> show!!.requirement(id) }
+                                        val intent = "Resolve these requirements for ${selected.firstOrNull()?.act ?: "the show"}: " +
+                                            selected.joinToString("; ") { "${it.quantity} × ${it.name} — ${it.specification}, needed at ${it.location} by ${it.end(true)}" } + ". " + instruction
+                                        val disclosed = JSONObject().put("show", show!!.title).put("venue", show!!.venue)
+                                            .put("date", show!!.date.toString()).put("timeZone", SHOW_ZONE.id)
+                                            .put("requirements", org.json.JSONArray(selected.map { it.name })).toString()
+                                        val token = GenerationCancellation(); cancellation = token
+                                        worker.execute {
+                                            try {
+                                                android.util.Log.e("Organizer", "worker: preparing host")
+                                                host.prepare()
+                                                android.util.Log.e("Organizer", "worker: prepared, generating")
+                                                val candidate = host.generate(intent, disclosed, token) { message -> runOnUiThread { status = message } }
+                                                candidate.use {
+                                                    token.check()
+                                                    val workspace = host.environment().open(intent.take(60), candidate)
+                                                    runOnUiThread { live = host.environment().workspaces(); open = workspace; request = null; generating = false; status = "" }
+                                                }
+                                            } catch (error: Throwable) {
+                                                android.util.Log.e("Organizer", "generation failed", error)
+                                                runOnUiThread { generating = false; status = if (error is CancellationException) "Generation cancelled; the plan is unchanged" else "Generation failed; the plan is unchanged: ${error.message?.take(160)}" }
+                                            }
+                                        }
+                                    },
+                                )
+                                open != null -> WorkspaceView(
+                                    title = open!!.title, tree = tree ?: JSONObject().put("component", "root").put("props", org.json.JSONArray()).put("children", org.json.JSONArray()),
+                                    fault = fault,
+                                    onDispatch = { slot, payload -> worker.execute { try { host.environment().dispatch(open!!.id, slot, payload)?.let { runOnUiThread { tree = it.getJSONObject("tree") } } } catch (error: Throwable) { runOnUiThread { fault = error.message ?: "Workspace error" } } } },
+                                    onClose = { worker.execute { host.environment().closeWorkspace(open!!.id); runOnUiThread { open = null; tree = null; live = host.environment().workspaces() } } },
+                                    onReview = { review = true },
+                                    prepared = preparedOperations(applicationContext).size,
+                                )
+                                review -> ReviewSheet(preparedOperations(applicationContext), onConfirm = { runOnUiThread { review = false } }, onBack = { review = false })
                                 selectedRequirement != null -> RequirementDetail(
                                     show = show!!, requirementId = selectedRequirement!!,
                                     onBack = { selectedRequirement = null },
                                     onEdit = { updated -> update { it.requirements = it.requirements.map { r -> if (r.id == updated.id) updated else r } } },
                                     onVerify = { id -> update { s -> s.requirements = s.requirements.map { r -> if (r.id == id) r.copy(verified = !r.verified) else r } } },
+                                    onArrange = { id -> request = listOf(id) },
                                 )
                                 else -> when (destination) {
                                     Destination.Overview -> OverviewScreen(state = show!!, onOpenRequirement = { selectedAct = null; selectedRequirement = it }, onOpenRiders = { destination = Destination.Riders })
@@ -341,7 +399,7 @@ class OrganizerActivity : ComponentActivity() {
                         Text(if (requirement.verified) "Undo check" else "Record check")
                     }
                     OutlinedButton(onClick = { onOpenRequirement(requirement.id) }, shape = RoundedCornerShape(18.dp)) { Text("Open") }
-                    if (requirement.coverage == Coverage.Conflict) TextButton(onClick = { }) { Text("Arrange fulfilment") }
+                    TextButton(onClick = { onOpenRequirement(requirement.id) }) { Text("Open") }
                 }
             }
         }
@@ -349,7 +407,7 @@ class OrganizerActivity : ComponentActivity() {
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
-@Composable private fun RequirementDetail(show: ShowState, requirementId: String, onBack: () -> Unit, onEdit: (Requirement) -> Unit, onVerify: (String) -> Unit) {
+@Composable private fun RequirementDetail(show: ShowState, requirementId: String, onBack: () -> Unit, onEdit: (Requirement) -> Unit, onVerify: (String) -> Unit, onArrange: (String) -> Unit) {
     val requirement = show.requirement(requirementId) ?: return
     var editing by remember { mutableStateOf(false) }
     var draft by remember { mutableStateOf(requirement) }
@@ -403,7 +461,7 @@ class OrganizerActivity : ComponentActivity() {
                     if (requirement.notes.isNotEmpty()) Text(requirement.notes, style = MaterialTheme.typography.bodyMedium)
                     Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                         OutlinedButton(onClick = { editing = true }, shape = RoundedCornerShape(18.dp)) { Text("Edit") }
-                        Button(onClick = { }, shape = RoundedCornerShape(18.dp)) { Text("Arrange fulfilment") }
+                        Button(onClick = { onArrange(requirement.id) }, shape = RoundedCornerShape(18.dp)) { Text("Arrange fulfilment") }
                         if (requirement.coverage == Coverage.Covered) TextButton(onClick = { onVerify(requirement.id) }) { Text(if (requirement.verified) "Undo check" else "Record check") }
                     }
                 }
