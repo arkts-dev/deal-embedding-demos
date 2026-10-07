@@ -7,6 +7,7 @@ import java.io.BufferedOutputStream
 import java.io.ByteArrayOutputStream
 import java.net.InetSocketAddress
 import java.net.Socket
+import java.util.concurrent.TimeUnit
 
 /**
  * Credential-free demo client for the loopback development gateway.
@@ -20,6 +21,7 @@ class GenerationGateway(private val endpoint: String) : ModelClient {
     override fun complete(input: String, previous: String, diagnostics: String, cancellation: GenerationCancellation): String {
         cancellation.check()
         val body = JSONObject().put("input", input).put("previous", previous).put("diagnostics", diagnostics).toString().toByteArray()
+        val started = System.nanoTime()
         val socket = Socket()
         val registration = cancellation.onCancel { runCatching { socket.close() } }
         try {
@@ -35,14 +37,13 @@ class GenerationGateway(private val endpoint: String) : ModelClient {
             // Closing this stream closes the socket, so flush without closing it.
             val out = BufferedOutputStream(socket.getOutputStream())
             out.write(request); out.write(body); out.flush()
-            android.util.Log.e("Embedding", "gateway: request sent (${body.size} bytes)")
             val raw = ByteArrayOutputStream().also { buffer -> socket.getInputStream().use { it.copyTo(buffer) } }.toByteArray()
             val text = raw.toString(Charsets.ISO_8859_1)
             val headerEnd = text.indexOf("\r\n\r\n")
             check(headerEnd > 0) { "Malformed gateway response" }
             val statusLine = text.substringBefore("\r\n")
             val status = statusLine.split(' ').getOrNull(1)?.trim()?.toIntOrNull() ?: 0
-            android.util.Log.e("Embedding", "gateway: status $status (\"$statusLine\"), ${raw.size} bytes")
+            android.util.Log.i("Generation", "POST /generate -> $status in ${TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - started)} ms, sent ${body.size} bytes, received ${raw.size} bytes")
             check(status == 200) { "Generation gateway unavailable ($status)" }
             val payload = raw.copyOfRange(headerEnd + 4, raw.size)
             cancellation.check()

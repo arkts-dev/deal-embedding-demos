@@ -72,7 +72,6 @@ class OrganizerActivity : ComponentActivity() {
                                     requirements = request!!.mapNotNull { id -> show!!.requirement(id) }, host = host, status = status, building = generating,
                                     onCancel = { request = null },
                                     onBuild = { goal, instruction ->
-                                        android.util.Log.e("Organizer", "onBuild fired: $goal")
                                         generating = true; status = "Discovering capabilities…"
                                         val selected = request!!.mapNotNull { id -> show!!.requirement(id) }
                                         val intent = "Resolve these requirements for ${selected.firstOrNull()?.act ?: "the show"}: " +
@@ -83,9 +82,7 @@ class OrganizerActivity : ComponentActivity() {
                                         val token = GenerationCancellation(); cancellation = token
                                         worker.execute {
                                             try {
-                                                android.util.Log.e("Organizer", "worker: preparing host")
                                                 host.prepare()
-                                                android.util.Log.e("Organizer", "worker: prepared, generating")
                                                 val candidate = host.generate(intent, disclosed, token) { message -> runOnUiThread { status = message } }
                                                 candidate.use {
                                                     token.check()
