@@ -44,14 +44,16 @@ class OrganizerActivity : ComponentActivity() {
         var open by mutableStateOf<LiveWorkspace?>(null)
         val activeWorkspace = java.util.concurrent.atomic.AtomicReference<String?>(null)
         var publishedVersion = -1
+        var publishedFault = ""
         var tree by mutableStateOf<JSONObject?>(null)
         var fault by mutableStateOf("")
         var review by mutableStateOf(false)
         var cancellation by mutableStateOf<GenerationCancellation?>(null)
         fun update(block: (ShowState) -> Unit) { val current = show ?: return; block(current); store.save(current); show = current }
         fun publish(id: String, snapshot: JSONObject) {
-            if (activeWorkspace.get() != id || snapshot.getInt("version") == publishedVersion) return
+            if (activeWorkspace.get() != id || (snapshot.getInt("version") == publishedVersion && snapshot.optString("fault") == publishedFault)) return
             publishedVersion = snapshot.getInt("version")
+            publishedFault = snapshot.optString("fault")
             java.io.File(filesDir, "workspace-snapshot.tmp").apply { writeText(snapshot.toString()) }.let {
                 check(it.renameTo(java.io.File(filesDir, "workspace-snapshot.json"))) { "Cannot publish workspace snapshot" }
             }
@@ -83,7 +85,7 @@ class OrganizerActivity : ComponentActivity() {
                         prefs.getString("workspace.$replayId.dealui", null) ?: error("Saved view not found"))
                     host.prepare()
                     host.environment().check(source).use { candidate ->
-                        val (workspace, snapshot) = host.environment().open("Saved workspace replay", candidate)
+                        val (workspace, snapshot) = host.environment().open(prefs.getString("workspace.$replayId.title", null) ?: "Saved workspace replay", candidate)
                         activeWorkspace.set(workspace.id); publishedVersion = -1
                         java.io.File(filesDir, "workspace-error.txt").delete()
                         publish(workspace.id, snapshot)
@@ -115,6 +117,7 @@ class OrganizerActivity : ComponentActivity() {
                     ) { padding ->
                         Column(Modifier.padding(padding).fillMaxSize()) {
                             when {
+                                review -> ReviewSheet(preparedOperations(applicationContext), onConfirm = { runOnUiThread { review = false } }, onBack = { review = false })
                                 show == null -> EmptyPlan(onInitialize = { show = store.initialize() })
                                 request != null -> RequestSheet(
                                     title = request!!.mapNotNull { id -> show!!.requirement(id)?.name }.joinToString(", "),
@@ -127,7 +130,16 @@ class OrganizerActivity : ComponentActivity() {
                                             selected.joinToString("; ") { "${it.quantity} × ${it.name} — ${it.specification}, needed at ${it.location} by ${it.end(true)}" } + ". " + instruction
                                         val disclosed = JSONObject().put("show", show!!.title).put("venue", show!!.venue)
                                             .put("date", show!!.date.toString()).put("timeZone", SHOW_ZONE.id)
-                                            .put("requirements", org.json.JSONArray(selected.map { it.name })).toString()
+                                            .put("requirements", org.json.JSONArray(selected.map { it.name })).apply {
+                                                if (selected.size == 1) {
+                                                    val requirement = selected.single()
+                                                    put("requirement", requirement.name).put("specification", requirement.specification)
+                                                    put("quantity", requirement.quantity)
+                                                    put("from", java.time.Instant.ofEpochMilli(requirement.from).toString())
+                                                    put("until", java.time.Instant.ofEpochMilli(requirement.until).toString())
+                                                    put("searchTerms", org.json.JSONArray(requirement.name.split(" ").filter { it.length > 2 }))
+                                                }
+                                            }.toString()
                                         val token = GenerationCancellation(); cancellation = token
                                         worker.execute {
                                             try {
@@ -171,7 +183,6 @@ class OrganizerActivity : ComponentActivity() {
                                     onReview = { review = true },
                                     prepared = preparedOperations(applicationContext).size,
                                 )
-                                review -> ReviewSheet(preparedOperations(applicationContext), onConfirm = { runOnUiThread { review = false } }, onBack = { review = false })
                                 selectedRequirement != null -> RequirementDetail(
                                     show = show!!, requirementId = selectedRequirement!!,
                                     onBack = { selectedRequirement = null },

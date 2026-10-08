@@ -8,4 +8,5 @@
  <instrumentation android:name=".VehicleCallerInstrumentation" android:targetPackage="dev.deal.apps.vehicle" />
  <instrumentation android:name=".GenerationInstrumentation" android:targetPackage="dev.deal.apps.calendar" />
  <instrumentation android:name=".WorkspaceInstrumentation" android:targetPackage="dev.deal.apps.organizer" />
+ <instrumentation android:name=".CatalogueInstrumentation" android:targetPackage="dev.deal.apps.organizer" />
 </manifest>

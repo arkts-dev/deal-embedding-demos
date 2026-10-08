@@ -66,7 +66,8 @@ class GenerationInstrumentation : Instrumentation() {
             val repairModel = object : ModelClient {
                 override fun complete(input: String, previous: String, diagnostics: String, cancellation: GenerationCancellation): String {
                     repairCalls++
-                    if (repairCalls == 1) return JSONObject().put("deal", "export function main(): null { return 7; }").put("dealui", "broken").toString()
+                    if (repairCalls == 1) return JSONObject().put("answers", JSONObject().put("purpose", "unavailable").put("headline", "text").put("notice", "none").put("read", "unavailable")).toString()
+                    if (repairCalls == 2) return JSONObject().put("deal", "export function main(): null { return 7; }").put("dealui", "broken").toString()
                     observedDiagnostics = diagnostics
                     // A real model receives the failure and supplies the repaired source.
                     return real.complete(input, previous, diagnostics, cancellation)
@@ -79,7 +80,7 @@ class GenerationInstrumentation : Instrumentation() {
             val failingModel = object : ModelClient { override fun complete(input: String, previous: String, diagnostics: String, cancellation: GenerationCancellation): String { failedCalls++; return "invalid" } }
             val stable = host.remembered()!!; val stableTree = host.poll()!!.toString()
             check(runCatching { host.generate("Test failure", "{}", failingModel, GenerationCancellation()) {} }.isFailure)
-            check(failedCalls == 3 && host.remembered() == stable && host.poll()!!.toString() == stableTree)
+            check(failedCalls == 4 && host.remembered() == stable && host.poll()!!.toString() == stableTree)
             val token = GenerationCancellation()
             val cancelModel = object : ModelClient { override fun complete(input: String, previous: String, diagnostics: String, cancellation: GenerationCancellation): String { cancellation.cancel(); cancellation.check(); return "" } }
             check(runCatching { host.generate("Test cancellation", "{}", cancelModel, token) {} }.exceptionOrNull() is CancellationException)

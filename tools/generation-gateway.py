@@ -21,7 +21,9 @@ def event(**fields):
 def infer(body):
     messages=[{'role':'user','content':body['input']}]
     if body.get('previous'):
-        messages += [{'role':'assistant','content':body['previous']},{'role':'user','content':'Repair both source files using these checker diagnostics. Preserve the requested behavior. Return the complete JSON envelope.\n'+body['diagnostics']}]
+        messages.append({'role':'assistant','content':body['previous']})
+    if body.get('diagnostics') or body.get('previous'):
+        messages.append({'role':'user','content':'Generate or repair both source files using these diagnostics. Preserve the requested behavior. Return the complete JSON envelope.\n'+body['diagnostics']})
     payload={'model':MODEL,'messages':messages,'max_tokens':8192,'temperature':0.2,'stream':False}
     request=urllib.request.Request(ENDPOINT,data=json.dumps(payload).encode(),headers={'Content-Type':'application/json','Authorization':'Bearer '+KEY})
     with urllib.request.urlopen(request,timeout=420) as response:

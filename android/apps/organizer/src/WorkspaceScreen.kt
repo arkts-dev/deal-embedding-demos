@@ -101,8 +101,8 @@ import org.json.JSONObject
 @Composable fun WorkspaceView(title: String, tree: JSONObject, fault: String, onDispatch: (Int, String?) -> Unit, onClose: () -> Unit, onReview: () -> Unit, prepared: Int) {
     Column(Modifier.fillMaxSize()) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 12.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-            Column {
-                Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+            Column(Modifier.weight(1f)) {
+                Text(title, maxLines = 2, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                 Text("DEAL WORKSPACE · generated", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
             }
             Row {
@@ -121,12 +121,12 @@ import org.json.JSONObject
     }
 }
 
-/** Native review of the operations the workspace prepared. Nothing has been written yet. */
+/** Native review of locally prepared descriptors; no provider reservation has been made. */
 @Composable fun ReviewSheet(operations: List<JSONObject>, onConfirm: () -> Unit, onBack: () -> Unit) {
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             IconButton(onClick = onBack) { Icon(Icons.Outlined.ArrowBack, "Back") }
-            Column { Text("Prepared operations", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold); Text("Nothing is written until you confirm it", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+            Column { Text("Prepared operations", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold); Text("Prepared locally; no provider reservation has been made", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant) }
         }
         operations.forEach { operation ->
             Panel {
@@ -137,7 +137,7 @@ import org.json.JSONObject
                 if (operation.optString("deadline").isNotEmpty()) KeyValue("Deadline", operation.optString("deadline"))
             }
         }
-        Text("Each operation is confirmed in its own app. If one fails, the others stand and the failed step stays outstanding.", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Button(onClick = onConfirm, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(18.dp)) { Text("Continue to confirmation") }
+        Text("This is a review descriptor, not a reservation. Provider confirmation is not connected on this surface; arrange the reservation in the provider app.", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Button(onClick = onConfirm, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(18.dp)) { Text("Back to workspace") }
     }
 }

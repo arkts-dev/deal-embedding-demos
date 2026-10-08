@@ -14,9 +14,9 @@ assert {p.name for p in (library/'android/src/capabilities').glob('*.kt')} == {
     'CapabilityContract.kt','CapabilityRegistry.kt','CapabilityDiscovery.kt','CapabilityService.kt'}
 assert (library/'core/generation.deal').exists()
 assert not (library/'backends').exists()
-assert {p.name for p in (library/'core/host').glob('*.d.deal')} == {'checker.d.deal', 'discovery.d.deal', 'model.d.deal'}
+assert {p.name for p in (library/'core/host').glob('*.d.deal')} == {'checker.d.deal', 'discovery.d.deal', 'model.d.deal', 'chooser.d.deal'}
 assert (library/'android/src/compiler/ExperienceCompiler.kt').exists()
-assert {p.name for p in (library/'android/src/bindings').glob('*.kt')} == {'CapabilityBindings.kt', 'DealSessionBindings.kt', 'ExperienceGenerator.kt', 'SandboxProgram.kt'}
+assert {p.name for p in (library/'android/src/bindings').glob('*.kt')} == {'CapabilityBindings.kt', 'DealSessionBindings.kt', 'ExperienceGenerator.kt', 'SandboxProgram.kt', 'ChoiceCatalogue.kt'}
 assert {p.name for p in (library/'android/src/inference').glob('*.kt')} == {'ModelClient.kt'}
 assert (root/'android/apps/development/GenerationGateway.kt').exists()
 assert 'getSharedPreferences' not in (library/'android/src/capabilities/CapabilityService.kt').read_text()
@@ -40,7 +40,7 @@ with zipfile.ZipFile(os.environ.get('EMBEDDING_AAR', root / 'build/embedding-lib
         assert 'deal/Main.class' in names and 'deal/ui/UiSourceGenerator.class' in names
         assert not any(name.startswith('dev/deal/apps/') for name in names)
         assert 'dev/deal/embedding/GenerationGateway.class' not in names
-    with zipfile.ZipFile(root / 'build/calendar.apk') as app:
+    with zipfile.ZipFile(root / os.environ.get('HOST_APK', 'build/organizer.apk')) as app:
         for name in aar.namelist():
             if name.startswith('assets/') and not name.endswith('/'): assert app.read(name) == aar.read(name), name
         assert not any('connectors.js' in name for name in app.namelist())
@@ -50,7 +50,7 @@ with zipfile.ZipFile(os.environ.get('EMBEDDING_AAR', root / 'build/embedding-lib
         contracts = app.read('assets/embedding/bindings/generation-contracts.js').decode()
         import json
         metadata = json.loads(contracts.removeprefix('configureDealCapabilities(').strip().removesuffix(');'))
-        assert {m['module'] for m in metadata} == {'embedding/checker', 'embedding/model', 'embedding/discovery'}
+        assert {m['module'] for m in metadata} == {'embedding/checker', 'embedding/model', 'embedding/discovery', 'embedding/chooser'}
         checker = next(m for m in metadata if m['module'] == 'embedding/checker')
         assert checker['functions'][0]['result'] == json.loads((library/'core/host/check-result.json').read_text())
         assert not any(n.startswith('assets/deal-backend/') for n in app.namelist())
@@ -65,7 +65,7 @@ import json
 config=json.loads((Path.home()/'.pi/agent/models.json').read_text())['providers']['devagent']
 key=config.get('apiKey','')
 if len(key)>16 and not key.startswith('!'):
-    for path in [root/'build/calendar.apk', Path(os.environ.get('EMBEDDING_AAR', root/'build/embedding-library/deal-embedding.aar'))]:
+    for path in [root/os.environ.get('HOST_APK', 'build/organizer.apk'), Path(os.environ.get('EMBEDDING_AAR', root/'build/embedding-library/deal-embedding.aar'))]:
         with zipfile.ZipFile(path) as archive:
             assert all(key.encode() not in archive.read(n) for n in archive.namelist() if not n.endswith('/')), 'Credential found in artifact'
 print('Core host contracts and Android compiler/bindings separated; compiled DEAL orchestration packaged; no external wiring or credentials; AAR assets consumed byte-for-byte')
