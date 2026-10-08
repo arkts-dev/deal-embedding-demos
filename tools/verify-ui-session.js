@@ -11,6 +11,7 @@ function walk(dir) {
 }
 walk(base);
 vm.runInThisContext(fs.readFileSync('dependencies/deal-embedding/android/assets/embedding/bindings/sandbox.js', 'utf8'));
+vm.runInThisContext(fs.readFileSync('dependencies/deal-ui/runtime-js/session.js', 'utf8'));
 vm.runInThisContext(fs.readFileSync('dependencies/deal-embedding/android/assets/embedding/bindings/ui-session.js', 'utf8'));
 configureDealCapabilities(JSON.parse(fs.readFileSync('build/discovered-contracts.json', 'utf8')));
 const entry = 'experience.js';

@@ -2,7 +2,7 @@
 kind: research
 id: catalogue-flow-observability
 created_at: 2026-10-08T16:00:00Z
-updated_at: 2026-10-08T19:50:00Z
+updated_at: 2026-10-08T20:25:00Z
 status: verified-with-limits
 references:
   - dependencies/deal-embedding/core/catalogue-source.deal
@@ -89,6 +89,22 @@ Compiled-core verification passed 16 exact pre-migration source-pair comparisons
 | Test invoked synchronous DEAL exports as promises | Harness now wraps the return in Promise.resolve. |
 | Policy/boundary regressions described removed native inventory | Updated host lowercase metadata, checker string arguments and artifact ownership checks. |
 | Intermittent receipt test could not find mount | Test read only the current bounded file; a run can cross rotation. It now reads current and previous pages, consistent with retention policy. |
+
+# Deal UI lifecycle and wire-data boundary
+
+Embedding's `ui-session.js` now supplies module loading and Promise scheduling only. Deal UI `runtime-js/session.js` owns mounted-root coordination, using generated queue/store `startDrain` and completion admission rather than a duplicate draining/disposed flag. `ui/session.deal` owns observation version/fault, physical effect accounting and replacement readiness through compiler-issued exports. Runtime packaging and consumer fingerprints include the Deal UI JS asset.
+
+The core's scalar-iteration UTF-16 helper was replaced by the declared `policy-data.utf16Length` primitive. Android implements code-unit length mechanically; eligibility remains core policy. The frozen policy oracle passed eleven fixtures and 132 decisions, including supplementary exact/over bounds and combining sequences. Android catalogue instrumentation passed seven negative cases, including the supplementary wire-bound case.
+
+Production-generated JS fixture tests passed overlap/completion order, atomic update rejection, effect failures, reentrant drain, discarded late completion, physical-exit readiness, synchronous scheduler failure, restored state and invalid-slot rejection. Dedicated Android instrumentation passed controlled overlapping completions, replacement blocking, failure snapshots, state restoration and disposal. Catalogue/workspace device regressions and native saved-source review replay also passed; provider persistence remained unchanged. No new inference was used.
+
+JSON/context bridge removal remains conditional and was not performed. Both existing production reproducers still fail: dynamic string table reads are rejected with E3007; decoded JSON-array iteration compiles but executes zero iterations and fails its count assertion. The upstream implementation was left unchanged.
+
+| Failure during this extraction | Disposition |
+| --- | --- |
+| Kotlin compiler process killed with exit 137 | First build stopped during compilation. A bounded JVM heap build succeeded; the kill cause was not established. |
+| JS regression resolved runtime asset one directory too high | Corrected the test repository-root calculation. |
+| Fault assertion expected ordinary JS Error text | DEAL error objects and JS errors retain the runtime's existing reification/string behavior. Tests assert state/version invariants and actual fault representation rather than inventing a new one. |
 
 # Diagnostic changes
 

@@ -13,14 +13,14 @@ function walk(dir) {
 }
 walk(base);
 vm.runInThisContext(fs.readFileSync('dependencies/deal-embedding/android/assets/embedding/bindings/sandbox.js','utf8'));
-configureDealCapabilities([{module:'embedding/policy-data',functions:[{name:'parse',parameters:[{name:'input',type:{kind:'string'}}],result:{kind:'json-object'}},{name:'lowercase',parameters:[{name:'input',type:{kind:'string'}}],result:{kind:'string'}}]}]);
+configureDealCapabilities([{module:'embedding/policy-data',functions:[{name:'parse',parameters:[{name:'input',type:{kind:'string'}}],result:{kind:'json-object'}},{name:'lowercase',parameters:[{name:'input',type:{kind:'string'}}],result:{kind:'string'}},{name:'utf16Length',parameters:[{name:'input',type:{kind:'string'}}],result:{kind:'int'}}]}]);
 const {rt,entry: policy} = dealLoad(factories,'choice-policy.js');
 async function invoke(fn,...args) {
   let done=false,result,error;
   fn.$f(...args).then(v=>{done=true;result=v;},e=>{done=true;error=e;});
   for(let i=0;i<100&&!done;i++) {
     for(const req of JSON.parse(dealCapabilities.take())) {
-      try { const v=req.function==='lowercase'?req.args[0].toLowerCase():JSON.parse(req.args[0]); if(req.function==='parse'&&(v===null||Array.isArray(v)||typeof v!=='object'))throw Error('object required'); dealCapabilities.deliver([{id:req.id,ok:true,value:v}]); }
+      try { const v=req.function==='utf16Length'?req.args[0].length:req.function==='lowercase'?req.args[0].toLowerCase():JSON.parse(req.args[0]); if(req.function==='parse'&&(v===null||Array.isArray(v)||typeof v!=='object'))throw Error('object required'); dealCapabilities.deliver([{id:req.id,ok:true,value:v}]); }
       catch(e){dealCapabilities.deliver([{id:req.id,ok:false,error:{code:'INVALID_JSON',message:'Expected object'}}]);}
     }
     await new Promise(resolve=>setImmediate(resolve));
@@ -51,6 +51,10 @@ function oracle(catalog,context) {
   const bounded=copy(catalog);bounded[1].functions[0].parameters[0].type.maximum=1;cases.push(['bounds',bounded,context]);
   const unicode=copy(catalog);unicode[1].functions[0].parameters[0].type.maximum=1;cases.push(['UTF16 bound',unicode,{...context,from:'😀'}]);
   const extra=copy(catalog);extra[1].functions[0].parameters.push({name:'custom',type:string()});cases.push(['dynamic key',extra,{...context,custom:'provided'}]);
+  const exact=copy(catalog);exact[1].functions[0].parameters[0].type.maximum=2;
+  cases.push(['UTF16 exact supplementary',exact,{...context,from:'😀'}]);
+  const combining=copy(catalog);combining[1].functions[0].parameters[0].type.maximum=1;
+  cases.push(['UTF16 combining bound',combining,{...context,from:'e\u0301'}]);
   let validated=0;
   for(const [label,contracts,ctx]of cases){
     const entries={entries:Object.entries(ctx).filter(([k,v])=>typeof v==='string').map(([key,value])=>({key,value}))};

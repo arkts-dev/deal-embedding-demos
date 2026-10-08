@@ -98,7 +98,8 @@ class CatalogueInstrumentation : Instrumentation() {
                 "empty search term" to Pair(registry.contracts(), JSONObject(disclosed).put("searchTerms", JSONArray(listOf(" "))).toString()),
                 "missing result field" to Pair(listOf(stage, catalogue.copy(functions = catalogue.functions.map { it.copy(result = it.result.copy(element = it.result.element!!.copy(fields = it.result.element!!.fields - "available"))) })), disclosed),
                 "ambiguous preparation" to Pair(listOf(stage, stage.copy(module = "host/other"), catalogue), disclosed),
-                "argument wire bound" to Pair(listOf(stage, catalogue.copy(functions = catalogue.functions.map { it.copy(parameters = it.parameters.map { p -> p.copy(type = p.type.copy(maximum = 1)) }) })), disclosed)
+                "argument wire bound" to Pair(listOf(stage, catalogue.copy(functions = catalogue.functions.map { it.copy(parameters = it.parameters.map { p -> p.copy(type = p.type.copy(maximum = 1)) }) })), disclosed),
+                "UTF16 supplementary bound" to Pair(listOf(stage, catalogue.copy(functions = catalogue.functions.map { it.copy(parameters = it.parameters.map { p -> if (p.name == "from") p.copy(type = p.type.copy(maximum = 1)) else p }) })), JSONObject(disclosed).put("from", "😀").toString())
             )
             for ((label, fixture) in policyCases) {
                 config.contracts = fixture.first
@@ -237,7 +238,7 @@ class CatalogueInstrumentation : Instrumentation() {
             check(receipts.all { it.keys().asSequence().all { key -> key in allowed } })
             check(correlated.filter { it.getString("stage") == "capability" && it.getString("outcome") == "started" }.all { it.optString("parentOperation").isNotEmpty() })
             check(receipts.none { it.toString().contains("Adjustable boom") || it.toString().contains("clip adapter") })
-            result.putString("catalogueVerification", "8 DEAL-owned choices checked; Unicode/escaping/quantity-bound template mounted; 6 negative policy fixtures; 6 DEAL envelope repair fixtures; native resource failure stops; source repair/exhaustion/cancellation and template/transport failure ownership; correlated shape-only receipts; matching rows, prices, availability and review descriptor; no provider reads during generation")
+            result.putString("catalogueVerification", "8 DEAL-owned choices checked; Unicode/escaping/quantity-bound template mounted; 7 negative policy fixtures including UTF-16 supplementary bound; 6 DEAL envelope repair fixtures; native resource failure stops; source repair/exhaustion/cancellation and template/transport failure ownership; correlated shape-only receipts; matching rows, prices, availability and review descriptor; no provider reads during generation")
             finish(0, result)
         } catch (error: Throwable) { result.putString("failure", android.util.Log.getStackTraceString(error)); finish(1, result) }
         finally { runtime?.close(); registry?.close() }

@@ -96,7 +96,7 @@ library_key=$(python3 tools/build-cache.py \
     dependencies/deal-embedding/core/candidate-check.deal dependencies/deal-embedding/core/generation-guidance.deal \
     dependencies/deal-embedding/core/generation-guidance.md dependencies/deal-embedding/core/host \
     dependencies/deal/deal dependencies/deal/std dependencies/deal/skills/write-deal/references \
-    dependencies/deal-ui/ui "${ui_sources[@]}" "$ANDROID" \
+    dependencies/deal-ui/ui dependencies/deal-ui/runtime-js "${ui_sources[@]}" "$ANDROID" \
     "$KOTLIN_HOME/lib/kotlin-compiler.jar" "$KOTLIN_HOME/lib/compose-compiler-plugin.jar" \
     "$KOTLIN_HOME/lib/kotlin-stdlib.jar" "$TOOLS/aidl" "${RUNTIME_JARS[@]}")
 library_stamp=build/embedding-consumer/.inputs.sha256
@@ -187,6 +187,10 @@ for app in "${TARGETS[@]}"; do
     if [[ "$profile" == "host" ]]; then
         rm -rf "build/assets/$app"; mkdir -p "build/assets/$app"
         cp -r build/embedding-consumer/assets/* "build/assets/$app/"
+        if [[ "$app" == tests ]]; then
+            mkdir -p "build/assets/$app/ui-lifecycle"
+            cp dependencies/deal-ui/src/test/fixtures/js-session/app.deal dependencies/deal-ui/src/test/fixtures/js-session/app.dealui "build/assets/$app/ui-lifecycle/"
+        fi
         if [[ "$app" == calendar ]]; then
             mkdir -p "build/assets/$app/experience"
             cp android/apps/calendar/experiences/departure/*.deal "build/assets/$app/experience/" 2>/dev/null || true

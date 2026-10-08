@@ -48,6 +48,7 @@ with zipfile.ZipFile(os.environ.get('EMBEDDING_AAR', root / 'build/embedding-lib
         assert 'assets/generation/generation.js' in app.namelist()
         assert b'for (' in app.read('assets/generation/generation.js')
         assert 'assets/embedding/bindings/generation-session.js' in app.namelist()
+        assert app.read('assets/embedding/bindings/dealui-session.js') == (root/'dependencies/deal-ui/runtime-js/session.js').read_bytes()
         contracts = app.read('assets/embedding/bindings/generation-contracts.js').decode()
         import json
         metadata = json.loads(contracts.removeprefix('configureDealCapabilities(').strip().removesuffix(');'))

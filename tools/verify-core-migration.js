@@ -8,7 +8,7 @@ walk(base);
 vm.runInThisContext(fs.readFileSync('dependencies/deal-embedding/android/assets/embedding/bindings/sandbox.js','utf8'));
 let calls=[],failure=null;
 configureDealCapabilities([
- {module:'embedding/policy-data',functions:[{name:'parse',parameters:[{name:'input',type:{kind:'string'}}],result:{kind:'json-object'}},{name:'lowercase',parameters:[{name:'input',type:{kind:'string'}}],result:{kind:'string'}}]},
+ {module:'embedding/policy-data',functions:[{name:'parse',parameters:[{name:'input',type:{kind:'string'}}],result:{kind:'json-object'}},{name:'lowercase',parameters:[{name:'input',type:{kind:'string'}}],result:{kind:'string'}},{name:'utf16Length',parameters:[{name:'input',type:{kind:'string'}}],result:{kind:'int'}}]},
  {module:'embedding/checker',functions:[{name:'check',parameters:['deal','dealui'].map(name=>({name,type:{kind:'string'}})),result:JSON.parse(fs.readFileSync('dependencies/deal-embedding/core/host/check-result.json','utf8'))}]},
  {module:'embedding/observer',functions:[{name:'record',parameters:['stage','outcome','code'].map(name=>({name,type:{kind:'string'}})),result:{kind:'null'}}]}
 ]);
@@ -21,7 +21,7 @@ async function invoke(module,name,...args){
   for(const req of JSON.parse(dealCapabilities.take())){
    let reply;
    if(req.module==='embedding/policy-data'){
-    try{reply=req.function==='lowercase'?req.args[0].toLowerCase():JSON.parse(req.args[0]);if(req.function==='parse'&&(reply===null||Array.isArray(reply)||typeof reply!=='object'))throw Error('object required');}
+    try{reply=req.function==='utf16Length'?req.args[0].length:req.function==='lowercase'?req.args[0].toLowerCase():JSON.parse(req.args[0]);if(req.function==='parse'&&(reply===null||Array.isArray(reply)||typeof reply!=='object'))throw Error('object required');}
     catch(e){dealCapabilities.deliver([{id:req.id,ok:false,error:{code:'INVALID_JSON',message:'Expected JSON object'}}]);continue;}
    }else if(req.module==='embedding/checker'){
     calls.push(req.args);if(failure){dealCapabilities.deliver([{id:req.id,ok:false,error:failure}]);continue;}
