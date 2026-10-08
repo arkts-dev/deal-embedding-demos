@@ -36,6 +36,12 @@ Provider owners consent independently in Todo and Vehicle. Calendar also grants 
 
 A typed Calendar proposal is not a write. Only a native confirmation adds a Calendar Provider reminder. Confirmation checks the selected event, re-reads its instance, and performs a conditional event update and reminder insertion in one provider transaction. Existing reminders are retained. Minute-of-day planning currently requires a same-day departure; recurring-event instance-specific exceptions and overnight travel are not implemented.
 
+# Saved-workspace debugging
+
+Organizer debug builds accept `--es replayWorkspace <saved-workspace-id>` on a cold activity launch. Replay reads existing app-private source, checks it locally and opens a fresh workspace without inference; it accepts no injected source. Dispatch/poll failures go to logcat and app-private `workspace-error.txt`, separately from the last published `workspace-snapshot.json`. Organizer polls live workspace completions on its serialized worker.
+
+After building/installing Organizer and `tools/build.sh tests`, run `adb shell am instrument --user 0 -w dev.deal.connectors.tests/.WorkspaceInstrumentation`. It requires saved Organizer source reading `host.staged()` and uses an explicitly read-only fixture to check independent request IDs, reply isolation, close isolation and grant revocation without model calls.
+
 # Verification
 
 `tools/CheckExperience.java` invokes the same in-process checking and source-generation entry as Android against declarations captured from actual provider discovery by the device verifier. `node tools/verify-ui-session.js` checks mounted rendering, action-driven state, async completion, keyed task selection, state restoration, stale-action rejection and disposal against locally compiled source. `python3 tools/verify-experience.py` exercises actual Compose controls and checked trees, connected providers, invalid-bundle retention and post-install replacement with unchanged PID and package installation metadata. It requires an upcoming Calendar Provider event and the apps installed. `python3 tools/verify-experience.py --late-provider` installs an unknown test provider after Calendar starts, discovers its published travel contract and executes the pregenerated experience without changing Calendar's PID or installation. Device receipts and screenshots stay under ignored `build/`.

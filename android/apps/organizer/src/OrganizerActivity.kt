@@ -32,7 +32,7 @@ private enum class Destination(val label: String, val icon: androidx.compose.ui.
 class OrganizerActivity : ComponentActivity() {
     private val store by lazy { ShowStore(this) }
     private val host by lazy { OrganizerHost(this) }
-    private val worker = Executors.newSingleThreadExecutor()
+    private val worker = Executors.newSingleThreadScheduledExecutor()
     override fun onDestroy() { worker.execute { host.close() }; worker.shutdown(); super.onDestroy() }
     override fun onCreate(state: Bundle?) {
         super.onCreate(state)
@@ -42,11 +42,60 @@ class OrganizerActivity : ComponentActivity() {
         var status by mutableStateOf("")
         var live by mutableStateOf<List<LiveWorkspace>>(emptyList())
         var open by mutableStateOf<LiveWorkspace?>(null)
+        val activeWorkspace = java.util.concurrent.atomic.AtomicReference<String?>(null)
+        var publishedVersion = -1
         var tree by mutableStateOf<JSONObject?>(null)
         var fault by mutableStateOf("")
         var review by mutableStateOf(false)
         var cancellation by mutableStateOf<GenerationCancellation?>(null)
         fun update(block: (ShowState) -> Unit) { val current = show ?: return; block(current); store.save(current); show = current }
+        fun publish(id: String, snapshot: JSONObject) {
+            if (activeWorkspace.get() != id || snapshot.getInt("version") == publishedVersion) return
+            publishedVersion = snapshot.getInt("version")
+            java.io.File(filesDir, "workspace-snapshot.tmp").apply { writeText(snapshot.toString()) }.let {
+                check(it.renameTo(java.io.File(filesDir, "workspace-snapshot.json"))) { "Cannot publish workspace snapshot" }
+            }
+            runOnUiThread { if (!isDestroyed && activeWorkspace.get() == id) { tree = snapshot.getJSONObject("tree"); fault = snapshot.optString("fault") } }
+        }
+        fun reportFailure(id: String, operation: String, error: Throwable) {
+            android.util.Log.e("Organizer", "workspace $operation failed: workspace=$id", error)
+            java.io.File(filesDir, "workspace-error.txt").writeText(android.util.Log.getStackTraceString(error))
+            runOnUiThread { if (!isDestroyed && activeWorkspace.get() == id) fault = error.message ?: "Workspace error" }
+        }
+        worker.scheduleWithFixedDelay({
+            try {
+                if (activeWorkspace.get() != null) {
+                    for (workspace in host.environment().workspaces()) {
+                        try { host.environment().poll(workspace.id)?.let { publish(workspace.id, it) } }
+                        catch (error: Throwable) { reportFailure(workspace.id, "poll", error); activeWorkspace.compareAndSet(workspace.id, null) }
+                    }
+                }
+            } catch (error: Throwable) { activeWorkspace.get()?.let { reportFailure(it, "poll", error) }; activeWorkspace.set(null) }
+        }, 100, 100, java.util.concurrent.TimeUnit.MILLISECONDS)
+        // Debug replay selects existing private source, never accepts injected code or calls inference.
+        val replayId = intent.getStringExtra("replayWorkspace")
+        if (replayId != null && applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE != 0) {
+            worker.execute {
+                try {
+                    val prefs = getSharedPreferences("organizer-experience", 0)
+                    val source = ExperienceSource(
+                        prefs.getString("workspace.$replayId.deal", null) ?: error("Saved workspace not found"),
+                        prefs.getString("workspace.$replayId.dealui", null) ?: error("Saved view not found"))
+                    host.prepare()
+                    host.environment().check(source).use { candidate ->
+                        val (workspace, snapshot) = host.environment().open("Saved workspace replay", candidate)
+                        activeWorkspace.set(workspace.id); publishedVersion = -1
+                        java.io.File(filesDir, "workspace-error.txt").delete()
+                        publish(workspace.id, snapshot)
+                        runOnUiThread { open = workspace }
+                    }
+                } catch (error: Throwable) {
+                    android.util.Log.e("Organizer", "workspace replay failed", error)
+                    java.io.File(filesDir, "workspace-error.txt").writeText(android.util.Log.getStackTraceString(error))
+                    runOnUiThread { fault = error.message ?: "Replay failed" }
+                }
+            }
+        }
         setContent {
             AppTheme(Accent.Organizer) {
                 var destination by remember { mutableStateOf(Destination.Overview) }
@@ -87,8 +136,11 @@ class OrganizerActivity : ComponentActivity() {
                                                 candidate.use {
                                                     token.check()
                                                     val (workspace, snapshot) = host.environment().open(intent.take(60), candidate)
-                                                    java.io.File(filesDir, "workspace-snapshot.json").writeText(snapshot.toString())
-                                                    runOnUiThread { live = host.environment().workspaces(); open = workspace; tree = snapshot.getJSONObject("tree"); fault = snapshot.optString("fault"); request = null; generating = false; status = "" }
+                                                    activeWorkspace.set(workspace.id); publishedVersion = -1
+                                                    java.io.File(filesDir, "workspace-error.txt").delete()
+                                                    publish(workspace.id, snapshot)
+                                                    val workspaces = host.environment().workspaces()
+                                                    runOnUiThread { live = workspaces; open = workspace; request = null; generating = false; status = "" }
                                                 }
                                             } catch (error: Throwable) {
                                                 android.util.Log.e("Organizer", "generation failed", error)
@@ -100,18 +152,22 @@ class OrganizerActivity : ComponentActivity() {
                                 open != null -> WorkspaceView(
                                     title = open!!.title, tree = tree ?: JSONObject().put("component", "root").put("props", org.json.JSONArray()).put("children", org.json.JSONArray()),
                                     fault = fault,
-                                    onDispatch = { slot, payload -> worker.execute {
-                                        try {
-                                            host.environment().dispatch(open!!.id, slot, payload)?.let { snapshot ->
-                                                java.io.File(filesDir, "workspace-snapshot.json").writeText(snapshot.toString())
-                                                runOnUiThread { tree = snapshot.getJSONObject("tree"); fault = snapshot.optString("fault") }
-                                            }
-                                        } catch (error: Throwable) {
-                                            java.io.File(filesDir, "workspace-snapshot.json").writeText(JSONObject().put("error", error.toString()).toString())
-                                            runOnUiThread { fault = error.message ?: "Workspace error" }
+                                    onDispatch = { slot, payload ->
+                                        val id = open!!.id
+                                        worker.execute {
+                                            try { host.environment().dispatch(id, slot, payload)?.let { publish(id, it) } }
+                                            catch (error: Throwable) { reportFailure(id, "dispatch slot=$slot", error) }
                                         }
-                                    } },
-                                    onClose = { worker.execute { host.environment().closeWorkspace(open!!.id); runOnUiThread { open = null; tree = null; live = host.environment().workspaces() } } },
+                                    },
+                                    onClose = {
+                                        val id = open!!.id
+                                        worker.execute {
+                                            activeWorkspace.compareAndSet(id, null)
+                                            host.environment().closeWorkspace(id)
+                                            val workspaces = host.environment().workspaces()
+                                            runOnUiThread { open = null; tree = null; live = workspaces }
+                                        }
+                                    },
                                     onReview = { review = true },
                                     prepared = preparedOperations(applicationContext).size,
                                 )

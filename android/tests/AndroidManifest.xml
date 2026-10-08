@@ -7,4 +7,5 @@
  <instrumentation android:name=".CallerInstrumentation" android:targetPackage="dev.deal.apps.todo" />
  <instrumentation android:name=".VehicleCallerInstrumentation" android:targetPackage="dev.deal.apps.vehicle" />
  <instrumentation android:name=".GenerationInstrumentation" android:targetPackage="dev.deal.apps.calendar" />
+ <instrumentation android:name=".WorkspaceInstrumentation" android:targetPackage="dev.deal.apps.organizer" />
 </manifest>

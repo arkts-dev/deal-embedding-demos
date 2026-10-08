@@ -14,10 +14,12 @@ class OrganizerHost(private val context: Context) : AutoCloseable {
     val registry = CapabilityRegistry(context, discovery, listOf(organizerCapabilities(context)))
     private var contracts: List<CapabilityContract> = emptyList()
     private var runtime: ExperienceRuntime? = null
+    private val config = EmbeddingConfig("experience", emptyList(), "organizer-experience")
 
     fun prepare() {
         contracts = registry.refresh()
-        runtime = ExperienceRuntime(context, registry, EmbeddingConfig("experience", contracts, "organizer-experience"))
+        config.contracts = contracts
+        if (runtime == null) runtime = ExperienceRuntime(context, registry, config)
         registry.grantAll()
     }
     fun environment() = runtime ?: error("Host not prepared")
