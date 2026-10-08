@@ -83,8 +83,25 @@ sign() {
     "$TOOLS/apksigner" sign --ks build/debug.keystore --ks-pass pass:android --out "build/$app.apk" "build/$app/aligned.apk"
     printf 'Built build/%s.apk\n' "$app"
 }
+# Fingerprint consumed inputs, not checkout metadata or generated guidance.
+ui_sources=()
+for source in UiModel UiParser UiDiagnostic UiChecker UiBorrowedValueChecker UiDealGenerator UiSourceGenerator DealUiDealSource; do
+    ui_sources+=("dependencies/deal-ui/src/main/java/deal/ui/$source.java")
+done
+library_key=$(python3 tools/build-cache.py \
+    tools/build.sh tools/build-cache.py \
+    dependencies/deal-embedding/build.sh dependencies/deal-embedding/android \
+    dependencies/deal-embedding/tools dependencies/deal-embedding/core/generation.deal \
+    dependencies/deal-embedding/core/generation-guidance.md dependencies/deal-embedding/core/host \
+    dependencies/deal/deal dependencies/deal/std dependencies/deal/skills/write-deal/references \
+    dependencies/deal-ui/ui "${ui_sources[@]}" "$ANDROID" \
+    "$KOTLIN_HOME/lib/kotlin-compiler.jar" "$KOTLIN_HOME/lib/compose-compiler-plugin.jar" \
+    "$KOTLIN_HOME/lib/kotlin-stdlib.jar" "$TOOLS/aidl" "${RUNTIME_JARS[@]}")
+library_stamp=build/embedding-consumer/.inputs.sha256
 mkdir -p build/embedding-consumer
-if [[ ! -f build/capability-api.jar || ! -f build/embedding-consumer/classes.jar || -n "$(find dependencies/deal-embedding -newer build/embedding-consumer/classes.jar -type f 2>/dev/null)" ]]; then
+if [[ ! -f build/capability-api.jar || ! -f build/embedding-consumer/classes.jar || ! -d build/embedding-consumer/assets || ! -f "$library_stamp" || "$(<"$library_stamp")" != "$library_key" ]]; then
+    started=$SECONDS
+    printf 'Embedding library: rebuilding (inputs changed or outputs missing)\n'
     DEAL_ROOT="$DEAL" DEAL_UI_ROOT="$PWD/dependencies/deal-ui" ANDROID_JAR="$ANDROID" \
         AIDL="$TOOLS/aidl" RUNTIME_CP="$RUNTIME_CP" OUTPUT_DIR="$PWD/build/embedding-library" KOTLIN_HOME="$KOTLIN_HOME" \
         dependencies/deal-embedding/build.sh
@@ -93,17 +110,29 @@ if [[ ! -f build/capability-api.jar || ! -f build/embedding-consumer/classes.jar
     unzip -q build/embedding-library/deal-embedding.aar -d build/embedding-consumer
     (cd build/capability-api && unzip -q ../embedding-consumer/classes.jar 'dev/deal/embedding/capabilities/*')
     jar --create --file build/capability-api.jar -C build/capability-api .
+    printf '%s\n' "$library_key" > "$library_stamp"
+    printf 'Embedding library: %s s\n' "$((SECONDS - started))"
+else
+    printf 'Embedding library: cache hit\n'
 fi
 EMBEDDING_JAR=build/embedding-consumer/classes.jar
-# Desugared platform libraries and the JS engine are identical for every target: dex them once.
+# Stable third-party runtime dex never includes the changing embedding/compiler JAR.
+# Release dex avoids D8's per-invocation LambdaMethod debug annotation definition,
+# which would otherwise be duplicated when independently compiled dex is packaged.
 profile_dex() {
     local profile="$1"; shift
-    local out="build/runtime-dex/$profile"
-    if [[ -d "$out" && "$out" -nt build/toolchain/desugar_jdk_libs_nio.jar && -z "$(printf '%s\n' "$@" | while read -r j; do [[ "$j" -nt "$out/classes.dex" ]] && echo stale; done)" ]]; then
+    local out="build/runtime-dex/$profile" key started=$SECONDS
+    key=$(python3 tools/build-cache.py tools/build.sh tools/build-cache.py "$ANDROID" \
+        build/toolchain/r8.jar build/toolchain/desugar.json \
+        build/toolchain/desugar_jdk_libs_nio.jar build/toolchain/desugar_jdk_libs_configuration_nio.jar \
+        "$KOTLIN_HOME/lib/kotlin-stdlib.jar" "$@")
+    if [[ -f "$out/classes.dex" && -f "$out/.inputs.sha256" && "$(<"$out/.inputs.sha256")" == "$key" ]]; then
+        printf 'Runtime dex (%s): cache hit\n' "$profile"
         return
     fi
+    printf 'Runtime dex (%s): rebuilding\n' "$profile"
     rm -rf "$out" build/desugar-dex; mkdir -p "$out" build/desugar-dex
-    java -Xmx2g -XX:ActiveProcessorCount=4 -cp build/toolchain/r8.jar com.android.tools.r8.D8 --min-api 36 --lib "$ANDROID" \
+    java -Xmx2g -XX:ActiveProcessorCount=4 -cp build/toolchain/r8.jar com.android.tools.r8.D8 --release --min-api 36 --lib "$ANDROID" \
         --desugared-lib build/toolchain/desugar.json --output "$out" "$@" "$KOTLIN_HOME/lib/kotlin-stdlib.jar"
     java -Xmx2g -XX:ActiveProcessorCount=4 -cp build/toolchain/r8.jar com.android.tools.r8.L8 --min-api 36 --lib "$ANDROID" \
         --desugared-lib build/toolchain/desugar.json --output build/desugar-dex \
@@ -113,6 +142,28 @@ profile_dex() {
     for dex in build/desugar-dex/classes*.dex; do
         next=$((next + 1)); cp "$dex" "$out/classes$next.dex"
     done
+    printf '%s\n' "$key" > "$out/.inputs.sha256"
+    printf 'Runtime dex (%s): %s s\n' "$profile" "$((SECONDS - started))"
+}
+embedding_dex() {
+    local out=build/embedding-dex key started=$SECONDS
+    key=$(python3 tools/build-cache.py tools/build.sh tools/build-cache.py "$ANDROID" \
+        build/toolchain/r8.jar build/toolchain/desugar.json "$EMBEDDING_JAR" \
+        "$KOTLIN_HOME/lib/kotlin-stdlib.jar" "${RUNTIME_JARS[@]}")
+    if [[ -f "$out/classes.dex" && -f "$out/.inputs.sha256" && "$(<"$out/.inputs.sha256")" == "$key" ]]; then
+        printf 'Embedding dex: cache hit\n'
+        return
+    fi
+    printf 'Embedding dex: rebuilding\n'
+    rm -rf "$out"; mkdir -p "$out"
+    local classpath_args=() jar
+    for jar in "${RUNTIME_JARS[@]}" "$KOTLIN_HOME/lib/kotlin-stdlib.jar"; do classpath_args+=(--classpath "$jar"); done
+    java -Xmx2g -XX:ActiveProcessorCount=4 -cp build/toolchain/r8.jar com.android.tools.r8.D8 --release --min-api 36 --lib "$ANDROID" \
+        --desugared-lib build/toolchain/desugar.json "${classpath_args[@]}" \
+        --output "$out" "$EMBEDDING_JAR"
+    test -f "$out/classes.dex"
+    printf '%s\n' "$key" > "$out/.inputs.sha256"
+    printf 'Embedding dex: %s s\n' "$((SECONDS - started))"
 }
 for app in "${TARGETS[@]}"; do
     case "$app" in
@@ -121,7 +172,15 @@ for app in "${TARGETS[@]}"; do
         tests) profile="host";      sources=(android/tests/*.kt android/apps/development/*.kt); app_apis=("$EMBEDDING_JAR"); profile_jars=("$EMBEDDING_JAR" "${RUNTIME_JARS[@]}") ;;
         *) profile="provider";      sources=(android/apps/shared-ui/*.kt "android/apps/$app/src/"*.kt); app_apis=(build/capability-api.jar); profile_jars=("${COMPOSE_JARS[@]}") ;;
     esac
-    profile_dex "$profile" "${profile_jars[@]}"
+    if [[ "$profile" == host ]]; then
+        profile_dex host-stable "${RUNTIME_JARS[@]}"
+        embedding_dex
+        dex_roots=(build/runtime-dex/host-stable build/embedding-dex)
+    else
+        profile_dex provider "${profile_jars[@]}"
+        dex_roots=(build/runtime-dex/provider)
+    fi
+    app_started=$SECONDS
     rm -rf "build/$app"; mkdir -p "build/$app/classes" "build/$app/dex"
     if [[ "$profile" == "host" ]]; then
         rm -rf "build/assets/$app"; mkdir -p "build/assets/$app"
@@ -136,22 +195,26 @@ for app in "${TARGETS[@]}"; do
     find "build/$app/rjava" -name '*.java' > build/r-sources.txt
     javac --release 21 -d "build/$app/classes" @build/r-sources.txt
     app_cp=$(IFS=:; echo "${app_apis[*]}")
-    profile_cp="${profile_jars[*]}"
+    app_classpath_args=()
+    for jar in "${profile_jars[@]}" "$KOTLIN_HOME/lib/kotlin-stdlib.jar"; do app_classpath_args+=(--classpath "$jar"); done
     "$KOTLIN_HOME/bin/kotlinc" -Xplugin="$KOTLIN_HOME/lib/compose-compiler-plugin.jar" -jvm-target 21 -no-reflect -classpath "$ANDROID:$app_cp:$RUNTIME_CP" \
         -d "build/$app/classes" "${sources[@]}"
     jar --create --file "build/$app/app.jar" -C "build/$app/classes" .
     # The app is dexed on its own so only app code is re-done on each iteration.
-    java -Xmx2g -XX:ActiveProcessorCount=4 -cp build/toolchain/r8.jar com.android.tools.r8.D8 --min-api 36 --lib "$ANDROID" \
-        --desugared-lib build/toolchain/desugar.json --classpath $profile_cp \
+    java -Xmx2g -XX:ActiveProcessorCount=4 -cp build/toolchain/r8.jar com.android.tools.r8.D8 --release --min-api 36 --lib "$ANDROID" \
+        --desugared-lib build/toolchain/desugar.json "${app_classpath_args[@]}" \
         --output "build/$app/dex" "build/$app/app.jar"
     test -n "$(find "build/$app/dex" -name 'classes*.dex')" || { echo "D8 produced no dex for $app" >&2; exit 1; }
     # Merge the shared runtime dex without overwriting the app dex names.
     rm -rf "build/$app/merged"; mkdir -p "build/$app/merged"
     cp "build/$app/dex"/classes*.dex "build/$app/merged/"
     next=$(find "build/$app/dex" -name 'classes*.dex' | wc -l)
-    for dex in "build/runtime-dex/$profile"/classes*.dex; do
-        next=$((next + 1)); cp "$dex" "build/$app/merged/classes$next.dex"
+    for dex_root in "${dex_roots[@]}"; do
+        for dex in "$dex_root"/classes*.dex; do
+            next=$((next + 1)); cp "$dex" "build/$app/merged/classes$next.dex"
+        done
     done
     (cd "build/$app/merged" && zip -q ../unsigned.apk classes*.dex)
     sign "$app"
+    printf 'App (%s), compile/dex/package: %s s\n' "$app" "$((SECONDS - app_started))"
 done
