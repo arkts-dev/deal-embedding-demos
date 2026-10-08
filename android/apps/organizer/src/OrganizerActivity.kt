@@ -87,7 +87,8 @@ class OrganizerActivity : ComponentActivity() {
                                                 candidate.use {
                                                     token.check()
                                                     val (workspace, snapshot) = host.environment().open(intent.take(60), candidate)
-                                                    runOnUiThread { live = host.environment().workspaces(); open = workspace; tree = snapshot.getJSONObject("tree"); request = null; generating = false; status = "" }
+                                                    java.io.File(filesDir, "workspace-snapshot.json").writeText(snapshot.toString())
+                                                    runOnUiThread { live = host.environment().workspaces(); open = workspace; tree = snapshot.getJSONObject("tree"); fault = snapshot.optString("fault"); request = null; generating = false; status = "" }
                                                 }
                                             } catch (error: Throwable) {
                                                 android.util.Log.e("Organizer", "generation failed", error)
@@ -99,7 +100,17 @@ class OrganizerActivity : ComponentActivity() {
                                 open != null -> WorkspaceView(
                                     title = open!!.title, tree = tree ?: JSONObject().put("component", "root").put("props", org.json.JSONArray()).put("children", org.json.JSONArray()),
                                     fault = fault,
-                                    onDispatch = { slot, payload -> worker.execute { try { host.environment().dispatch(open!!.id, slot, payload)?.let { runOnUiThread { tree = it.getJSONObject("tree") } } } catch (error: Throwable) { runOnUiThread { fault = error.message ?: "Workspace error" } } } },
+                                    onDispatch = { slot, payload -> worker.execute {
+                                        try {
+                                            host.environment().dispatch(open!!.id, slot, payload)?.let { snapshot ->
+                                                java.io.File(filesDir, "workspace-snapshot.json").writeText(snapshot.toString())
+                                                runOnUiThread { tree = snapshot.getJSONObject("tree"); fault = snapshot.optString("fault") }
+                                            }
+                                        } catch (error: Throwable) {
+                                            java.io.File(filesDir, "workspace-snapshot.json").writeText(JSONObject().put("error", error.toString()).toString())
+                                            runOnUiThread { fault = error.message ?: "Workspace error" }
+                                        }
+                                    } },
                                     onClose = { worker.execute { host.environment().closeWorkspace(open!!.id); runOnUiThread { open = null; tree = null; live = host.environment().workspaces() } } },
                                     onReview = { review = true },
                                     prepared = preparedOperations(applicationContext).size,
