@@ -1,0 +1,27 @@
+import * as app from "./experience";
+import * as ui from "./platform.dealui-pack";
+// @ui-root
+export view Rental(state: app.State): View {
+    ui.Column() {
+        ui.Hero(value: "Editable rental shortlist")
+        ui.IntField(value: state.quantity, label: "Quantity", minimum: 0, maximum: 9, enabled: state.editable, supporting: "Required units: 1 to 8", error: state.validation, accessibilityLabel: "Quantity", onChange: action app.ChangeQuantity { value: payload })
+        ui.IntField(value: state.budgetCents, label: "Total budget in cents", minimum: 0, maximum: 100000, step: 100, enabled: state.editable, supporting: "Total for all requested units", accessibilityLabel: "Budget", onChange: action app.ChangeBudget { value: payload })
+        ui.SearchField(value: state.search, label: "Search within boom stand matches", enabled: state.editable, supporting: "Editing clears stale results and selection", accessibilityLabel: "Search", onChange: action app.ChangeSearch { value: payload })
+        ui.Text(value: state.periodStart)
+        ui.Text(value: state.periodEnd)
+        When(state.loading) { ui.Progress(label: "Loading options") } Else {
+            ui.Button(text: "Load options", enabled: state.editable && state.validation === "", accessibilityLabel: "Load options", onClick: action app.Load {})
+        }
+        When(state.error !== "") { ui.Failure(text: state.error, accessibilityLabel: "Retry Load options", onRetry: action app.Load {}) }
+        When(state.empty) { ui.Text(value: "No qualifying options") }
+        ForEach(state.items, item: app.Item, key: item.id) {
+            ui.Option(value: item.id, title: item.title, detail: item.detail, price: item.price, enabled: item.enabled, selected: item.selected, accessibilityLabel: item.title, onSelect: action app.Pick { value: payload })
+        }
+        When(state.hasSelection) {
+            ui.Button(text: "Prepare for review", enabled: state.editable, accessibilityLabel: "Prepare for review", onClick: action app.Prepare {})
+        }
+        When(state.staging) { ui.Progress(label: "Preparing") }
+        When(state.stageError !== "") { ui.Failure(text: state.stageError, accessibilityLabel: "Retry preparation", onRetry: action app.Prepare {}) }
+        When(state.prepared) { ui.Notice(text: "Prepared for native review. No reservation has been made.", tone: "info") }
+    }
+}

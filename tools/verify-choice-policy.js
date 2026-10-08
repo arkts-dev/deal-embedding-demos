@@ -13,7 +13,7 @@ function walk(dir) {
 }
 walk(base);
 vm.runInThisContext(fs.readFileSync('dependencies/deal-embedding/android/assets/embedding/bindings/sandbox.js','utf8'));
-configureDealCapabilities([{module:'embedding/policy-data',functions:[{name:'parse',parameters:[{name:'input',type:{kind:'string'}}],result:{kind:'json-object'}},{name:'lowercase',parameters:[{name:'input',type:{kind:'string'}}],result:{kind:'string'}},{name:'utf16Length',parameters:[{name:'input',type:{kind:'string'}}],result:{kind:'int'}}]}]);
+configureDealCapabilities([{module:'embedding/policy-data',functions:[{name:'parse',parameters:[{name:'input',type:{kind:'string'}}],result:{kind:'json-object'}},{name:'lowercase',parameters:[{name:'input',type:{kind:'string'}}],result:{kind:'string'}},{name:'utf16Length',parameters:[{name:'input',type:{kind:'string'}}],result:{kind:'int'}},{name:'sha256',parameters:[{name:'input',type:{kind:'string'}}],result:{kind:'string'}}]}]);
 const {rt,entry: policy} = dealLoad(factories,'choice-policy.js');
 async function invoke(fn,...args) {
   let done=false,result,error;

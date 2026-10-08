@@ -43,6 +43,7 @@ import org.json.JSONObject
         Button(
           onClick = { onBuild(goal, buildString {
             append(goal).append(". ")
+            if (goal == "Editable rental") append("Generate an editable shortlist, not the fixed catalogue template. Provide Quantity IntField (initial disclosed quantity, minimum 0, maximum 9, valid 1 to 8), Total budget in cents IntField (initial 2000, minimum 0 maximum 100000 step 100) and SearchField. Editing clears stale results and selection. Show validation and disable Load options when invalid. Read the discovered equipment catalogue only on Load options; filter requirement matches, additional search substring, availability >= quantity and total price <= budget. Show original option titles and total euro prices, retain selected item, and prepare an exact item/quantity/period/total-price descriptor for native review. Disable editing during effects; show honest empty/error/retry states. Never reserve or write to a provider. ")
             if (ceiling.isNotBlank()) append("Spending ceiling ").append(ceiling).append(" euro. ")
             if (responsible.isNotBlank()) append("Responsible person ").append(responsible).append(". ")
             append(if (preserve) "Preserve existing commitments. " else "Existing commitments may be replaced. ")
@@ -71,7 +72,7 @@ import org.json.JSONObject
         }
         Section("Goal") { }
         Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            listOf("Compare options", "Arrange rental", "Arrange hospitality", "Coordinate work").forEach { Chip(it, goal == it) { goal = it } }
+            listOf("Compare options", "Arrange rental", "Editable rental", "Arrange hospitality", "Coordinate work").forEach { Chip(it, goal == it) { goal = it } }
         }
         Section("Constraints") { }
         OutlinedTextField(ceiling, { ceiling = it }, label = { Text("Spending ceiling in euro") }, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(16.dp))

@@ -1,0 +1,339 @@
+import * as rental from "host/rental";
+import * as organizer from "host/organizer";
+import * as strings from "std/string";
+
+function lowerCase(text: string): string {
+    let uppercase: string[] = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z"];
+    let lowercase: string[] = ["a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z"];
+    let result: string = "";
+    for (let scalar: string of text) {
+        let replacement: string = scalar;
+        for (let index: int = 0; index < uppercase.length; index = index + 1) {
+            if (scalar === uppercase[index]) {
+                replacement = lowercase[index];
+            }
+        }
+        result = result + replacement;
+    }
+    return result;
+}
+
+function contains(text: string, term: string): boolean {
+    let characters: string[] = [];
+    let target: string[] = [];
+    for (let character: string of text) {
+        characters[characters.length] = character;
+    }
+    for (let character: string of term) {
+        target[target.length] = character;
+    }
+    if (target.length === 0) {
+        return true;
+    }
+    for (let start: int = 0; start < characters.length; start = start + 1) {
+        if (target.length <= characters.length - start) {
+            let matches: boolean = true;
+            for (let offset: int = 0; offset < target.length; offset = offset + 1) {
+                if (characters[start + offset] !== target[offset]) {
+                    matches = false;
+                }
+            }
+            if (matches) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+function digitText(value: int): string {
+    let position: int = 0;
+    for (let digit: string of "0123456789") {
+        if (position === value) {
+            return digit;
+        }
+        position = position + 1;
+    }
+    return "0";
+}
+
+function integerText(value: int): string {
+    if (value === 0) {
+        return "0";
+    }
+    let remaining: int = value;
+    let result: string = "";
+    while (remaining > 0) {
+        let quotient: int = remaining / 10;
+        let digit: int = remaining - quotient * 10;
+        result = digitText(digit) + result;
+        remaining = quotient;
+    }
+    return result;
+}
+
+function euroPrice(totalCents: int): string {
+    let euros: int = totalCents / 100;
+    let cents: int = totalCents - euros * 100;
+    let fraction: string = integerText(cents);
+    if (cents < 10) {
+        fraction = "0" + fraction;
+    }
+    return "€" + integerText(euros) + "." + fraction;
+}
+
+function buildState(state: State, items: Item[], selectedId: string, loading: boolean, staging: boolean, loaded: boolean, error: string, stageError: string, prepared: boolean): State {
+    let copied: Item[] = [];
+    let hasSelection: boolean = false;
+    let selectedTitle: string = "";
+    let selectedPrice: string = "";
+    for (let item: Item of items) {
+        let selected: boolean = item.id === selectedId;
+        if (selected) {
+            hasSelection = true;
+            selectedTitle = item.title;
+            selectedPrice = item.price;
+        }
+        let copy: Item = {
+            id: item.id,
+            title: item.title,
+            detail: item.detail,
+            price: item.price,
+            totalCents: item.totalCents,
+            selected: selected,
+            enabled: !loading && !staging
+        };
+        copied[copied.length] = copy;
+    }
+    return {
+        quantity: state.quantity,
+        budgetCents: state.budgetCents,
+        search: state.search,
+        validation: state.validation,
+        editable: !loading && !staging,
+        periodStart: state.periodStart,
+        periodEnd: state.periodEnd,
+        items: copied,
+        selectedId: selectedId,
+        selectedTitle: selectedTitle,
+        selectedPrice: selectedPrice,
+        hasSelection: hasSelection,
+        loading: loading,
+        staging: staging,
+        loaded: loaded,
+        empty: loaded && !loading && error === "" && copied.length === 0,
+        error: error,
+        stageError: stageError,
+        prepared: prepared && hasSelection
+    };
+}
+
+export class Item {
+    id: string = "";
+    title: string = "";
+    detail: string = "";
+    price: string = "";
+    totalCents: int = 0;
+    selected: boolean = false;
+    enabled: boolean = true;
+}
+
+export class State {
+    quantity: int = 1;
+    budgetCents: int = 2000;
+    search: string = "";
+    validation: string = "";
+    editable: boolean = true;
+    periodStart: string = "2026-10-10T16:00:00Z";
+    periodEnd: string = "2026-10-10T22:00:00Z";
+    items: Item[] = [];
+    selectedId: string = "";
+    selectedTitle: string = "";
+    selectedPrice: string = "";
+    hasSelection: boolean = false;
+    loading: boolean = false;
+    staging: boolean = false;
+    loaded: boolean = false;
+    empty: boolean = false;
+    error: string = "";
+    stageError: string = "";
+    prepared: boolean = false;
+}
+
+export class ChangeQuantity { value: int = 0; }
+export class ChangeBudget { value: int = 0; }
+export class ChangeSearch { value: string = ""; }
+export class Load {}
+
+export class Loaded {
+    items: Item[] = [];
+    error: string = "";
+}
+
+export class Pick {
+    value: string = "";
+}
+
+export class Prepare {}
+
+export class Prepared {
+    staged: boolean = false;
+    error: string = "";
+}
+
+export function main(): null {
+    return null;
+}
+
+export function initialState(): State {
+    return {};
+}
+
+
+function edited(state: State, quantity: int, budget: int, search: string): State {
+    let validation: string = "";
+    if (quantity < 1 || quantity > 8) { validation = "Quantity must be 1 to 8"; }
+    if (budget < 0 || budget > 100000) { validation = "Budget must be 0 to 100000 cents"; }
+    let items: Item[] = [];
+    return { quantity: quantity, budgetCents: budget, search: search, validation: validation, editable: true,
+        periodStart: state.periodStart, periodEnd: state.periodEnd, items: items, selectedId: "", selectedTitle: "", selectedPrice: "",
+        hasSelection: false, loading: false, staging: false, loaded: false, empty: false, error: "", stageError: "", prepared: false };
+}
+// @ui-update
+export function changeQuantity(state: State, action: ChangeQuantity): State {
+    if (!state.editable) { return state; }
+    return edited(state, action.value, state.budgetCents, state.search);
+}
+// @ui-update
+export function changeBudget(state: State, action: ChangeBudget): State {
+    if (!state.editable) { return state; }
+    return edited(state, state.quantity, action.value, state.search);
+}
+// @ui-update
+export function changeSearch(state: State, action: ChangeSearch): State {
+    if (!state.editable) { return state; }
+    return edited(state, state.quantity, state.budgetCents, action.value);
+}
+
+// @ui-update
+export function requestLoad(state: State, action: Load): State {
+    if (state.validation !== "" || !state.editable) { return state; }
+    return buildState(state, state.items, state.selectedId, true, false, state.loaded, "", "", false);
+}
+
+// @ui-effect
+export async function loadOptions(state: State, action: Load): Loaded {
+    try {
+        let items: Item[] = [];
+        if (state.validation !== "") { return { items: items, error: state.validation }; }
+        let records: table[] = await rental.equipment(state.periodStart, state.periodEnd);
+        if (state.quantity <= 0 || state.budgetCents < 0) {
+            return { items: items, error: "Quantity and total budget are invalid." };
+        }
+        for (let record: table of records) {
+            let id: string = record.id;
+            let title: string = record.name;
+            let specification: string = record.specification;
+            let cents: int = record.cents;
+            let available: int = record.available;
+            let searchable: string = lowerCase(title + " " + specification);
+            if (contains(searchable, "boom") && contains(searchable, "stand") && available >= state.quantity && cents >= 0 && strings.contains(searchable, lowerCase(strings.trim(state.search)))) {
+                // Compare before multiplication to avoid overflowing an int.
+                if (cents <= state.budgetCents / state.quantity) {
+                    let totalCents: int = cents * state.quantity;
+                    let item: Item = {
+                        id: id,
+                        title: title,
+                        detail: specification,
+                        price: euroPrice(totalCents),
+                        totalCents: totalCents,
+                        selected: false,
+                        enabled: true
+                    };
+                    items[items.length] = item;
+                }
+            }
+        }
+        return { items: items, error: "" };
+    } catch (e) {
+        return { items: [], error: "Could not load options: " + e.message };
+    }
+}
+
+// @ui-update
+export function receiveOptions(state: State, action: Loaded): State {
+    if (action.error !== "") {
+        return buildState(state, state.items, state.selectedId, false, false, true, action.error, "", false);
+    }
+    let selectedId: string = "";
+    for (let item: Item of action.items) {
+        if (item.id === state.selectedId) {
+            selectedId = item.id;
+        }
+    }
+    return buildState(state, action.items, selectedId, false, false, true, "", "", false);
+}
+
+// @ui-update
+export function selectOption(state: State, action: Pick): State {
+    let selectedId: string = state.selectedId;
+    let changed: boolean = false;
+    if (!state.loading && !state.staging && state.error === "") {
+        for (let item: Item of state.items) {
+            if (item.id === action.value && item.enabled) {
+                selectedId = action.value;
+                changed = true;
+            }
+        }
+    }
+    if (changed) {
+        return buildState(state, state.items, selectedId, state.loading, state.staging, state.loaded, state.error, "", false);
+    }
+    return buildState(state, state.items, selectedId, state.loading, state.staging, state.loaded, state.error, state.stageError, state.prepared);
+}
+
+// @ui-update
+export function requestPreparation(state: State, action: Prepare): State {
+    if (!state.hasSelection || state.loading || state.error !== "") {
+        return buildState(state, state.items, state.selectedId, state.loading, false, state.loaded, state.error, "Select a qualifying option after loading completes.", false);
+    }
+    return buildState(state, state.items, state.selectedId, false, true, state.loaded, state.error, "", false);
+}
+
+// @ui-effect
+export async function prepareForReview(state: State, action: Prepare): Prepared {
+    try {
+        if (state.loading || state.error !== "") {
+            return { staged: false, error: "Load qualifying options before preparing for review." };
+        }
+        let found: boolean = false;
+        let selectedId: string = "";
+        let selectedTitle: string = "";
+        let selectedPrice: string = "";
+        for (let item: Item of state.items) {
+            if (item.id === state.selectedId) {
+                found = true;
+                selectedId = item.id;
+                selectedTitle = item.title;
+                selectedPrice = item.price;
+            }
+        }
+        if (!found) {
+            return { staged: false, error: "Select a qualifying option first." };
+        }
+        let detail: string = "Item " + selectedId + ":" + integerText(state.quantity) + "; " + state.periodStart + " to " + state.periodEnd;
+        let result: table = await organizer.stage("rental", "host/rental", selectedTitle, detail, selectedPrice, state.periodEnd);
+        let staged: boolean = result.staged;
+        if (!staged) {
+            return { staged: false, error: "The selection was not prepared. Try again." };
+        }
+        return { staged: true, error: "" };
+    } catch (e) {
+        return { staged: false, error: "Could not prepare for review: " + e.message };
+    }
+}
+
+// @ui-update
+export function receivePreparation(state: State, action: Prepared): State {
+    return buildState(state, state.items, state.selectedId, state.loading, false, state.loaded, state.error, action.error, action.staged);
+}

@@ -23,13 +23,16 @@ def infer(body):
     if body.get('previous'):
         messages.append({'role':'assistant','content':body['previous']})
     if body.get('diagnostics') or body.get('previous'):
-        messages.append({'role':'user','content':'Generate or repair both source files using these diagnostics. Preserve the requested behavior. Return the complete JSON envelope.\n'+body['diagnostics']})
+        instruction = 'Return only the exact-source-patch-v1 edits requested in the input; preserve unaffected source.' if 'REPAIR PROTOCOL exact-source-patch-v1' in body['input'] else 'Generate or repair both source files using these diagnostics. Preserve the requested behavior. Return the complete JSON envelope.'
+        messages.append({'role':'user','content':instruction+'\n'+body['diagnostics']})
     payload={'model':MODEL,'messages':messages,'max_tokens':8192,'temperature':0.2,'stream':False}
     request=urllib.request.Request(ENDPOINT,data=json.dumps(payload).encode(),headers={'Content-Type':'application/json','Authorization':'Bearer '+KEY})
     with urllib.request.urlopen(request,timeout=420) as response:
         data=json.loads(response.read(2*1024*1024))
     content=data['choices'][0]['message']['content']
     if not isinstance(content,str): raise ValueError('No text result')
+    usage=data.get('usage') or {}
+    event(kind='model_usage', model=MODEL, temperature=0.2, max_tokens=8192, input_tokens=usage.get('prompt_tokens'), output_tokens=usage.get('completion_tokens'), cached_tokens=(usage.get('prompt_tokens_details') or {}).get('cached_tokens'), finish_reason=data['choices'][0].get('finish_reason'))
     return content.encode()
 class Handler(http.server.BaseHTTPRequestHandler):
     def log_message(self,*args): pass

@@ -80,7 +80,7 @@ class GenerationInstrumentation : Instrumentation() {
             val failingModel = object : ModelClient { override fun complete(input: String, previous: String, diagnostics: String, cancellation: GenerationCancellation): String { failedCalls++; return "invalid" } }
             val stable = host.remembered()!!; val stableTree = host.poll()!!.toString()
             check(runCatching { host.generate("Test failure", "{}", failingModel, GenerationCancellation()) {} }.isFailure)
-            check(failedCalls == 4 && host.remembered() == stable && host.poll()!!.toString() == stableTree)
+            check(failedCalls == 3 && host.remembered() == stable && host.poll()!!.toString() == stableTree)
             val token = GenerationCancellation()
             val cancelModel = object : ModelClient { override fun complete(input: String, previous: String, diagnostics: String, cancellation: GenerationCancellation): String { cancellation.cancel(); cancellation.check(); return "" } }
             check(runCatching { host.generate("Test cancellation", "{}", cancelModel, token) {} }.exceptionOrNull() is CancellationException)

@@ -60,6 +60,16 @@ Explicit `-e mode real -e round <new-name>` performs two bounded real source-gen
 
 Successful replay copies only the existing accepted pair to Organizer's debug saved-source storage. `tools/verify-organizer-catalogue.py --replay source-<round>-<case> --source-experiment <case>` verifies real Rental, Compose interaction and native review; it requires Rental owner consent and checks provider persistence. Cases are `quantity-budget` and `single-budget`. Experiment evidence and limits are in `.deus/research/llm-source-generation.md`; checking and mounting alone do not establish useful generation.
 
+# Editable Rental and repair comparison
+
+Organizer's **Editable rental** goal requests quantity, total-budget and search inputs with validation and native preparation; production remains choice-first, and the fixed template declares these requirements unsupported. Inputs expose checked enabled/supporting/error props; `SearchField` carries a string payload, and `IntField` supports bounded integer steps. Native text input buffers IME edits until the serialized DEAL worker acknowledges them; application validation/state remain in DEAL.
+
+`EditableRentalInstrumentation` defaults to a deterministic authored fixture. `-e strategy delta` also checks synthetic digest-bound repair without inference. `-e mode generated -e strategy full|delta` replays the five unchanged accepted LLM pairs retained as test-only assets; rejected workflows are not silently replaced with fixtures. `-e mode real` runs the frozen four-case experiment once per strategy, with a persisted model-call ceiling and refusal to repeat existing attempts. The completed comparison used 21 of the approved 24 source calls; see `.deus/research/editable-rental-generation.md` for outcomes and limits.
+
+`EmbeddingConfig.repairStrategy` defaults to full regeneration. Experimental delta repair is core-owned and accepts at most eight unique, disjoint exact replacements against the supplied source digest; checking, authority and activation are unchanged. Do not promote it based on a single small comparison.
+
+`tools/verify-organizer-catalogue.py --replay editable-full-denial-recovery --editable` verifies retained LLM source using actual Compose quantity/budget/search controls, input validation, real Rental, selection and native review without inference or provider writes. Install Organizer/tests and first run the generated fixture instrumentation. Device output stays under ignored `build/`.
+
 # Verification
 
 `tools/CheckUiLifecycle.java` compiles framework-owned JS session fixtures through Android's production source-generation entry. Run `node dependencies/deal-ui/src/test/js/session.test.js build/ui-lifecycle/js dependencies/deal-embedding/android/assets/embedding/bindings` for overlap/arrival ordering, reentrant drain, atomic rejection, fault/version, late completion and replacement readiness. `UiLifecycleInstrumentation` exercises controlled completions and replacement on the Android sandbox without inference.

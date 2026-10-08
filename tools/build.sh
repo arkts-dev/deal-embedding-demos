@@ -192,6 +192,9 @@ for app in "${TARGETS[@]}"; do
             cp dependencies/deal-ui/src/test/fixtures/js-session/app.deal dependencies/deal-ui/src/test/fixtures/js-session/app.dealui "build/assets/$app/ui-lifecycle/"
             mkdir -p "build/assets/$app/source-generation"
             cp android/tests/fixtures/source-generation/*.json "build/assets/$app/source-generation/"
+            mkdir -p "build/assets/$app/editable-rental"
+            cp android/tests/fixtures/editable-rental/* "build/assets/$app/editable-rental/"
+            cp -r android/tests/fixtures/editable-generated "build/assets/$app/"
         fi
         if [[ "$app" == calendar ]]; then
             mkdir -p "build/assets/$app/experience"

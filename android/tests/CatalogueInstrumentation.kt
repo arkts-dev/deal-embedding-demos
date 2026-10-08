@@ -177,7 +177,7 @@ class CatalogueInstrumentation : Instrumentation() {
                 override fun complete(input: String, previous: String, diagnostics: String, cancellation: GenerationCancellation): String { exhaustedCalls++; return "invalid" }
             }
             check(runCatching { host.generate("Exhaustion fixture", disclosed, exhausted, GenerationCancellation()) {} }.isFailure)
-            check(exhaustedCalls == 4 && host.poll(retained.id)!!.toString() == retainedTree.toString()) { "Source exhaustion changed the healthy workspace" }
+            check(exhaustedCalls == 3 && host.poll(retained.id)!!.toString() == retainedTree.toString()) { "Source exhaustion changed the healthy workspace" }
             var failureCalls = 0
             val transportFailure = object : ModelClient {
                 override fun complete(input: String, previous: String, diagnostics: String, cancellation: GenerationCancellation): String {
