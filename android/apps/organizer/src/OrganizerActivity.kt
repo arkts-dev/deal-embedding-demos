@@ -57,7 +57,12 @@ class OrganizerActivity : ComponentActivity() {
             java.io.File(filesDir, "workspace-snapshot.tmp").apply { writeText(snapshot.toString()) }.let {
                 check(it.renameTo(java.io.File(filesDir, "workspace-snapshot.json"))) { "Cannot publish workspace snapshot" }
             }
-            runOnUiThread { if (!isDestroyed && activeWorkspace.get() == id) { tree = snapshot.getJSONObject("tree"); fault = snapshot.optString("fault") } }
+            runOnUiThread {
+                if (!isDestroyed && activeWorkspace.get() == id) {
+                    tree = snapshot.getJSONObject("tree"); fault = snapshot.optString("fault")
+                    worker.execute { host.environment().published(id, snapshot.getInt("version")) }
+                }
+            }
         }
         fun reportFailure(id: String, operation: String, error: Throwable) {
             android.util.Log.e("Organizer", "workspace $operation failed: workspace=$id", error)

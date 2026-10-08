@@ -14,9 +14,9 @@ assert {p.name for p in (library/'android/src/capabilities').glob('*.kt')} == {
     'CapabilityContract.kt','CapabilityRegistry.kt','CapabilityDiscovery.kt','CapabilityService.kt'}
 assert (library/'core/generation.deal').exists()
 assert not (library/'backends').exists()
-assert {p.name for p in (library/'core/host').glob('*.d.deal')} == {'checker.d.deal', 'discovery.d.deal', 'model.d.deal', 'chooser.d.deal'}
+assert {p.name for p in (library/'core/host').glob('*.d.deal')} == {'checker.d.deal', 'discovery.d.deal', 'model.d.deal', 'chooser.d.deal', 'policy-data.d.deal', 'observer.d.deal'}
 assert (library/'android/src/compiler/ExperienceCompiler.kt').exists()
-assert {p.name for p in (library/'android/src/bindings').glob('*.kt')} == {'CapabilityBindings.kt', 'DealSessionBindings.kt', 'ExperienceGenerator.kt', 'SandboxProgram.kt', 'ChoiceCatalogue.kt'}
+assert {p.name for p in (library/'android/src/bindings').glob('*.kt')} == {'CapabilityBindings.kt', 'DealSessionBindings.kt', 'ExperienceGenerator.kt', 'SandboxProgram.kt', 'StageReceipts.kt'}
 assert {p.name for p in (library/'android/src/inference').glob('*.kt')} == {'ModelClient.kt'}
 assert (root/'android/apps/development/GenerationGateway.kt').exists()
 assert 'getSharedPreferences' not in (library/'android/src/capabilities/CapabilityService.kt').read_text()
@@ -40,6 +40,7 @@ with zipfile.ZipFile(os.environ.get('EMBEDDING_AAR', root / 'build/embedding-lib
         assert 'deal/Main.class' in names and 'deal/ui/UiSourceGenerator.class' in names
         assert not any(name.startswith('dev/deal/apps/') for name in names)
         assert 'dev/deal/embedding/GenerationGateway.class' not in names
+        assert not any('ChoiceCatalogue' in name for name in names)
     with zipfile.ZipFile(root / os.environ.get('HOST_APK', 'build/organizer.apk')) as app:
         for name in aar.namelist():
             if name.startswith('assets/') and not name.endswith('/'): assert app.read(name) == aar.read(name), name
@@ -50,9 +51,14 @@ with zipfile.ZipFile(os.environ.get('EMBEDDING_AAR', root / 'build/embedding-lib
         contracts = app.read('assets/embedding/bindings/generation-contracts.js').decode()
         import json
         metadata = json.loads(contracts.removeprefix('configureDealCapabilities(').strip().removesuffix(');'))
-        assert {m['module'] for m in metadata} == {'embedding/checker', 'embedding/model', 'embedding/discovery', 'embedding/chooser'}
+        assert {m['module'] for m in metadata} == {'embedding/checker', 'embedding/model', 'embedding/discovery', 'embedding/chooser', 'embedding/policy-data', 'embedding/observer'}
         checker = next(m for m in metadata if m['module'] == 'embedding/checker')
         assert checker['functions'][0]['result'] == json.loads((library/'core/host/check-result.json').read_text())
+        assert [p['name'] for p in checker['functions'][0]['parameters']] == ['deal', 'dealui']
+        chooser = next(m for m in metadata if m['module'] == 'embedding/chooser')
+        assert [f['name'] for f in chooser['functions']] == ['choose']
+        for module in ['catalogue-source', 'candidate-check', 'generation-guidance', 'source-literals']:
+            assert f'assets/generation/{module}.js' in app.namelist()
         assert not any(n.startswith('assets/deal-backend/') for n in app.namelist())
 for provider, other in [('todo', 'vehicle'), ('vehicle', 'todo')]:
     with zipfile.ZipFile(root / f'build/{provider}.apk') as apk:

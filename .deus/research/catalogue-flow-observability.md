@@ -2,10 +2,13 @@
 kind: research
 id: catalogue-flow-observability
 created_at: 2026-10-08T16:00:00Z
-updated_at: 2026-10-08T16:00:00Z
+updated_at: 2026-10-08T19:50:00Z
 status: verified-with-limits
 references:
-  - dependencies/deal-embedding/android/src/bindings/ChoiceCatalogue.kt
+  - dependencies/deal-embedding/core/catalogue-source.deal
+  - dependencies/deal-embedding/core/candidate-check.deal
+  - dependencies/deal-embedding/core/generation-guidance.deal
+  - tools/verify-core-migration.js
   - dependencies/deal-embedding/android/src/bindings/CapabilityBindings.kt
   - dependencies/deal-embedding/android/src/bindings/ExperienceGenerator.kt
   - dependencies/deal-embedding/core/generation.deal
@@ -23,8 +26,8 @@ sources:
 gaps:
   - Provider confirmation is not connected to Organizer review.
   - Live provider death requires rediscovery; an ordinary retry retains the stale endpoint.
-  - Private generation traces still contain source and answers, not just structured production telemetry.
-  - Choice inventory and lowering policy remain Android-owned.
+  - Unicode lowercase and JSON-shape conversion remain narrow native data primitives.
+  - JSON shape normalization and dynamic context-key access require narrow native mechanisms on the current language/backend.
   - General generation instrumentation changes were compiled but not executed against real inference.
 ---
 
@@ -51,12 +54,48 @@ Native review displayed the selected item, specification, quantity, period, pric
 | Boundary verifier rejected chooser inventory | Stale host/file/module assertions; updated inventory and checked the current Organizer APK against AAR assets | Verification must describe the shipped generation path |
 | Inspection ENOENT for RentalStore.kt and capability bindings | Implementation lives in RentalModel.kt and bindings/, respectively; refreshed paths | File-layout assumptions are hypotheses, not evidence |
 
+# Portable policy and stage receipts
+
+The next extraction moved catalogue eligibility, context/parameter checks, issued options and answer validation into `core/choice-policy.deal`. Kotlin eligibility/answer policy was removed; at this stage source synthesis still remained native. Compiled DEAL matched frozen pre-migration decisions across nine fixtures and 108 answer decisions, including dynamic context keys and UTF-16 bounds.
+
+Android instrumentation additionally passed six negative schema/context cases, deterministic source rejection/repair/mounting, exhaustion preserving a healthy workspace, template defects stopping without repair, and transport/cancellation ownership. Routine receipts correlate requests, policy, candidates, mounts, action slots, capability request IDs and completion, produced snapshots and native publication. Capability receipts retain their parent action. Payload-bearing replay traces are explicitly opt-in and separate from the two bounded shape-only receipt files.
+
+One real generation after the extraction passed the native request, rental options, selection and review flow without source repair. Routine receipts showed the choice, lowering, check, mount, remote read and publication sequence. Final downstream validation replayed that accepted source without another inference. Provider persistent state remained unchanged.
+
+Additional failures encountered during extraction:
+
+| Failure | Verified cause and disposition |
+| --- | --- |
+| CTE: dynamic string table indexing rejected | Contrary to the earlier guide-based assumption, the current checker permits string-indexed table writes but not reads. Disclosed strings cross as neutral key/value entries; eligibility still executes in DEAL. No compiler extension was introduced. |
+| CTE: reserved `from` field access | Current parser rejects that keyword after a dot. The same neutral context-entry representation provides the period value. |
+| CTE: table assignment needs contextual target | Typed local reads work; direct assignments in these cases did not provide the required context. Explicit typed locals resolved the diagnostics. |
+| RTE/decision mismatch: valid purpose rejected | Compiled std/json arrays remain marked Map tables, while this policy's generated loops expect ABI arrays. A narrow trusted JSON-shape conversion returns objects as tables and arrays as arrays; it makes no policy decisions. Parity and Android tests passed afterward. |
+| Kotlin test CTE: cross-module smart cast rejected | Public nullable schema element needed an explicit non-null assertion in the fixture construction. |
+| Negative fixture stopped before policy validation | Test used a literal backslash-n prompt delimiter. Corrected the delimiter and added fixture labels/causes to assertions. |
+
+# Remaining generation-policy extraction
+
+`core/catalogue-source.deal` now synthesizes the existing template, including presentation, filtering expressions, descriptor wording and source escaping. The Kotlin template was deleted. Unicode search-term lowercase remains a neutral declared host primitive to preserve previous behavior; emitted catalogue-record lowercase remains ASCII, as before. JSON normalization and context entries still work around the separately reported implementation defects.
+
+`core/candidate-check.deal` validates the closed two-string source envelope before native compilation. The native checker now catches only typed candidate rejection; resource and unexpected implementation failures stop without model repair. `core/generation-guidance.deal` owns composition rules, component example formatting and prompt assembly. Java extracts language/renderer asset text and raw pack AST facts only.
+
+Compiled-core verification passed 16 exact pre-migration source-pair comparisons (all eight presentations, ordinary and escaped/Unicode/quantity-bound context), seven invalid-envelope cases, fatal host propagation and exact prompt parity. Android instrumentation passed all eight presentations, an escaped/Unicode/quantity-bound template mount, six envelope repair cases, six negative policy fixtures and native oversized-source failure without repair, alongside existing interaction/isolation checks. Saved-source native replay reached rental options and populated review with unchanged provider persistence. No new real inference was used for this extraction.
+
+| Additional failure | Cause and disposition |
+| --- | --- |
+| CTE E3002 in generated pack facts | Empty arrays in untyped tables had no element target. Build extraction now emits a typed empty-table-array helper. |
+| JS compiler internal NoSuchElementException in emitElseChain | Chained else-if generation failed. Equivalent independent conditions with deliberate precedence avoid it; no upstream edit was made. |
+| Test assertion treated DEAL host error as a JavaScript Error | Runtime exposes code/message as a DEAL object; regression now checks those fields. |
+| Test invoked synchronous DEAL exports as promises | Harness now wraps the return in Promise.resolve. |
+| Policy/boundary regressions described removed native inventory | Updated host lowercase metadata, checker string arguments and artifact ownership checks. |
+| Intermittent receipt test could not find mount | Test read only the current bounded file; a run can cross rotation. It now reads current and previous pages, consistent with retention policy. |
+
 # Diagnostic changes
 
 Generation traces now correlate runs with elapsed time and retain accepted/fallback outcomes. Trace append failures are logged rather than silently discarded. Candidate rejection exceptions include checker details, so no-model replay retains the cause. Template checker rejection is terminal in trusted DEAL orchestration; inference transport/lowering exceptions propagate rather than masquerading as model-source repair. Source fallback still receives choice diagnostics even without a previous source response. Organizer publication now includes fault changes even when snapshot version is unchanged.
 
 # Limits and verification scope
 
-The catalogue template uses name/specification terms to identify candidates; it does not establish technical compatibility, reserve stock or enforce arbitrary user constraints. Full portable-policy migration is still outstanding. Generated descriptor arguments are bounded by the published native contract; oversized values remain runtime-rejected rather than silently truncated.
+The catalogue template uses name/specification terms to identify candidates; it does not establish technical compatibility, reserve stock or enforce arbitrary user constraints. This extraction covers the existing catalogue synthesis and generation policy, not every possible portable concern across the embedding. Generated descriptor arguments are bounded by the published native contract; oversized values remain runtime-rejected rather than silently truncated.
 
-Build-cache tests, current boundary/artifact checks, Python syntax checks and both repository diff checks passed. Organizer/tests built and installed successfully. No DEAL compiler or Deal UI implementation changes were needed. No commit was made in this work loop.
+Build-cache tests, current boundary/artifact checks, compiled policy parity, Python/shell syntax checks and both repository diff checks passed. Organizer/tests built and installed successfully. No DEAL compiler or Deal UI implementation changes were needed. General real-inference source-generation instrumentation was not rerun; this slice exercised slow-path failure/repair deterministically and one real catalogue choice end to end.
