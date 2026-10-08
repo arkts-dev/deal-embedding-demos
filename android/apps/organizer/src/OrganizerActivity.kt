@@ -86,8 +86,8 @@ class OrganizerActivity : ComponentActivity() {
                                                 val candidate = host.generate(intent, disclosed, token) { message -> runOnUiThread { status = message } }
                                                 candidate.use {
                                                     token.check()
-                                                    val workspace = host.environment().open(intent.take(60), candidate)
-                                                    runOnUiThread { live = host.environment().workspaces(); open = workspace; request = null; generating = false; status = "" }
+                                                    val (workspace, snapshot) = host.environment().open(intent.take(60), candidate)
+                                                    runOnUiThread { live = host.environment().workspaces(); open = workspace; tree = snapshot.getJSONObject("tree"); request = null; generating = false; status = "" }
                                                 }
                                             } catch (error: Throwable) {
                                                 android.util.Log.e("Organizer", "generation failed", error)
