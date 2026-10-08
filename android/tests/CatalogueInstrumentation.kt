@@ -16,6 +16,25 @@ class CatalogueInstrumentation : Instrumentation() {
         var registry: CapabilityRegistry? = null
         try {
             val context = targetContext
+            // Exercise the compiler failure contract without filesystem fault injection.
+            val classify = Class.forName("dev.deal.embedding.ExperienceCompilerKt").getDeclaredMethod("classifyCompilerOutcome", Int::class.javaPrimitiveType, String::class.java, String::class.java, String::class.java)
+            fun classification(status: Int, code: String?, file: String = "project/src/app.deal"): Throwable? {
+                val diagnostics = JSONArray()
+                if (code != null) diagnostics.put(JSONObject().put("code", code).put("severity", "error").put("range", JSONObject().put("file", file)))
+                val report=JSONObject().put("version",1).put("diagnostics",diagnostics).toString()
+                return runCatching { classify.invoke(null,status,report,"project/src/app.deal","project") }.exceptionOrNull()?.cause
+            }
+            fun rawClassification(raw: String?): Throwable? = runCatching { classify.invoke(null,1,raw,"project/src/app.deal","project") }.exceptionOrNull()?.cause
+            check(classification(0,null)==null)
+            for (raw in listOf(null,"not-json","{}","{\"version\":2,\"diagnostics\":[]}","{\"version\":1,\"diagnostics\":[{\"severity\":\"error\"}]}")) {
+                val error=rawClassification(raw)
+                check(error?.javaClass?.simpleName=="CompilerOperationFailed" && !error.message.orEmpty().contains("project/"))
+            }
+            val rejected=classification(1,"E3001")
+            check(rejected?.javaClass?.simpleName=="CandidateRejected" && !rejected.message.orEmpty().contains("project/"))
+            for (fixture in listOf(Triple(1,null,"project/src/app.deal"),Triple(2,"E3001","project/src/app.deal"),Triple(1,"E6005","project/src/app.deal"),Triple(1,"E2010","project/src/app.deal"),Triple(1,"E3001","project/src/experience_entry.deal"),Triple(1,"E7001","project/host-0.d.deal"))) {
+                check(classification(fixture.first,fixture.second,fixture.third)?.javaClass?.simpleName=="CompilerOperationFailed")
+            }
             val from = Instant.now().plusSeconds(86400).toString()
             val until = Instant.now().plusSeconds(108000).toString()
             val disclosed = JSONObject().put("requirement", "Boom stand").put("specification", "Adjustable boom with clip adapter")

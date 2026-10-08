@@ -6,7 +6,7 @@ const factories={};
 function walk(dir){for(const name of fs.readdirSync(dir)){const file=path.join(dir,name);if(fs.statSync(file).isDirectory())walk(file);else if(name.endsWith('.js'))factories[path.relative(base,file).split(path.sep).join('/')]=new Function('require','module','exports','process','console',fs.readFileSync(file,'utf8'));}}
 walk(base);
 vm.runInThisContext(fs.readFileSync('dependencies/deal-embedding/android/assets/embedding/bindings/sandbox.js','utf8'));
-let calls=[],failure=null;
+let calls=[],failure=null,dataFailure=null;
 configureDealCapabilities([
  {module:'embedding/policy-data',functions:[{name:'parse',parameters:[{name:'input',type:{kind:'string'}}],result:{kind:'json-object'}},{name:'lowercase',parameters:[{name:'input',type:{kind:'string'}}],result:{kind:'string'}},{name:'utf16Length',parameters:[{name:'input',type:{kind:'string'}}],result:{kind:'int'}}]},
  {module:'embedding/checker',functions:[{name:'check',parameters:['deal','dealui'].map(name=>({name,type:{kind:'string'}})),result:JSON.parse(fs.readFileSync('dependencies/deal-embedding/core/host/check-result.json','utf8'))}]},
@@ -21,6 +21,7 @@ async function invoke(module,name,...args){
   for(const req of JSON.parse(dealCapabilities.take())){
    let reply;
    if(req.module==='embedding/policy-data'){
+    if(dataFailure && req.function===dataFailure.function){dealCapabilities.deliver([{id:req.id,ok:false,error:{code:'DATA_FAILED',message:'Injected data mechanism failure'}}]);continue;}
     try{reply=req.function==='utf16Length'?req.args[0].length:req.function==='lowercase'?req.args[0].toLowerCase():JSON.parse(req.args[0]);if(req.function==='parse'&&(reply===null||Array.isArray(reply)||typeof reply!=='object'))throw Error('object required');}
     catch(e){dealCapabilities.deliver([{id:req.id,ok:false,error:{code:'INVALID_JSON',message:'Expected JSON object'}}]);continue;}
    }else if(req.module==='embedding/checker'){
@@ -69,8 +70,20 @@ function expected(sourceName,selection){
  }
  assert.equal((await invoke('candidate-check','check','{"deal":"x","dealui":"y"}')).get('candidateId'),'checked');assert.deepStrictEqual(calls.at(-1),['x','y']);
  failure={code:'RESOURCE_FAILURE',message:'injected'};await assert.rejects(invoke('candidate-check','check','{"deal":"x","dealui":"y"}'),error=>error.code==='RESOURCE_FAILURE'&&error.message==='injected');failure=null;
+ const emptyInventory=await invoke('choice-policy','inventory','[]','{}','{\"entries\":[]}');
+ dataFailure={function:'parse'};
+ await assert.rejects(invoke('choice-policy','validate','{}',emptyInventory),error=>error.code==='DATA_FAILED');
+ await assert.rejects(invoke('choice-policy','inventory','[]','{}','{\"entries\":[]}'),error=>error.code==='DATA_FAILED');
+ dataFailure={function:'utf16Length'};
+ const ctx={requirement:'Stand',specification:'Boom',quantity:1,from:'start',until:'end',searchTerms:['stand']};
+ await assert.rejects(invoke('choice-policy','inventory',JSON.stringify(catalog),JSON.stringify(ctx),JSON.stringify({entries:Object.entries(ctx).filter(([k,v])=>typeof v==='string').map(([key,value])=>({key,value}))})),error=>error.code==='DATA_FAILED');
+ dataFailure=null;
  assert.equal(await invoke('source-literals','decimal',-2147483648),'-2147483648');
  const guidance=await invoke('generation-guidance','guidance');
- assert.equal(crypto.createHash('sha256').update(guidance).digest('hex'),'907338fecdafa04ad37b73316f68a0cbb8a8a9e7352ef8de33f8f4e8ef554f60','Prompt changed during migration');
- console.log(`Core migration: ${combinations} exact source-pair parity cases; 7 invalid envelopes; fatal host propagation; escaping/Unicode/quantity bounds; exact prompt parity`);
+ // Intentional guidance revision after real-source failures; retain exact serialization regression.
+ assert.equal(crypto.createHash('sha256').update(guidance).digest('hex'),'1e0e6197f103281acd7d93dd5563a5612c067236aabb423d1a24dd2d4f6a2872','Generation guidance changed unexpectedly');
+ assert(guidance.includes('When(state.loading)') && guidance.includes('./platform.dealui-pack'));
+ assert(guidance.includes('onSelect: action app.Action { value: payload }'));
+ assert(guidance.includes('onClick: action app.Action {}'));
+ console.log(`Core migration: ${combinations} exact source-pair parity cases; 7 invalid envelopes; checker/JSON/UTF-16 host failure propagation; escaping/Unicode/quantity bounds; syntax and payload guidance regression`);
 })().catch(e=>{console.error(e);process.exitCode=1});

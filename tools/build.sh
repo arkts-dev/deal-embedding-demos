@@ -190,6 +190,8 @@ for app in "${TARGETS[@]}"; do
         if [[ "$app" == tests ]]; then
             mkdir -p "build/assets/$app/ui-lifecycle"
             cp dependencies/deal-ui/src/test/fixtures/js-session/app.deal dependencies/deal-ui/src/test/fixtures/js-session/app.dealui "build/assets/$app/ui-lifecycle/"
+            mkdir -p "build/assets/$app/source-generation"
+            cp android/tests/fixtures/source-generation/*.json "build/assets/$app/source-generation/"
         fi
         if [[ "$app" == calendar ]]; then
             mkdir -p "build/assets/$app/experience"

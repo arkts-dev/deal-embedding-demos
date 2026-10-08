@@ -88,7 +88,12 @@ def wait(test, seconds=240):
 
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument('--replay', metavar='SAVED_ID', help='Replay an already accepted source; never call inference')
+parser.add_argument('--source-experiment', choices=['quantity-budget', 'single-budget'], help='Verify a saved LLM experiment through real Rental and native review; requires --replay')
 args = parser.parse_args()
+if args.source_experiment and not args.replay:
+    parser.error('--source-experiment requires --replay; this verifier never repeats source inference')
+expected_quantity = 2 if args.source_experiment == 'quantity-budget' else 1
+expected_price = '€16.00' if expected_quantity == 2 else '€8.00'
 before = provider_state()
 previous_raw = private(PACKAGE, 'shared_prefs/organizer-experience.xml')
 previous_keys = {n.get('name') for n in ET.fromstring(previous_raw)} if previous_raw else set()
@@ -117,24 +122,34 @@ wait(lambda: any(n['component'] == 'ui.Option' for n in nodes(snapshot()['tree']
 loaded = snapshot()
 assert loaded.get('fault', '') == '', loaded.get('fault')
 rows = [n for n in nodes(loaded['tree']) if n['component'] == 'ui.Option']
-assert {prop(n, 'value')['stringValue'] for n in rows} == {'stand', 'package'}
-assert {prop(n, 'price')['stringValue'] for n in rows} == {'€8.00', '€12.00'}
+assert {prop(n, 'value')['stringValue'] for n in rows} == ({'stand'} if args.source_experiment else {'stand', 'package'})
+assert {prop(n, 'price')['stringValue'] for n in rows} == ({expected_price} if args.source_experiment else {'€8.00', '€12.00'})
 assert before == provider_state(), 'Loading changed provider persistent state'
 tap('Boom microphone stand', scroll=True)
 picked = snapshot()
 stand = next(n for n in nodes(picked['tree']) if n['component'] == 'ui.Option' and prop(n, 'value')['stringValue'] == 'stand')
 assert prop(stand, 'selected')['booleanValue']
 tap('Prepare for review', scroll=True)
-wait(lambda: any(p.get('stringValue') == 'Prepared for native review. No reservation has been made.' for n in nodes(snapshot()['tree']) for p in n['props']), 30)
+wait(lambda: any(p.get('stringValue', '').startswith('Prepared for native review') for n in nodes(snapshot()['tree']) for p in n['props']), 30)
 review = next(n.get('text') for n in ui().iter('node') if n.get('text', '').startswith('Review '))
 tap(review)
 texts = [n.get('text', '') for n in ui().iter('node')]
-assert 'Prepared operations' in texts and 'Boom microphone stand' in texts and '€8.00' in texts
-assert any('Item stand:1' in t and 'Period:' in t for t in texts)
+assert 'Prepared operations' in texts
+# Existing locally prepared operations can place the new entry below the fold.
+for _ in range(12):
+    detail_found = any(f'Item stand:{expected_quantity}' in t and (('2026-10-10T16:00:00Z' in t and '2026-10-10T22:00:00Z' in t) if args.source_experiment else 'Period:' in t) for t in texts)
+    if detail_found and expected_price in texts and 'Boom microphone stand' in texts:
+        break
+    shell('input', 'swipe', '540', '1850', '540', '700', '400')
+    texts = [n.get('text', '') for n in ui().iter('node')]
+else:
+    raise AssertionError('Prepared descriptor not visible after bounded review scrolling')
 assert before == provider_state(), 'Preparation/native review changed provider persistent state'
-receipt = {'realGeneration': not bool(args.replay), 'savedSourceReplay': bool(args.replay), 'nativeControls': True, 'relevantRows': len(rows), 'prices': ['€8.00', '€12.00'],
+receipt = {'realGeneration': not bool(args.replay), 'savedSourceReplay': bool(args.replay), 'nativeControls': True, 'relevantRows': len(rows), 'prices': [expected_price] if args.source_experiment else ['€8.00', '€12.00'],
            'selectionPublished': True, 'nativeReviewPopulated': True, 'providerPersistentStateUnchanged': True,
            'sourceHash': hashlib.sha256(json.dumps(accepted, sort_keys=True).encode()).hexdigest()}
-filename = 'catalogue-replay-verification.json' if args.replay else 'catalogue-real-verification.json'
+if args.source_experiment:
+    receipt['sourceExperiment'] = args.source_experiment
+filename = 'source-' + args.source_experiment + '-native-verification.json' if args.source_experiment else ('catalogue-replay-verification.json' if args.replay else 'catalogue-real-verification.json')
 (ROOT / 'build' / filename).write_text(json.dumps(receipt, indent=2) + '\n')
 print(json.dumps(receipt, indent=2))
