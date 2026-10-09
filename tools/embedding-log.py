@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Live execution activity, not model reasoning. JSON output and bounded artifact drilldown."""
-import argparse, json, os, pathlib, subprocess, time
+import argparse, datetime, json, os, pathlib, subprocess, time
 p=argparse.ArgumentParser(description=__doc__)
 p.add_argument('--package',default='dev.deal.apps.organizer')
 p.add_argument('--follow',action='store_true')
@@ -37,7 +37,8 @@ try:
    if a.json:print(json.dumps(e),flush=True)
    else:
     icon={'started':'→','completed':'✓','failed':'!','cancelled':'×'}.get(e['outcome'],'·')
-    print(f"{icon} {e['trace'][:8]} {e['summary']} {e['code']} {e['durationMs']}ms [{e['span']}]"+(f" artifact={e['artifact']} ({e['content']})" if e['artifact'] else ''),flush=True)
+    when=datetime.datetime.fromtimestamp(int(e['time'])/1000).strftime('%d %b %H:%M')
+    print(f"{when} {icon} {e['trace'][:8]} {e['summary']} {e['code']} {e['durationMs']}ms [{e['span']}]"+(f" artifact={e['artifact']} ({e['content']})" if e['artifact'] else ''),flush=True)
   health=read('health.json')
   if health and health != last_health:
    try: state='ACTIVE' if json.loads(health).get('active',True) else 'RECOVERED (earlier log incomplete)'

@@ -15,6 +15,20 @@ class WorkspaceInstrumentation : Instrumentation() {
         var runtime: ExperienceRuntime? = null
         try {
             val context = targetContext
+            val instant = "2026-10-10T16:00:00Z"
+            val friendly = dev.deal.shell.friendlyDates(instant, dev.deal.apps.organizer.SHOW_ZONE)
+            check(!friendly.contains("T16") && friendly.endsWith("18:00"))
+            check(dev.deal.shell.friendlyDates("not a date", dev.deal.apps.organizer.SHOW_ZONE) == "not a date")
+            val displayTree = JSONObject().put("component", "ui.Text").put("props", JSONArray().put(JSONObject().put("name", "value").put("stringValue", instant))).put("children", JSONArray())
+            val shown = dev.deal.apps.organizer.displayDates(displayTree)
+            check(shown.getJSONArray("props").getJSONObject(0).getString("stringValue") == friendly)
+            check(displayTree.getJSONArray("props").getJSONObject(0).getString("stringValue") == instant)
+            displayTree.put("component", "ui.SearchField")
+            check(dev.deal.apps.organizer.displayDates(displayTree).getJSONArray("props").getJSONObject(0).getString("stringValue") == instant)
+            val plan = dev.deal.apps.organizer.ShowState.fixture(java.time.LocalDate.of(2026, 10, 10))
+            check(dev.deal.apps.organizer.linkedRequirements(null, plan).isEmpty())
+            val requirementId = plan.requirements.first().id
+            check(dev.deal.apps.organizer.linkedRequirements("$requirementId,missing", plan) == listOf(requirementId))
             val prefs = context.getSharedPreferences("organizer-experience", 0)
             val key = prefs.all.keys.firstOrNull { it.endsWith(".deal") && prefs.getString(it, "")!!.contains("host.staged()") }
                 ?: error("No saved workspace reading staged operations")

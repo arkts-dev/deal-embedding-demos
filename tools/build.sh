@@ -110,7 +110,11 @@ if [[ ! -f build/capability-api.jar || ! -f build/embedding-consumer/classes.jar
     rm -rf build/embedding-consumer build/capability-api
     mkdir -p build/embedding-consumer build/capability-api
     unzip -q build/embedding-library/deal-embedding.aar -d build/embedding-consumer
-    (cd build/capability-api && unzip -q ../embedding-consumer/classes.jar 'dev/deal/embedding/capabilities/*')
+    (cd build/capability-api && unzip -q ../embedding-consumer/classes.jar \
+        'dev/deal/embedding/capabilities/CapabilityType*' 'dev/deal/embedding/capabilities/CapabilityContract*' \
+        'dev/deal/embedding/capabilities/CapabilityFunction*' 'dev/deal/embedding/capabilities/CapabilityParameter*' \
+        'dev/deal/embedding/capabilities/CapabilityService*' 'dev/deal/embedding/capabilities/NativeCapabilities*' \
+        'dev/deal/embedding/capabilities/ICapability*')
     jar --create --file build/capability-api.jar -C build/capability-api .
     printf '%s\n' "$library_key" > "$library_stamp"
     printf 'Embedding library: %s s\n' "$((SECONDS - started))"
@@ -172,7 +176,7 @@ for app in "${TARGETS[@]}"; do
         calendar) profile="host";   sources=(android/apps/shared-ui/*.kt android/apps/development/*.kt android/apps/calendar/src/*.kt); app_apis=("$EMBEDDING_JAR"); profile_jars=("$EMBEDDING_JAR" "${RUNTIME_JARS[@]}") ;;
         organizer) profile="host";  sources=(android/apps/shared-ui/*.kt android/apps/development/*.kt android/apps/organizer/src/*.kt); app_apis=("$EMBEDDING_JAR"); profile_jars=("$EMBEDDING_JAR" "${RUNTIME_JARS[@]}") ;;
         tests) profile="host";      sources=(android/tests/*.kt android/apps/development/*.kt android/apps/shared-ui/*.kt android/apps/organizer/src/*.kt); app_apis=("$EMBEDDING_JAR"); profile_jars=("$EMBEDDING_JAR" "${RUNTIME_JARS[@]}") ;;
-        *) profile="provider";      sources=(android/apps/shared-ui/*.kt "android/apps/$app/src/"*.kt); app_apis=(build/capability-api.jar); profile_jars=("${COMPOSE_JARS[@]}") ;;
+        *) profile="provider";      sources=(android/apps/shared-ui/*.kt "android/apps/$app/src/"*.kt); app_apis=(build/capability-api.jar); profile_jars=(build/capability-api.jar "${COMPOSE_JARS[@]}") ;;
     esac
     if [[ "$profile" == host ]]; then
         profile_dex host-stable "${RUNTIME_JARS[@]}"

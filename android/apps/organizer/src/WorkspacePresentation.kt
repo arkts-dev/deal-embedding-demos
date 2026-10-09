@@ -3,6 +3,36 @@ package dev.deal.apps.organizer
 import dev.deal.embedding.GenerationRejected
 import dev.deal.embedding.WorkspaceOrigin
 import java.util.concurrent.CancellationException
+import org.json.JSONObject
+import dev.deal.shell.friendlyDates
+
+/** Unknown saved/debug source is never assigned an inferred request. */
+internal fun linkedRequirements(link: String?, show: ShowState): List<String> = link?.split(",")?.filter { show.requirement(it) != null }.orEmpty()
+
+/** Display copy only. Never rewrite input values, action payloads, keys or saved source. */
+internal fun displayDates(tree: JSONObject): JSONObject {
+    val copy = JSONObject(tree.toString())
+    fun visit(node: JSONObject) {
+        val component = node.getString("component").substringAfterLast('.')
+        val names = when (component) {
+            "Text", "Hero" -> setOf("value")
+            "Option", "Item" -> setOf("title", "detail", "meta", "trailing")
+            "Section" -> setOf("title", "summary")
+            "Notice", "Failure", "Toggle", "Button" -> setOf("text")
+            "Progress" -> setOf("label")
+            else -> emptySet()
+        }
+        val props = node.getJSONArray("props")
+        for (i in 0 until props.length()) {
+            val prop = props.getJSONObject(i)
+            if (prop.optString("name") in names && prop.has("stringValue")) prop.put("stringValue", friendlyDates(prop.getString("stringValue"), SHOW_ZONE))
+        }
+        val children = node.getJSONArray("children")
+        for (i in 0 until children.length()) visit(children.getJSONObject(i))
+    }
+    visit(copy)
+    return copy
+}
 
 /** Native presentation of trusted facts; never parse a model's text to establish provenance. */
 data class WorkspacePresentation(val title: String, val explanation: String, val details: String)

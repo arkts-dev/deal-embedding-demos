@@ -89,8 +89,8 @@ class ShowState(
 ) {
     fun midnight(): Long = date.atStartOfDay(SHOW_ZONE).toInstant().toEpochMilli()
     fun at(hour: Int, minute: Int = 0): Long = midnight() + (hour * 60L + minute) * 60_000
-    fun label(epochMillis: Long): String = Instant.ofEpochMilli(epochMillis).atZone(SHOW_ZONE).toLocalTime().toString().take(5)
-    fun day(epochMillis: Long): String = Instant.ofEpochMilli(epochMillis).atZone(SHOW_ZONE).toLocalDate().toString()
+    fun label(epochMillis: Long): String = dev.deal.shell.timeLabel(epochMillis, SHOW_ZONE)
+    fun day(epochMillis: Long): String = dev.deal.shell.dateLabel(Instant.ofEpochMilli(epochMillis).atZone(SHOW_ZONE).toLocalDate())
     fun acts(): List<String> = requirements.map { it.act }.distinct().sorted()
     fun groups(act: String): List<String> = requirements.filter { it.act == act }.map { it.group }.distinct()
     fun groupCovered(act: String, group: String): Boolean =
@@ -196,4 +196,4 @@ class ShowState(
 
 /** A readable deadline for intent text; the stored instant stays authoritative. */
 fun Requirement.end(withDay: Boolean = false): String =
-    java.time.Instant.ofEpochMilli(until).atZone(SHOW_ZONE).let { if (withDay) "${it.toLocalDate()} ${it.toLocalTime().toString().take(5)}" else it.toLocalTime().toString().take(5) }
+    if (withDay) dev.deal.shell.dateTimeLabel(until, SHOW_ZONE) else dev.deal.shell.timeLabel(until, SHOW_ZONE)

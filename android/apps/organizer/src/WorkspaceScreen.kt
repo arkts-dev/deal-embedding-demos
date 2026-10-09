@@ -208,9 +208,9 @@ import org.json.JSONObject
             Panel {
                 Text(operation.optString("provider"), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
                 Text(operation.optString("title"), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                Text(operation.optString("detail"), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(friendlyDates(operation.optString("detail"), SHOW_ZONE), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 if (operation.optString("price").isNotEmpty()) KeyValue("Price", operation.optString("price"))
-                if (operation.optString("deadline").isNotEmpty()) KeyValue("Deadline", operation.optString("deadline"))
+                if (operation.optString("deadline").isNotEmpty()) KeyValue("Deadline", friendlyDates(operation.optString("deadline"), SHOW_ZONE))
             }
         }
         Text("To book, open the provider app.", style = MaterialTheme.typography.bodyMedium)

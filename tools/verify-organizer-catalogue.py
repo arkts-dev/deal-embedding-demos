@@ -165,7 +165,7 @@ texts = [n.get('text', '') for n in ui().iter('node')]
 assert 'Organizer review' in texts and 'Native' in texts and 'Not reserved' in texts
 # Existing locally prepared operations can place the new entry below the fold.
 for _ in range(12):
-    detail_found = any(f'Item stand:{expected_quantity}' in t and (('2026-10-10T16:00:00Z' in t and '2026-10-10T22:00:00Z' in t) if args.source_experiment or args.editable else 'Period:' in t) for t in texts)
+    detail_found = any(f'Item stand:{expected_quantity}' in t and (('18:00' in t and '00:00' in t and 'T16:00' not in t) if args.source_experiment or args.editable else 'Period:' in t) for t in texts)
     if detail_found and any(t.replace(' ', '').removesuffix('total') == expected_price for t in texts) and 'Boom microphone stand' in texts:
         break
     shell('input', 'swipe', '540', '1850', '540', '700', '400')

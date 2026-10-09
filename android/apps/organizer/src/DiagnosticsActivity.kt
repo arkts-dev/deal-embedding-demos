@@ -63,7 +63,7 @@ class DiagnosticsActivity : ComponentActivity() {
                         OutlinedCard(onClick = { selected = entry }, modifier = Modifier.fillMaxWidth()) {
                             Column(Modifier.padding(10.dp)) {
                                 Text(entry.getString("summary"), style = MaterialTheme.typography.titleSmall)
-                                Text(entry.getString("trace").take(8) + " · " + entry.getString("code") + " · " + entry.getLong("durationMs") + "ms · " + entry.getString("content"), style = MaterialTheme.typography.labelMedium)
+                                Text(dateTimeLabel(entry.getString("time").toLong(), java.time.ZoneId.systemDefault()) + " · " + entry.getString("trace").take(8) + " · " + entry.getString("code") + " · " + entry.getLong("durationMs") + "ms · " + entry.getString("content"), style = MaterialTheme.typography.labelMedium)
                             }
                         }
                     }

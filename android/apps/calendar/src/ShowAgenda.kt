@@ -131,7 +131,7 @@ class AgendaActivity : ComponentActivity() {
                 AuroraBackdrop(Modifier.fillMaxSize()) {
                     Scaffold(containerColor = Color.Transparent, topBar = {
                         TopAppBar(colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent), title = {
-                            Column { Text(SHOW_CALENDAR, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold); Text(date.toString(), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                            Column { Text(SHOW_CALENDAR, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold); Text(dev.deal.shell.dateLabel(date), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant) }
                         }, actions = {
                             IconButton(onClick = { date = date.minusDays(1) }) { Icon(Icons.Outlined.ChevronLeft, "Previous day") }
                             IconButton(onClick = { date = date.plusDays(1) }) { Icon(Icons.Outlined.ChevronRight, "Next day") }
@@ -155,7 +155,7 @@ class AgendaActivity : ComponentActivity() {
 @Composable private fun Agenda(events: List<ShowEvent>, date: LocalDate, onOpen: (ShowEvent) -> Unit) {
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(20.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
         item { Hero("GIG DEMO CALENDAR", "Show agenda", "Soundchecks, doors, performances and the logistics around them.", illustration = { Art.Stage(130.dp) }) }
-        if (events.isEmpty()) item { Panel { Text("Nothing scheduled on ${date}.", style = MaterialTheme.typography.titleMedium); Text("Add an event, or move to the show date.", color = MaterialTheme.colorScheme.onSurfaceVariant) } }
+        if (events.isEmpty()) item { Panel { Text("Nothing scheduled on ${dev.deal.shell.dateLabel(date)}.", style = MaterialTheme.typography.titleMedium); Text("Add an event, or move to the show date.", color = MaterialTheme.colorScheme.onSurfaceVariant) } }
         items(events) { event ->
             Card(onClick = { onOpen(event) }, shape = RoundedCornerShape(24.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
                 Row(Modifier.fillMaxWidth().padding(20.dp), horizontalArrangement = Arrangement.spacedBy(16.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -204,7 +204,7 @@ class AgendaActivity : ComponentActivity() {
     val valid = runCatching { LocalTime.parse(start) < LocalTime.parse(end) }.getOrDefault(false)
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
         Text("New event", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-        Text(date.toString(), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
+        Text(dev.deal.shell.dateLabel(date), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
         OutlinedTextField(title, { title = it }, label = { Text("Title") }, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(16.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             OutlinedTextField(start, { start = it }, label = { Text("Start") }, modifier = Modifier.weight(1f), shape = RoundedCornerShape(16.dp))

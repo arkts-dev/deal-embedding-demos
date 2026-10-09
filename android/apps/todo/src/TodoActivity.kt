@@ -167,4 +167,4 @@ class TodoActivity : ComponentActivity() {
     }
 }
 
-private fun time(epochMillis: Long): String = Instant.ofEpochMilli(epochMillis).atZone(TASK_ZONE).toLocalDateTime().toString().replace('T', ' ').take(16)
+private fun time(epochMillis: Long): String = dev.deal.shell.dateTimeLabel(epochMillis, TASK_ZONE)

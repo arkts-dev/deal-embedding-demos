@@ -56,6 +56,7 @@ class OrganizerActivity : ComponentActivity() {
         var tree by mutableStateOf<JSONObject?>(null)
         var fault by mutableStateOf("")
         var review by mutableStateOf(false)
+        var chooseBuildRequirement by mutableStateOf(false)
         val links = getSharedPreferences("organizer-workspace-links", 0)
         fun requirementKey(id: String): String {
             val r = show!!.requirement(id)!!
@@ -209,7 +210,7 @@ class OrganizerActivity : ComponentActivity() {
                                     },
                                 )
                                 open != null -> WorkspaceView(
-                                    title = open!!.title, tree = tree ?: JSONObject().put("component", "root").put("props", org.json.JSONArray()).put("children", org.json.JSONArray()),
+                                    title = open!!.title, tree = displayDates(tree ?: JSONObject().put("component", "root").put("props", org.json.JSONArray()).put("children", org.json.JSONArray())),
                                     fault = fault, origin = open!!.origin, attempts = open!!.attempts,
                                     onDispatch = { slot, payload ->
                                         val id = open!!.id
@@ -226,10 +227,11 @@ class OrganizerActivity : ComponentActivity() {
                                             runOnUiThread { open = null; shelfVisible = true }
                                         }
                                     },
-                                    onNewBuild = links.getString("requirements.${open!!.id}", null)?.split(",")?.filter { show!!.requirement(it) != null }?.takeIf { it.isNotEmpty() }?.let { ids -> {
-                                        request = ids
+                                    onNewBuild = {
+                                        val ids = linkedRequirements(links.getString("requirements.${open!!.id}", null), show!!)
+                                        if (ids.isEmpty()) chooseBuildRequirement = true else request = ids
                                         problem = null; status = ""
-                                    } },
+                                    },
                                     onReview = { review = true },
                                     prepared = preparedOperations(applicationContext).size,
                                 )
@@ -258,6 +260,15 @@ class OrganizerActivity : ComponentActivity() {
                         }
                     }
                 }
+                if (chooseBuildRequirement) AlertDialog(onDismissRequest = { chooseBuildRequirement = false },
+                    title = { Text("Choose requirement") },
+                    text = { Column(Modifier.heightIn(max = 400.dp).verticalScroll(rememberScrollState())) {
+                        Text("This saved workspace has no linked request. Choose what the new workspace should resolve.")
+                        show!!.requirements.forEach { requirement ->
+                            TextButton(onClick = { request = listOf(requirement.id); chooseBuildRequirement = false }) { Text("${requirement.name} · ${requirement.act}") }
+                        }
+                    } },
+                    confirmButton = { TextButton(onClick = { chooseBuildRequirement = false }) { Text("Cancel") } })
             }
         }
     }
@@ -270,7 +281,7 @@ class OrganizerActivity : ComponentActivity() {
         title = {
             Column {
                 Text(show?.title ?: "Gig Organizer", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                Text(show?.let { "${it.venue} · ${it.date}" } ?: "No show yet", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(show?.let { "${it.venue} · ${dateLabel(it.date)}" } ?: "No show yet", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         },
         actions = {
@@ -295,7 +306,7 @@ class OrganizerActivity : ComponentActivity() {
         state.requirements.filter { it.department == "Hospitality" && it.commitment == Commitment.None }.forEach { add(Triple(it.act, "Hospitality unarranged", it.summary)) }
     }
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-        item { Hero("SHOW OVERVIEW", state.title, "${state.venue} · ${state.date}", actions = { AssistChip(onClick = onOpenRiders, label = { Text("Open riders") }, leadingIcon = { Icon(Icons.Outlined.Assignment, null) }) }, illustration = { Art.Stage(150.dp) }) }
+        item { Hero("SHOW OVERVIEW", state.title, "${state.venue} · ${dateLabel(state.date)}", actions = { AssistChip(onClick = onOpenRiders, label = { Text("Open riders") }, leadingIcon = { Icon(Icons.Outlined.Assignment, null) }) }, illustration = { Art.Stage(150.dp) }) }
         item { Section("Timeline") { ShowTimeline(state, conflicts) } }
         item { Section("Needs attention") { } }
         items(attention) { (act, title, detail) ->
@@ -521,7 +532,7 @@ class OrganizerActivity : ComponentActivity() {
                     }
                     StatusPill(requirement.summary, if (requirement.coverage == Coverage.Conflict) Tone.Attention else Tone.Progress)
                 }
-                KeyValue("Required by", "Friday ${state.label(requirement.until)}")
+                KeyValue("Required by", dateTimeLabel(requirement.until, SHOW_ZONE))
                 KeyValue("Location", requirement.location)
                 if (view == "By deadline") KeyValue("Group", requirement.group)
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
