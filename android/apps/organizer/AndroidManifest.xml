@@ -8,6 +8,8 @@
   <package android:name="dev.deal.apps.pizza" />
  </queries>
  <application android:label="Organizer" android:theme="@android:style/Theme.Material.Light.NoActionBar" android:allowBackup="false" android:debuggable="true" android:usesCleartextTraffic="true">
+  <activity android:name=".DiagnosticsActivity" android:exported="false" />
+  <receiver android:name=".DiagnosticsReceiver" android:exported="true" android:permission="android.permission.DUMP" />
   <activity android:name=".OrganizerActivity" android:exported="true"><intent-filter><action android:name="android.intent.action.MAIN"/><category android:name="android.intent.category.LAUNCHER"/></intent-filter></activity>
  </application>
 </manifest>

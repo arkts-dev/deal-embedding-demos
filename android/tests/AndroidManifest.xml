@@ -12,5 +12,6 @@
  <instrumentation android:name=".EditableRentalInstrumentation" android:targetPackage="dev.deal.apps.organizer" />
  <instrumentation android:name=".SourceGenerationInstrumentation" android:targetPackage="dev.deal.apps.organizer" />
  <instrumentation android:name=".UiLifecycleInstrumentation" android:targetPackage="dev.deal.apps.organizer" />
+ <instrumentation android:name=".LoggingInstrumentation" android:targetPackage="dev.deal.apps.organizer" />
  <instrumentation android:name=".CatalogueInstrumentation" android:targetPackage="dev.deal.apps.organizer" />
 </manifest>

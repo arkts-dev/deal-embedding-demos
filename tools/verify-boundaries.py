@@ -16,7 +16,7 @@ assert (library/'core/generation.deal').exists()
 assert not (library/'backends').exists()
 assert {p.name for p in (library/'core/host').glob('*.d.deal')} == {'checker.d.deal', 'discovery.d.deal', 'model.d.deal', 'chooser.d.deal', 'policy-data.d.deal', 'observer.d.deal'}
 assert (library/'android/src/compiler/ExperienceCompiler.kt').exists()
-assert {p.name for p in (library/'android/src/bindings').glob('*.kt')} == {'CapabilityBindings.kt', 'DealSessionBindings.kt', 'ExperienceGenerator.kt', 'SandboxProgram.kt', 'StageReceipts.kt'}
+assert {p.name for p in (library/'android/src/bindings').glob('*.kt')} == {'CapabilityBindings.kt', 'DealSessionBindings.kt', 'ExperienceGenerator.kt', 'SandboxProgram.kt', 'EmbeddingLog.kt'}
 assert {p.name for p in (library/'android/src/inference').glob('*.kt')} == {'ModelClient.kt'}
 assert (root/'android/apps/development/GenerationGateway.kt').exists()
 assert 'getSharedPreferences' not in (library/'android/src/capabilities/CapabilityService.kt').read_text()

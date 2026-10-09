@@ -33,6 +33,7 @@ private enum class Destination(val label: String, val icon: androidx.compose.ui.
 class OrganizerActivity : ComponentActivity() {
     private val store by lazy { ShowStore(this) }
     private val host by lazy { OrganizerHost(this) }
+    private val log by lazy { EmbeddingLog(this) }
     private val worker = Executors.newSingleThreadScheduledExecutor()
     @Volatile private var runningGeneration: GenerationCancellation? = null
     override fun onDestroy() { runningGeneration?.cancel(); worker.execute { host.close() }; worker.shutdown(); super.onDestroy() }
@@ -76,8 +77,7 @@ class OrganizerActivity : ComponentActivity() {
             }
         }
         fun reportFailure(id: String, operation: String, error: Throwable) {
-            android.util.Log.e("Organizer", "workspace $operation failed: workspace=$id", error)
-            java.io.File(filesDir, "workspace-error.txt").writeText(android.util.Log.getStackTraceString(error))
+            log.event("host", "failed", workspace = id, operation = operation, code = error.javaClass.simpleName)
             runOnUiThread { if (!isDestroyed && activeWorkspace.get() == id) fault = error.message ?: "Workspace error" }
         }
         worker.scheduleWithFixedDelay({
@@ -99,8 +99,7 @@ class OrganizerActivity : ComponentActivity() {
                     publish(workspace.id, snapshot)
                     runOnUiThread { if (!isDestroyed) { open = workspace; mountedIds = mountedIds + workspace.id; request = null; review = false; problem = null; opening = false; shelfVisible = false } }
                 } catch (error: Throwable) {
-                    android.util.Log.e("Organizer", "workspace replay failed", error)
-                    java.io.File(filesDir, "workspace-error.txt").writeText(android.util.Log.getStackTraceString(error))
+                    log.event("host", "failed", code = error.javaClass.simpleName, target = "reopen")
                     runOnUiThread { if (!isDestroyed) { opening = false; openError = "Couldn’t open. Saved workspace kept."; shelfVisible = true } }
                 }
             }
@@ -110,7 +109,7 @@ class OrganizerActivity : ComponentActivity() {
                 host.prepare()
                 val entries = host.environment().savedWorkspaces()
                 runOnUiThread { if (!isDestroyed) saved = entries }
-            } catch (error: Throwable) { android.util.Log.e("Organizer", "workspace listing failed", error) }
+            } catch (error: Throwable) { log.event("host", "failed", code = error.javaClass.simpleName, target = "list") }
         }
         intent.getStringExtra("replayWorkspace")?.takeIf { applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE != 0 }?.let { openSaved(it) }
         setContent {
@@ -134,7 +133,10 @@ class OrganizerActivity : ComponentActivity() {
                         topBar = {
                             Column {
                                 OrganizerTopBar(show, onReset = { store.clear(); show = null }, onInitialize = { show = store.initialize() })
-                                if (!generating && !opening) TextButton(onClick = { shelfVisible = !shelfVisible }) { Icon(Icons.Outlined.Dashboard, null); Spacer(Modifier.width(6.dp)); Text("Workspaces · ${saved.size}") }
+                                Row {
+                                    if (!generating && !opening) TextButton(onClick = { shelfVisible = !shelfVisible }) { Icon(Icons.Outlined.Dashboard, null); Spacer(Modifier.width(6.dp)); Text("Workspaces · ${saved.size}") }
+                                    TextButton(onClick = { startActivity(android.content.Intent(this@OrganizerActivity, DiagnosticsActivity::class.java)) }) { Icon(Icons.Outlined.Timeline, null); Spacer(Modifier.width(6.dp)); Text("Execution") }
+                                }
                             }
                         },
                         bottomBar = {
@@ -200,7 +202,7 @@ class OrganizerActivity : ComponentActivity() {
                                                     runOnUiThread { if (!isDestroyed) { saved = workspaces; mountedIds = mountedIds + workspace.id; open = workspace; request = null; generating = false; status = ""; problem = null; runningGeneration = null } }
                                                 }
                                             } catch (error: Throwable) {
-                                                android.util.Log.e("Organizer", "generation failed", error)
+                                                log.event("host", "failed", code = error.javaClass.simpleName, target = "generation")
                                                 runOnUiThread { if (!isDestroyed && runningGeneration === token) { generating = false; status = ""; problem = generationProblem(error); runningGeneration = null } }
                                             }
                                         }

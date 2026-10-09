@@ -1,13 +1,13 @@
 package dev.deal.apps.development
 
 import dev.deal.embedding.ModelClient
+import dev.deal.embedding.EmbeddingLog
 import dev.deal.embedding.GenerationCancellation
 import org.json.JSONObject
 import java.io.BufferedOutputStream
 import java.io.ByteArrayOutputStream
 import java.net.InetSocketAddress
 import java.net.Socket
-import java.util.concurrent.TimeUnit
 
 /**
  * Credential-free demo client for the loopback development gateway.
@@ -18,10 +18,11 @@ import java.util.concurrent.TimeUnit
 class GenerationGateway(private val endpoint: String) : ModelClient {
     init { require(endpoint == "http://127.0.0.1:8787/generate") { "Development gateway must use loopback forwarding" } }
 
-    override fun complete(input: String, previous: String, diagnostics: String, cancellation: GenerationCancellation): String {
+    override fun complete(input: String, previous: String, diagnostics: String, cancellation: GenerationCancellation): String = exchange(input, previous, diagnostics, cancellation, null)
+    override fun completeLogged(input: String, previous: String, diagnostics: String, cancellation: GenerationCancellation, log: EmbeddingLog): String = exchange(input, previous, diagnostics, cancellation, log)
+    private fun exchange(input: String, previous: String, diagnostics: String, cancellation: GenerationCancellation, log: EmbeddingLog?): String {
         cancellation.check()
         val body = JSONObject().put("input", input).put("previous", previous).put("diagnostics", diagnostics).toString().toByteArray()
-        val started = System.nanoTime()
         val socket = Socket()
         val registration = cancellation.onCancel { runCatching { socket.close() } }
         try {
@@ -37,18 +38,24 @@ class GenerationGateway(private val endpoint: String) : ModelClient {
             // Closing this stream closes the socket, so flush without closing it.
             val out = BufferedOutputStream(socket.getOutputStream())
             out.write(request); out.write(body); out.flush()
-            val raw = ByteArrayOutputStream().also { buffer -> socket.getInputStream().use { it.copyTo(buffer) } }.toByteArray()
+            val raw = ByteArrayOutputStream().also { buffer -> socket.getInputStream().use { input ->
+                val chunk = ByteArray(8192)
+                while (true) { val count = input.read(chunk); if (count < 0) break; check(buffer.size() + count <= 2 * 1024 * 1024 + 8192) { "Gateway response too large" }; buffer.write(chunk, 0, count) }
+            } }.toByteArray()
             val text = raw.toString(Charsets.ISO_8859_1)
             val headerEnd = text.indexOf("\r\n\r\n")
             check(headerEnd > 0) { "Malformed gateway response" }
             val statusLine = text.substringBefore("\r\n")
             val status = statusLine.split(' ').getOrNull(1)?.trim()?.toIntOrNull() ?: 0
-            android.util.Log.i("Generation", "POST /generate -> $status in ${TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - started)} ms, sent ${body.size} bytes, received ${raw.size} bytes")
+            log?.event("transport", "response", target = "development gateway", code = "HTTP_$status")
             check(status == 200) { "Generation gateway unavailable ($status)" }
             val payload = raw.copyOfRange(headerEnd + 4, raw.size)
             cancellation.check()
-            require(payload.size <= 256 * 1024) { "Gateway response too large" }
-            return payload.toString(Charsets.UTF_8)
+            require(payload.size <= 2 * 1024 * 1024) { "Gateway response too large" }
+            val envelope = JSONObject(payload.toString(Charsets.UTF_8))
+            log?.event("model-provider", "completed", target = envelope.getString("model"), detail = envelope.getJSONObject("request").toString())
+            log?.event("model-provider", "response", target = envelope.getString("model"), detail = envelope.getJSONObject("response").toString())
+            return envelope.getString("content")
         } finally { registration.close(); runCatching { socket.close() } }
     }
 }

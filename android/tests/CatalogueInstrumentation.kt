@@ -263,20 +263,21 @@ class CatalogueInstrumentation : Instrumentation() {
             check(stages == 1 && prepared!!.getString(1) == "host/rental" && prepared!!.getString(2) == "Boom microphone stand")
             check(prepared!!.getString(3).contains("stand:1") && prepared!!.getString(3).contains(from) && prepared!!.getString(4) == "€8.00" && prepared!!.getString(5) == until)
             host.published(workspace.id, host.poll(workspace.id)!!.getInt("version"))
-            val receiptsFile = java.io.File(context.filesDir, "embedding-receipts.jsonl")
+            EmbeddingLog.flush(context)
+            val receiptsFile = java.io.File(EmbeddingLog.directory(context), "events.jsonl")
             // A run can straddle the bounded rotation; inspect both retained pages.
-            val previousReceipts = java.io.File(context.filesDir, "embedding-receipts.previous.jsonl")
+            val previousReceipts = java.io.File(EmbeddingLog.directory(context), "previous.jsonl")
             val receipts = (if (previousReceipts.exists()) previousReceipts.readLines() else emptyList())
                 .plus(receiptsFile.readLines()).map { JSONObject(it) }
             val mount = receipts.last { it.optString("workspace") == workspace.id && it.getString("stage") == "mount" }
-            val run = mount.getString("run")
-            val correlated = receipts.filter { it.getString("run") == run }
+            val run = mount.getString("trace")
+            val correlated = receipts.filter { it.getString("trace") == run }
             check(correlated.any { it.getString("stage") == "check" } && correlated.any { it.getString("stage") == "action" } && correlated.any { it.getString("stage") == "capability" } && correlated.any { it.getString("outcome") == "published" })
-            val allowed = setOf("run", "stage", "outcome", "candidate", "workspace", "operation", "code", "durationMs", "version", "parentOperation")
+            val allowed = setOf("schema", "sequence", "time", "elapsed", "trace", "span", "parent", "stage", "outcome", "code", "candidate", "workspace", "operation", "target", "durationMs", "version", "artifact", "content", "bytes", "summary", "sha256")
             check(receipts.all { it.keys().asSequence().all { key -> key in allowed } })
-            check(correlated.filter { it.getString("stage") == "capability" && it.getString("outcome") == "started" }.all { it.optString("parentOperation").isNotEmpty() })
+            check(correlated.filter { it.getString("stage") == "capability" && it.getString("outcome") == "started" }.all { it.optString("parent").isNotEmpty() })
             check(receipts.none { it.toString().contains("Adjustable boom") || it.toString().contains("clip adapter") })
-            result.putString("catalogueVerification", "8 DEAL-owned choices checked; Unicode/escaping/quantity-bound template mounted; 7 negative policy fixtures including UTF-16 supplementary bound; 6 DEAL envelope repair fixtures; native resource failure stops; source repair/exhaustion/cancellation and template/transport failure ownership; correlated shape-only receipts; matching rows, prices, availability and review descriptor; no provider reads during generation")
+            result.putString("catalogueVerification", "8 DEAL-owned choices checked; Unicode/escaping/quantity-bound template mounted; 7 negative policy fixtures including UTF-16 supplementary bound; 6 DEAL envelope repair fixtures; native resource failure stops; source repair/exhaustion/cancellation and template/transport failure ownership; correlated DEAL-normalized logs; matching rows, prices, availability and review descriptor; no provider reads during generation")
             finish(0, result)
         } catch (error: Throwable) { result.putString("failure", android.util.Log.getStackTraceString(error)); finish(1, result) }
         finally { runtime?.close(); registry?.close() }
