@@ -65,6 +65,24 @@ class WorkspaceInstrumentation : Instrumentation() {
             val before = host.poll(second.id)!!
             click(second.id, before); complete(second.id, before.getInt("version"))
             check(calls == baseline + 3)
+            check(host.savedWorkspaces().any { it.id == first.id })
+            val reopened = host.reopen(first.id)
+            check(reopened.first.id == first.id && calls == baseline + 3)
+            val retainedId = reopened.first.id
+            runtime.close()
+            runtime = ExperienceRuntime(context, registry, EmbeddingConfig("experience", registry.contracts(), "workspace-verification"))
+            check(runtime.savedWorkspaces().any { it.id == retainedId })
+            val restored = runtime.reopen(retainedId)
+            check(restored.first.id == retainedId && calls == baseline + 3)
+            val button = nodes(restored.second.getJSONObject("tree")).first { it.getString("component") == "ui.Button" }
+            val props = button.getJSONArray("props")
+            val slot = (0 until props.length()).map { props.getJSONObject(it) }.first { it.getString("name") == "onClick" }.getInt("actionSlot")
+            runtime.dispatch(retainedId, slot, null)
+            // Opening starts fresh local UI state, but never a model or provider operation.
+            repeat(100) { if (runtime.poll(retainedId)!!.getInt("version") < 3) Thread.sleep(20) }
+            check(calls == baseline + 4)
+            runtime.forgetWorkspace(retainedId)
+            check(runtime.savedWorkspaces().none { it.id == retainedId })
             result.putString("workspaceVerification", "two saved-source isolates completed; close isolation, grant revocation and independent request IDs verified; no inference")
             finish(0, result)
         } catch (error: Throwable) { result.putString("failure", android.util.Log.getStackTraceString(error)); finish(1, result) }

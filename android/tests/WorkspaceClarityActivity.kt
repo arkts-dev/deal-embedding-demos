@@ -20,8 +20,8 @@ class WorkspaceClarityActivity : ComponentActivity() {
                 var screen by remember { mutableStateOf(intent.getStringExtra("screen") ?: "failure") }
                 var problem by remember { mutableStateOf<GenerationProblem?>(generationProblem(GenerationRejected(3, GenerationRejected.Reason.ATTEMPT_LIMIT, "private compiler diagnostics"))) }
                 when (screen) {
-                    "failure", "progress" -> RequestSheet("Boom stand", emptyList(), host,
-                        "Checking AI-written code · attempt 2 of 3", screen == "progress",
+                    "failure", "progress", "writing" -> RequestSheet("Boom stand", emptyList(), host,
+                        if (screen == "writing") "AI writing logic and screen · attempt 2 of 3" else "Checking AI-written code · attempt 2 of 3", screen != "failure",
                         onCancel = { screen = "saved" }, onBuild = { _, _ -> screen = "progress" },
                         problem = if (screen == "failure") problem else null, hasExistingWorkspace = true, onDismissProblem = { problem = null })
                     "review" -> ReviewSheet(emptyList(), { screen = "ai" }, { screen = "ai" })

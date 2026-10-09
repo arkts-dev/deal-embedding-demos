@@ -3,6 +3,7 @@ package dev.deal.apps.organizer
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.*
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
@@ -33,7 +34,7 @@ class OrganizerActivity : ComponentActivity() {
     private val store by lazy { ShowStore(this) }
     private val host by lazy { OrganizerHost(this) }
     private val worker = Executors.newSingleThreadScheduledExecutor()
-    private var runningGeneration: GenerationCancellation? = null
+    @Volatile private var runningGeneration: GenerationCancellation? = null
     override fun onDestroy() { runningGeneration?.cancel(); worker.execute { host.close() }; worker.shutdown(); super.onDestroy() }
     override fun onCreate(state: Bundle?) {
         super.onCreate(state)
@@ -42,7 +43,11 @@ class OrganizerActivity : ComponentActivity() {
         var generating by mutableStateOf(false)
         var status by mutableStateOf("")
         var problem by mutableStateOf<GenerationProblem?>(null)
-        var live by mutableStateOf<List<LiveWorkspace>>(emptyList())
+        var saved by mutableStateOf<List<SavedWorkspace>>(emptyList())
+        var mountedIds by mutableStateOf<Set<String>>(emptySet())
+        var opening by mutableStateOf(false)
+        var openError by mutableStateOf("")
+        var shelfVisible by mutableStateOf(false)
         var open by mutableStateOf<LiveWorkspace?>(null)
         val activeWorkspace = java.util.concurrent.atomic.AtomicReference<String?>(null)
         var publishedVersion = -1
@@ -50,6 +55,11 @@ class OrganizerActivity : ComponentActivity() {
         var tree by mutableStateOf<JSONObject?>(null)
         var fault by mutableStateOf("")
         var review by mutableStateOf(false)
+        val links = getSharedPreferences("organizer-workspace-links", 0)
+        fun requirementKey(id: String): String {
+            val r = show!!.requirement(id)!!
+            return "${show!!.date}:$id:${r.from}:${r.until}:${r.quantity}:${r.specification}"
+        }
         fun update(block: (ShowState) -> Unit) { val current = show ?: return; block(current); store.save(current); show = current }
         fun publish(id: String, snapshot: JSONObject) {
             if (activeWorkspace.get() != id || (snapshot.getInt("version") == publishedVersion && snapshot.optString("fault") == publishedFault)) return
@@ -72,59 +82,80 @@ class OrganizerActivity : ComponentActivity() {
         }
         worker.scheduleWithFixedDelay({
             try {
-                if (activeWorkspace.get() != null) {
-                    for (workspace in host.environment().workspaces()) {
+                for (workspace in host.mountedWorkspaces()) {
                         try { host.environment().poll(workspace.id)?.let { publish(workspace.id, it) } }
                         catch (error: Throwable) { reportFailure(workspace.id, "poll", error); activeWorkspace.compareAndSet(workspace.id, null) }
-                    }
                 }
             } catch (error: Throwable) { activeWorkspace.get()?.let { reportFailure(it, "poll", error) }; activeWorkspace.set(null) }
         }, 100, 100, java.util.concurrent.TimeUnit.MILLISECONDS)
-        // Debug replay selects existing private source, never accepts injected code or calls inference.
-        val replayId = intent.getStringExtra("replayWorkspace")
-        if (replayId != null && applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE != 0) {
+        fun openSaved(id: String) {
+            opening = true; openError = ""
             worker.execute {
                 try {
-                    val prefs = getSharedPreferences("organizer-experience", 0)
-                    val source = ExperienceSource(
-                        prefs.getString("workspace.$replayId.deal", null) ?: error("Saved workspace not found"),
-                        prefs.getString("workspace.$replayId.dealui", null) ?: error("Saved view not found"))
                     host.prepare()
-                    val origin = runCatching { WorkspaceOrigin.valueOf(prefs.getString("workspace.$replayId.origin", "")!!) }.getOrDefault(WorkspaceOrigin.SAVED_SOURCE)
-                    val attempts = prefs.getInt("workspace.$replayId.attempts", 0).coerceIn(0, 3)
-                    host.environment().check(source, origin, attempts).use { candidate ->
-                        val (workspace, snapshot) = host.environment().open(prefs.getString("workspace.$replayId.title", null) ?: "Saved workspace replay", candidate)
-                        activeWorkspace.set(workspace.id); publishedVersion = -1
-                        java.io.File(filesDir, "workspace-error.txt").delete()
-                        publish(workspace.id, snapshot)
-                        runOnUiThread { open = workspace }
-                    }
+                    val (workspace, snapshot) = host.environment().reopen(id)
+                    activeWorkspace.set(workspace.id); publishedVersion = -1
+                    java.io.File(filesDir, "workspace-error.txt").delete()
+                    publish(workspace.id, snapshot)
+                    runOnUiThread { if (!isDestroyed) { open = workspace; mountedIds = mountedIds + workspace.id; request = null; review = false; problem = null; opening = false; shelfVisible = false } }
                 } catch (error: Throwable) {
                     android.util.Log.e("Organizer", "workspace replay failed", error)
                     java.io.File(filesDir, "workspace-error.txt").writeText(android.util.Log.getStackTraceString(error))
-                    runOnUiThread { fault = error.message ?: "Replay failed" }
+                    runOnUiThread { if (!isDestroyed) { opening = false; openError = "Couldn’t open. Saved workspace kept."; shelfVisible = true } }
                 }
             }
         }
+        worker.execute {
+            try {
+                host.prepare()
+                val entries = host.environment().savedWorkspaces()
+                runOnUiThread { if (!isDestroyed) saved = entries }
+            } catch (error: Throwable) { android.util.Log.e("Organizer", "workspace listing failed", error) }
+        }
+        intent.getStringExtra("replayWorkspace")?.takeIf { applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE != 0 }?.let { openSaved(it) }
         setContent {
             AppTheme(Accent.Organizer) {
                 var destination by remember { mutableStateOf(Destination.Overview) }
                 var selectedAct by remember { mutableStateOf<String?>(null) }
                 var selectedRequirement by remember { mutableStateOf<String?>(null) }
+                BackHandler(enabled = generating || opening || request != null || review || open != null || shelfVisible) {
+                    when {
+                        generating -> runningGeneration?.cancel()
+                        opening -> Unit // Do not abandon a mount halfway through publication.
+                        request != null -> { request = null; problem = null }
+                        review -> review = false
+                        open != null -> { activeWorkspace.set(null); open = null; shelfVisible = true }
+                        else -> shelfVisible = false
+                    }
+                }
                 AuroraBackdrop(Modifier.fillMaxSize()) {
                     Scaffold(
                         containerColor = Color.Transparent,
-                        topBar = { OrganizerTopBar(show, onReset = { store.clear(); show = null }, onInitialize = { show = store.initialize() }) },
+                        topBar = {
+                            Column {
+                                OrganizerTopBar(show, onReset = { store.clear(); show = null }, onInitialize = { show = store.initialize() })
+                                if (!generating && !opening) TextButton(onClick = { shelfVisible = !shelfVisible }) { Icon(Icons.Outlined.Dashboard, null); Spacer(Modifier.width(6.dp)); Text("Workspaces · ${saved.size}") }
+                            }
+                        },
                         bottomBar = {
                             if (show != null) NavigationBar(containerColor = MaterialTheme.colorScheme.surface) {
                                 Destination.entries.forEach { item ->
-                                    NavigationBarItem(selected = destination == item, onClick = { destination = item; selectedRequirement = null }, icon = { Icon(item.icon, null) }, label = { Text(item.label) })
+                                    NavigationBarItem(selected = destination == item, onClick = { if (!generating && !opening) { destination = item; selectedRequirement = null; activeWorkspace.set(null); open = null; review = false; shelfVisible = false } }, icon = { Icon(item.icon, null) }, label = { Text(item.label) })
                                 }
                             }
                         },
                     ) { padding ->
                         Column(Modifier.padding(padding).fillMaxSize()) {
                             when {
+                                opening -> Column(Modifier.fillMaxWidth().padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) { CircularProgressIndicator(); Text("Opening…") }
+                                shelfVisible -> WorkspaceShelf(saved, openError, onOpen = { openSaved(it) }, onForget = { id ->
+                                    worker.execute {
+                                        host.environment().forgetWorkspace(id)
+                                        val entries = host.environment().savedWorkspaces()
+                                        activeWorkspace.compareAndSet(id, null)
+                                        runOnUiThread { saved = entries; mountedIds = mountedIds - id; if (open?.id == id) open = null }
+                                    }
+                                }, activeIds = mountedIds)
                                 review -> ReviewSheet(preparedOperations(applicationContext), onConfirm = { runOnUiThread { review = false } }, onBack = { review = false })
                                 show == null -> EmptyPlan(onInitialize = { show = store.initialize() })
                                 request != null -> RequestSheet(
@@ -157,12 +188,16 @@ class OrganizerActivity : ComponentActivity() {
                                                 val candidate = host.generate(intent, disclosed, token) { message -> runOnUiThread { if (!isDestroyed && runningGeneration === token) status = message } }
                                                 candidate.use {
                                                     token.check()
-                                                    val (workspace, snapshot) = host.environment().open(intent.take(60), candidate)
+                                                    val (workspace, snapshot) = host.environment().open("$goal · ${selected.joinToString { it.name }}", candidate)
+                                                    try { token.check() } catch (error: CancellationException) { host.environment().forgetWorkspace(workspace.id); throw error }
+                                                    val editor = links.edit().putString("requirements.${workspace.id}", selected.joinToString(",") { it.id })
+                                                    selected.forEach { editor.putString(requirementKey(it.id), workspace.id) }
+                                                    check(editor.commit()) { "Cannot retain workspace link" }
                                                     activeWorkspace.set(workspace.id); publishedVersion = -1
                                                     java.io.File(filesDir, "workspace-error.txt").delete()
                                                     publish(workspace.id, snapshot)
-                                                    val workspaces = host.environment().workspaces()
-                                                    runOnUiThread { if (!isDestroyed) { live = workspaces; open = workspace; request = null; generating = false; status = ""; problem = null; runningGeneration = null } }
+                                                    val workspaces = host.environment().savedWorkspaces()
+                                                    runOnUiThread { if (!isDestroyed) { saved = workspaces; mountedIds = mountedIds + workspace.id; open = workspace; request = null; generating = false; status = ""; problem = null; runningGeneration = null } }
                                                 }
                                             } catch (error: Throwable) {
                                                 android.util.Log.e("Organizer", "generation failed", error)
@@ -185,11 +220,14 @@ class OrganizerActivity : ComponentActivity() {
                                         val id = open!!.id
                                         worker.execute {
                                             activeWorkspace.compareAndSet(id, null)
-                                            host.environment().closeWorkspace(id)
-                                            val workspaces = host.environment().workspaces()
-                                            runOnUiThread { open = null; tree = null; live = workspaces }
+                                            // Back keeps the mounted state and saved source; Delete is explicit.
+                                            runOnUiThread { open = null; shelfVisible = true }
                                         }
                                     },
+                                    onNewBuild = links.getString("requirements.${open!!.id}", null)?.split(",")?.filter { show!!.requirement(it) != null }?.takeIf { it.isNotEmpty() }?.let { ids -> {
+                                        request = ids
+                                        problem = null; status = ""
+                                    } },
                                     onReview = { review = true },
                                     prepared = preparedOperations(applicationContext).size,
                                 )
@@ -198,7 +236,12 @@ class OrganizerActivity : ComponentActivity() {
                                     onBack = { selectedRequirement = null },
                                     onEdit = { updated -> update { it.requirements = it.requirements.map { r -> if (r.id == updated.id) updated else r } } },
                                     onVerify = { id -> update { s -> s.requirements = s.requirements.map { r -> if (r.id == id) r.copy(verified = !r.verified) else r } } },
-                                    onArrange = { id -> if (!generating) { problem = null; status = ""; request = listOf(id) } },
+                                    onArrange = { id -> if (!generating) {
+                                        problem = null; status = ""
+                                        val retained = links.getString(requirementKey(id), null)
+                                        if (retained != null && saved.any { it.id == retained }) openSaved(retained)
+                                        else request = listOf(id)
+                                    } },
                                 )
                                 else -> when (destination) {
                                     Destination.Overview -> OverviewScreen(state = show!!, onOpenRequirement = { selectedAct = null; selectedRequirement = it }, onOpenRiders = { destination = Destination.Riders })

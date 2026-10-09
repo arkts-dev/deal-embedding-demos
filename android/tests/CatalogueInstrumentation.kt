@@ -16,9 +16,12 @@ class CatalogueInstrumentation : Instrumentation() {
         var registry: CapabilityRegistry? = null
         try {
             val context = targetContext
-            check(dev.deal.apps.organizer.workspacePresentation(WorkspaceOrigin.AI_SOURCE, 2).title == "AI-built workspace")
-            check(dev.deal.apps.organizer.workspacePresentation(WorkspaceOrigin.CATALOGUE, 1).title == "Catalogue workspace")
+            check(dev.deal.apps.organizer.workspacePresentation(WorkspaceOrigin.AI_SOURCE, 2).title == "AI-built")
+            check(dev.deal.apps.organizer.workspacePresentation(WorkspaceOrigin.CATALOGUE, 1).title == "Template")
             check(dev.deal.apps.organizer.workspacePresentation(WorkspaceOrigin.SAVED_SOURCE, 0).explanation.contains("unknown"))
+            check(dev.deal.apps.organizer.workspacePresentation(WorkspaceOrigin.SAVED_SOURCE, 0).title == "Workspace")
+            check(dev.deal.apps.organizer.compactGenerationStatus("AI writing logic and screen · attempt 2 of 3") == "Refining…")
+            check(dev.deal.apps.organizer.compactGenerationStatus("Checking AI-written code · attempt 2 of 3") == "Checking…")
             val friendly = dev.deal.apps.organizer.generationProblem(GenerationRejected(3, GenerationRejected.Reason.ATTEMPT_LIMIT, "secret diagnostic"))
             check(friendly.explanation.contains("3 source attempts") && !friendly.explanation.contains("secret"))
             // Exercise the compiler failure contract without filesystem fault injection.

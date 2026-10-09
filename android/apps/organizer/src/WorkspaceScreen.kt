@@ -17,6 +17,7 @@ import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import dev.deal.embedding.DealRenderer
@@ -24,6 +25,16 @@ import dev.deal.embedding.WorkspaceOrigin
 import dev.deal.shell.*
 import androidx.compose.foundation.horizontalScroll
 import org.json.JSONObject
+
+/** Non-interactive labels: technology tags never imply authorship or permission. */
+@Composable private fun WorkspaceTag(label: String, icon: ImageVector? = null) {
+    Surface(shape = RoundedCornerShape(8.dp), border = BorderStroke(1.dp, MaterialTheme.colorScheme.onSurface), color = MaterialTheme.colorScheme.surface) {
+        Row(Modifier.padding(horizontal = 8.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+            if (icon != null) Icon(icon, null, modifier = Modifier.size(16.dp))
+            Text(label, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold)
+        }
+    }
+}
 
 /** The native request sheet: the user states a goal and constraints instead of writing a prompt. */
 @Composable fun RequestSheet(
@@ -43,6 +54,7 @@ import org.json.JSONObject
     var responsible by remember { mutableStateOf("") }
     var preserve by remember { mutableStateOf(true) }
     var instruction by remember { mutableStateOf("") }
+    var problemDetails by remember(problem) { mutableStateOf(false) }
   Scaffold(
     containerColor = Color.Transparent,
     bottomBar = {
@@ -52,14 +64,18 @@ import org.json.JSONObject
             Surface(modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp).semantics { liveRegion = LiveRegionMode.Polite },
                 shape = RoundedCornerShape(16.dp), border = BorderStroke(2.dp, MaterialTheme.colorScheme.onSurface), color = MaterialTheme.colorScheme.surface) {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(if (building) "Building your workspace" else problem!!.title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                    Text(if (building) status else problem!!.explanation, style = MaterialTheme.typography.bodyLarge)
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        if (building) CircularProgressIndicator(modifier = Modifier.size(24.dp).semantics { contentDescription = "Generation in progress" }, color = MaterialTheme.colorScheme.onSurface, strokeWidth = 2.dp)
+                        else Icon(Icons.Outlined.WarningAmber, null)
+                        Text(if (building) compactGenerationStatus(status) else problem!!.title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                    }
+                    if (!building) Text("Existing workspace unchanged. Nothing reserved.", style = MaterialTheme.typography.bodyMedium)
                     if (building) {
-                        OutlinedButton(onClick = onCancel, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Text("Cancel generation") }
+                        OutlinedButton(onClick = onCancel, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Text("Cancel") }
                     } else {
-                        OutlinedButton(onClick = onDismissProblem, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Text("Change request") }
+                        OutlinedButton(onClick = onDismissProblem, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Text("Edit request") }
                         OutlinedButton(onClick = onCancel, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Text(if (hasExistingWorkspace) "Keep existing workspace" else "Back to plan") }
-                        Text("Build again starts a new generation run. There is no automatic retry.", style = MaterialTheme.typography.bodyMedium)
+                        TextButton(onClick = { problemDetails = true }, modifier = Modifier.heightIn(min = 48.dp)) { Icon(Icons.Outlined.Info, null); Spacer(Modifier.width(6.dp)); Text("Details") }
                     }
                 }
             }
@@ -116,28 +132,39 @@ import org.json.JSONObject
         }
     }
   }
+    if (problemDetails && problem != null) AlertDialog(onDismissRequest = { problemDetails = false }, title = { Text(problem.title) },
+        text = { Text(problem.explanation + "\n\nBuild again starts a new generation run. There is no automatic retry.") },
+        confirmButton = { TextButton(onClick = { problemDetails = false }) { Text("Close details") } })
 }
 
 /** A live generated workspace. Its layout is generated; the surface is natively rendered Compose. */
-@Composable fun WorkspaceView(title: String, tree: JSONObject, fault: String, onDispatch: (Int, String?) -> Unit, onClose: () -> Unit, onReview: () -> Unit, prepared: Int, origin: WorkspaceOrigin, attempts: Int) {
+@Composable fun WorkspaceView(title: String, tree: JSONObject, fault: String, onDispatch: (Int, String?) -> Unit, onClose: () -> Unit, onReview: () -> Unit, prepared: Int, origin: WorkspaceOrigin, attempts: Int, onNewBuild: (() -> Unit)? = null) {
     val presentation = workspacePresentation(origin, attempts)
     var details by remember { mutableStateOf(false) }
+    var newBuild by remember { mutableStateOf(false) }
     Column(Modifier.fillMaxSize()) {
         Surface(color = MaterialTheme.colorScheme.surface, border = BorderStroke(2.dp, MaterialTheme.colorScheme.onSurface), modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp)) {
             Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
-                        Text(presentation.title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite })
-                        Text(title, maxLines = 2, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis, style = MaterialTheme.typography.bodyMedium)
+                        Text(title, maxLines = 2, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                        Row(Modifier.semantics { liveRegion = LiveRegionMode.Polite }, horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                            WorkspaceTag(presentation.title, when (origin) {
+                                WorkspaceOrigin.AI_SOURCE -> Icons.Outlined.AutoAwesome
+                                WorkspaceOrigin.CATALOGUE -> Icons.Outlined.GridView
+                                WorkspaceOrigin.SAVED_SOURCE -> Icons.Outlined.Code
+                            })
+                            WorkspaceTag("deal")
+                            WorkspaceTag("deal ui")
+                        }
                     }
-                    IconButton(onClick = onClose) { Icon(Icons.Outlined.Close, "Close workspace") }
+                    IconButton(onClick = onClose) { Icon(Icons.Outlined.ArrowBack, "Back to workspaces") }
                 }
-                Text(presentation.explanation, style = MaterialTheme.typography.bodyMedium)
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    if (prepared > 0) OutlinedButton(onClick = onReview, modifier = Modifier.weight(1f).heightIn(min = 48.dp)) { Text("Organizer review · $prepared") }
-                    TextButton(onClick = { details = true }, modifier = Modifier.heightIn(min = 48.dp)) { Text("Source details") }
+                    if (prepared > 0) OutlinedButton(onClick = onReview, modifier = Modifier.weight(1f).heightIn(min = 48.dp)) { Icon(Icons.Outlined.FactCheck, null); Spacer(Modifier.width(6.dp)); Text("Review · $prepared") }
+                    TextButton(onClick = { details = true }, modifier = Modifier.heightIn(min = 48.dp)) { Icon(Icons.Outlined.Info, null); Spacer(Modifier.width(6.dp)); Text("Details") }
                 }
-                Text(if (prepared > 0) "$prepared operations prepared locally for native review; not reservations. Workspace content below." else "Workspace content below. Native review is separate; preparation is not a reservation.", style = MaterialTheme.typography.bodyMedium,
+                Text(if (prepared > 0) "$prepared prepared · Not reserved" else "Not reserved", style = MaterialTheme.typography.bodyMedium,
                     modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite })
             }
         }
@@ -151,7 +178,14 @@ import org.json.JSONObject
         }
     }
     if (details) AlertDialog(onDismissRequest = { details = false }, title = { Text(presentation.title) },
-        text = { Text(presentation.details) }, confirmButton = { TextButton(onClick = { details = false }) { Text("Close details") } })
+        text = { Column {
+            Text(presentation.explanation + "\n\n" + presentation.details + "\n\ndeal: application logic. deal ui: screen and events. Both AI-built and template workspaces use these technologies. Native review belongs to Organizer.")
+            if (onNewBuild != null) OutlinedButton(onClick = { details = false; newBuild = true }) { Text("New build") }
+        } }, confirmButton = { TextButton(onClick = { details = false }) { Text("Close details") } })
+    if (newBuild) AlertDialog(onDismissRequest = { newBuild = false }, title = { Text("Build another workspace?") },
+        text = { Text("Starts new AI generation. This workspace is kept.") },
+        confirmButton = { TextButton(onClick = { newBuild = false; onNewBuild?.invoke() }) { Text("Continue") } },
+        dismissButton = { TextButton(onClick = { newBuild = false }) { Text("Keep this") } })
 }
 
 /** Native review of locally prepared descriptors; no provider reservation has been made. */
@@ -159,10 +193,16 @@ import org.json.JSONObject
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             IconButton(onClick = onBack) { Icon(Icons.Outlined.ArrowBack, "Back") }
-            Column { Text("Organizer review · native", modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite }, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold); Text("Prepared locally; no provider reservation has been made", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Icon(Icons.Outlined.FactCheck, null)
+                    Text("Organizer review", modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite }, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) { WorkspaceTag("Native"); WorkspaceTag("Not reserved") }
+            }
         }
         Surface(border = BorderStroke(2.dp, MaterialTheme.colorScheme.onSurface), color = MaterialTheme.colorScheme.surface, modifier = Modifier.fillMaxWidth()) {
-            Text("Prepared operations — not reservations. This screen belongs to Organizer, not the generated workspace.", Modifier.padding(16.dp), style = MaterialTheme.typography.bodyLarge)
+            Text("Prepared locally. Nothing booked.", Modifier.padding(16.dp), style = MaterialTheme.typography.bodyLarge)
         }
         operations.forEach { operation ->
             Panel {
@@ -173,7 +213,7 @@ import org.json.JSONObject
                 if (operation.optString("deadline").isNotEmpty()) KeyValue("Deadline", operation.optString("deadline"))
             }
         }
-        Text("This is a review descriptor, not a reservation. Provider confirmation is not connected on this surface; arrange the reservation in the provider app.", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text("To book, open the provider app.", style = MaterialTheme.typography.bodyMedium)
         Button(onClick = onConfirm, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(18.dp)) { Text("Back to workspace") }
     }
 }

@@ -24,6 +24,7 @@ class OrganizerHost(private val context: Context) : AutoCloseable {
     }
     fun environment() = runtime ?: error("Host not prepared")
     fun available(): List<CapabilityContract> = contracts
+    fun mountedWorkspaces(): List<LiveWorkspace> = runtime?.workspaces().orEmpty()
     fun generate(intent: String, disclosedContext: String, cancellation: GenerationCancellation, progress: (String) -> Unit): CheckedCandidate =
         environment().generate(intent, disclosedContext, GenerationGateway("http://127.0.0.1:8787/generate"), cancellation, progress)
     override fun close() { runtime?.close(); registry.close() }

@@ -54,43 +54,58 @@ night = shell('cmd', 'uimode', 'night')
 night_mode = re.search(r'(auto|no|yes|custom)', night).group(0)
 results = []
 try:
-    for mode in ('normal', 'bedtime'):
+    for mode in os.environ.get('CLARITY_MODES', 'normal,bedtime').split(','):
         shell('cmd', 'uimode', 'night', 'yes' if mode == 'bedtime' else 'no')
         shell('settings', 'put', 'system', 'font_scale', '1.3' if mode == 'bedtime' else '1.0')
         shell('settings', 'put', 'secure', 'accessibility_display_daltonizer', '0')
         shell('settings', 'put', 'secure', 'accessibility_display_daltonizer_enabled', '1' if mode == 'bedtime' else '0')
-        for screen, label in [('ai', 'AI-built workspace'), ('catalogue', 'Catalogue workspace'), ('saved', 'Saved-source workspace')]:
+        for screen, label in [('ai', 'AI-built'), ('catalogue', 'Template'), ('saved', 'Workspace')]:
             launch(screen)
             find(label)
-            find('Source details')
-            find('Organizer review · 1')
+            find('deal')
+            find('deal ui')
+            find('Details')
+            find('Review · 1')
+            assert not any('AI wrote the logic' in n.get('text', '') or 'authorship is unknown' in n.get('text', '') for n in ui().iter('node'))
             capture(mode + '-' + screen)
-            tap('Source details')
+            tap('Details')
             texts = [n.get('text', '') for n in ui().iter('node')]
             assert any(('Source attempts: 2' if screen == 'ai' else 'model selected' if screen == 'catalogue' else 'not recorded') in t for t in texts)
             tap('Close details')
-            tap('Organizer review · 1')
-            find('Organizer review · native')
-            assert any('not reservations' in n.get('text', '') for n in ui().iter('node'))
+            tap('Review · 1')
+            find('Organizer review')
+            find('Native')
+            find('Not reserved')
             capture(mode + '-' + screen + '-review')
         launch('failure')
-        find('Workspace couldn’t be built')
-        find('Change request')
+        find('Couldn’t build')
+        find('Edit request')
         find('Keep existing workspace')
         find('Build again · new run')
         texts = [n.get('text', '') for n in ui().iter('node')]
-        assert any('3 source attempts' in t and 'unchanged' in t for t in texts)
+        assert 'Existing workspace unchanged. Nothing reserved.' in texts
         assert not any('private compiler diagnostics' in t for t in texts)
         capture(mode + '-exhausted')
-        tap('Change request')
+        tap('Details')
+        texts = [n.get('text', '') for n in ui().iter('node')]
+        assert any('3 source attempts' in t and 'unchanged' in t for t in texts)
+        tap('Close details')
+        tap('Edit request')
         find('Build workspace')
         tap('Build workspace')
-        find('Building your workspace')
-        find('Checking AI-written code · attempt 2 of 3')
-        find('Cancel generation')
+        progress_tree = ui()
+        progress_labels = {n.get('text') or n.get('content-desc') for n in progress_tree.iter('node')}
+        assert {'Checking…', 'Generation in progress', 'Cancel'} <= progress_labels
         capture(mode + '-progress')
-        tap('Cancel generation')
-        find('Saved-source workspace')
+        tap('Cancel')
+        find('Workspace')
+        launch('writing')
+        progress_tree = ui()
+        progress_labels = {n.get('text') or n.get('content-desc') for n in progress_tree.iter('node')}
+        assert {'Refining…', 'Generation in progress', 'Cancel'} <= progress_labels
+        capture(mode + '-writing')
+        tap('Cancel')
+        find('Workspace')
         results.append({'mode': mode, 'originLabels': True, 'details': True, 'nativeReviewBoundary': True, 'exhaustion': True, 'progress': True, 'cancelControl': True})
 finally:
     shell('am', 'force-stop', 'dev.deal.connectors.tests')

@@ -110,7 +110,7 @@ if not args.replay:
     tap('Arrange fulfilment', scroll=True)
     # The single authorized inference workflow. Do not retry this click.
     tap('Build workspace')
-wait(lambda: any(n.get('text') in ('AI-built workspace', 'Catalogue workspace', 'Saved-source workspace') for n in ui().iter('node')))
+wait(lambda: any(n.get('text') in ('AI-built', 'Template', 'Workspace') for n in ui().iter('node')))
 prefs = {n.get('name'): n.text for n in ET.fromstring(private(PACKAGE, 'shared_prefs/organizer-experience.xml'))}
 if args.replay:
     source_keys = {'workspace.' + args.replay + '.deal', 'workspace.' + args.replay + '.dealui'}
@@ -159,10 +159,10 @@ stand = next(n for n in nodes(picked['tree']) if n['component'] == 'ui.Option' a
 assert prop(stand, 'selected')['booleanValue']
 tap('Prepare for review', scroll=True)
 wait(lambda: any(p.get('stringValue', '').startswith('Prepared for native review') for n in nodes(snapshot()['tree']) for p in n['props']), 30)
-review = next(n.get('text') for n in ui().iter('node') if n.get('text', '').startswith('Organizer review · ') )
+review = next(n.get('text') for n in ui().iter('node') if n.get('text', '').startswith('Review · ') )
 tap(review)
 texts = [n.get('text', '') for n in ui().iter('node')]
-assert 'Organizer review · native' in texts
+assert 'Organizer review' in texts and 'Native' in texts and 'Not reserved' in texts
 # Existing locally prepared operations can place the new entry below the fold.
 for _ in range(12):
     detail_found = any(f'Item stand:{expected_quantity}' in t and (('2026-10-10T16:00:00Z' in t and '2026-10-10T22:00:00Z' in t) if args.source_experiment or args.editable else 'Period:' in t) for t in texts)
@@ -178,6 +178,41 @@ receipt = {'realGeneration': not bool(args.replay), 'savedSourceReplay': bool(ar
            'sourceHash': hashlib.sha256(json.dumps(accepted, sort_keys=True).encode()).hexdigest()}
 if args.editable:
     receipt['editableNativeInputs'] = True
+    # Ordinary navigation keeps live state; restarting checks saved code without AI.
+    shell('input', 'keyevent', '4')
+    time.sleep(.5)
+    tap('Back to workspaces')
+    saved_title = prefs['workspace.' + args.replay + '.title']
+    def open_card(action='Open'):
+        find(saved_title, scroll=True)
+        root = ui()
+        for container in reversed(list(root.iter('node'))):
+            descendants = list(container.iter('node'))
+            if any(n.get('text') == saved_title for n in descendants):
+                button = next((n for n in descendants if n.get('text') == action), None)
+                if button is not None:
+                    x1, y1, x2, y2 = map(int, re.findall(r'\d+', button.get('bounds')))
+                    shell('input', 'tap', str((x1+x2)//2), str((y1+y2)//2))
+                    return
+        raise AssertionError('Saved workspace Open control missing')
+    open_card('Resume')
+    wait(lambda: any(n.get('text') == 'AI-built' for n in ui().iter('node')), 30)
+    current = list(nodes(snapshot()['tree']))
+    assert prop(next(n for n in current if n['component'] == 'ui.IntField' and prop(n, 'accessibilityLabel')['stringValue'] == 'Quantity'), 'value')['intValue'] == 2
+    shell('am', 'start', '-S', '-W', '--user', '0', '-n', PACKAGE + '/.OrganizerActivity')
+    time.sleep(2)
+    workspaces_label = next(n.get('text') for n in ui().iter('node') if n.get('text', '').startswith('Workspaces · '))
+    tap(workspaces_label)
+    open_card()
+    wait(lambda: any(n.get('text') == 'AI-built' for n in ui().iter('node')), 30)
+    current = list(nodes(snapshot()['tree']))
+    assert prop(next(n for n in current if n['component'] == 'ui.IntField' and prop(n, 'accessibilityLabel')['stringValue'] == 'Quantity'), 'value')['intValue'] == 1
+    assert not any(n['component'] == 'ui.Option' for n in current), 'Restart silently refreshed provider data'
+    after_prefs = {n.get('name'): n.text for n in ET.fromstring(private(PACKAGE, 'shared_prefs/organizer-experience.xml'))}
+    assert all(after_prefs[k] == accepted[k] for k in accepted), 'Reopen replaced accepted source'
+    assert before == provider_state()
+    receipt['ordinaryOpenPreservesLiveState'] = True
+    receipt['restartRechecksSavedSource'] = True
 if args.source_experiment:
     receipt['sourceExperiment'] = args.source_experiment
 filename = 'editable-native-verification.json' if args.editable else 'source-' + args.source_experiment + '-native-verification.json' if args.source_experiment else ('catalogue-replay-verification.json' if args.replay else 'catalogue-real-verification.json')
