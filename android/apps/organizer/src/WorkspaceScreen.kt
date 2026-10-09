@@ -44,7 +44,7 @@ import org.json.JSONObject
                 if (problem != null && !building) {
                     Text(problem.title, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.error,
                         modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite })
-                    Text("Your plan and previous options are unchanged. Nothing booked.", style = MaterialTheme.typography.bodyMedium)
+                    Text("We couldn’t finish preparing your options. You can edit the request or retry. Your plan and previous options are unchanged. Nothing booked.", style = MaterialTheme.typography.bodyMedium)
                     Row {
                         TextButton(onClick = onDismissProblem) { Text("Edit request") }
                         TextButton(onClick = onCancel) { Text(if (hasExistingWorkspace) "Keep previous options" else "Back to event") }
@@ -52,7 +52,7 @@ import org.json.JSONObject
                 }
                 Button(onClick = { onBuild("Equipment options", equipmentInstruction(budget.trim(), preferences.trim())) },
                     enabled = !building && valid, modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp)) {
-                    Text(if (problem == null) "Find options" else "Try again")
+                    Text(if (problem == null) "Find options" else "Retry")
                 }
             }
         }
@@ -90,20 +90,16 @@ import org.json.JSONObject
 /** The native shell names the task, not its source. Inspect is supplied once by the event toolbar. */
 @Composable fun WorkspaceView(title: String, tree: JSONObject, fault: String, onDispatch: (Int, String?) -> Unit, onClose: () -> Unit,
     onReview: () -> Unit, onNewBuild: (() -> Unit)? = null, hasPreparedSelection: Boolean = false) {
-    var menu by remember { mutableStateOf(false) }
     var replacing by remember { mutableStateOf(false) }
     Column(Modifier.fillMaxSize()) {
         Surface(color = MaterialTheme.colorScheme.surface) {
             Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                 IconButton(onClick = onClose) { Icon(Icons.Outlined.ArrowBack, "Back to requirement") }
-                Text(title, modifier = Modifier.weight(1f), style = MaterialTheme.typography.titleMedium, maxLines = 2,
+                // Requirement-linked content owns its task heading. The shell keeps
+                // navigation without duplicating or rewriting retained generated text.
+                if (title.isBlank()) Spacer(Modifier.weight(1f)) else Text(title, modifier = Modifier.weight(1f), style = MaterialTheme.typography.titleMedium, maxLines = 2,
                     overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
-                if (onNewBuild != null) Box {
-                    IconButton(onClick = { menu = true }) { Icon(Icons.Outlined.MoreVert, "Options") }
-                    DropdownMenu(menu, { menu = false }) {
-                        DropdownMenuItem(text = { Text("Change requirements") }, onClick = { menu = false; replacing = true })
-                    }
-                }
+                if (onNewBuild != null) TextButton(onClick = { replacing = true }) { Text("Change request") }
             }
         }
         if (fault.isNotEmpty()) AssistancePanel {
@@ -142,7 +138,13 @@ import org.json.JSONObject
         if (operations.isEmpty()) Text("No selection prepared yet.")
         operations.asReversed().forEach { operation -> AssistancePanel {
             Text(operation.optString("title"), style = MaterialTheme.typography.titleMedium)
-            Text(friendlyDates(operation.optString("detail"), SHOW_ZONE), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            val descriptor = runCatching { JSONObject(operation.optString("detail")) }.getOrNull()
+            if (descriptor != null && descriptor.has("quantity") && descriptor.has("periodStart") && descriptor.has("periodEnd")) {
+                KeyValue("Quantity", descriptor.optString("quantity"))
+                KeyValue("Period", friendlyDates(descriptor.optString("periodStart"), SHOW_ZONE) + " – " + friendlyDates(descriptor.optString("periodEnd"), SHOW_ZONE))
+                if (descriptor.optString("location").isNotEmpty()) KeyValue("Location", descriptor.optString("location"))
+                if (descriptor.optString("act").isNotEmpty()) KeyValue("For", descriptor.optString("act"))
+            } else Text(friendlyDates(operation.optString("detail"), SHOW_ZONE), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             if (operation.optString("price").isNotEmpty()) KeyValue("Total", operation.optString("price"))
             if (operation.optString("deadline").isNotEmpty()) KeyValue("Required by", friendlyDates(operation.optString("deadline"), SHOW_ZONE))
         } }

@@ -107,7 +107,12 @@ shell(*launch)
 time.sleep(2)
 if not args.replay:
     # Requirement-led production entry. A retained link opens without inference.
-    tap('Find equipment', scroll=True)
+    try:
+        find('View equipment options')
+    except AssertionError:
+        tap('Find equipment', scroll=True)
+    else:
+        tap('View equipment options'); tap('Change request'); tap('Continue')
     # The single authorized inference workflow. Do not retry this click.
     tap('Find options')
 wait(lambda: any(n.get('text') == 'Load options' for n in ui().iter('node')))
@@ -157,7 +162,9 @@ tap('Boom microphone stand', scroll=True)
 picked = snapshot()
 stand = next(n for n in nodes(picked['tree']) if n['component'] == 'ui.Option' and prop(n, 'value')['stringValue'] == 'stand')
 assert prop(stand, 'selected')['booleanValue']
-tap('Prepare for review' if args.editable or args.source_experiment else 'Prepare selection', scroll=True)
+# Retained source is not rewritten: dispatch its actual compiler-issued control.
+prepare_button = next(n for n in nodes(snapshot()['tree']) if n['component'] == 'ui.Button' and prop(n, 'text')['stringValue'] in ('Prepare for review', 'Prepare selection'))
+tap(prop(prepare_button, 'text')['stringValue'], scroll=True)
 wait(lambda: any(n.get('text') == 'Review selection' for n in ui().iter('node')), 30)
 tap('Review selection')
 texts = [n.get('text', '') for n in ui().iter('node')]

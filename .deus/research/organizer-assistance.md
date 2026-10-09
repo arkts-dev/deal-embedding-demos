@@ -2,10 +2,11 @@
 kind: research
 id: organizer-assistance
 created_at: 2026-10-09T15:06:00Z
-updated_at: 2026-10-09T15:06:00Z
+updated_at: 2026-10-09T17:55:00Z
 status: implemented-with-limits
 references:
   - .deus/design/organizer-assistance.md
+  - .deus/research/organizer-device-audit.md
   - .deus/research/unified-logging.md
   - .deus/research/editable-rental-generation.md
   - .deus/research/deal-studio-comparison.md
@@ -25,7 +26,7 @@ sources:
   - tools/verify-organizer-assistance.py
   - tools/verify-workspace-clarity.py
 gaps:
-  - Fresh live-model generation has not been rerun; changed guidance and production request instructions are not live-model validated.
+  - This document records the initial no-model pass. The subsequent device audit contains fresh choice/source evidence, reproduced native defects and remaining acceptance limits.
   - Saved AI source retains its old wording; it is deliberately not silently rewritten.
   - Native UI hierarchy assertions and captures are not an independent visual-design or comprehensive accessibility review.
   - Logging remains bounded and may omit events or artifacts; no provider-internal telemetry or lossless audit guarantee.
@@ -65,4 +66,4 @@ Four authored editable behavior cases passed validation, quantity/budget/search,
 
 Early failures were retained: stale Refining status assertion, a removed navigation callback still referenced, UI-automation checking enabled on a Text child rather than its clickable parent, and a test toolbar overlapping system status bars. These were corrected and the affected passes repeated. A device UI dump was killed; another native replay was disrupted by starting instrumentation concurrently. Neither was counted as a completed journey; the serialized subsequent replay passed.
 
-No fresh inference was spent. Consequently, the revised ordinary request's actual live-model route, source acceptance and resulting copy remain unproven until an explicitly budgeted generation pass. Existing accepted AI artifacts may still show older technical prose. Inspect is a bounded observability facade over the existing unified logger, not provider-internal tracing or a lossless history platform. UI XML and saved captures establish hierarchy/control facts but do not substitute for human assessment of visual polish.
+No fresh inference was spent in this initial pass. That initial gap is superseded by `.deus/research/organizer-device-audit.md`: one fresh catalogue and two fresh authored-source workflows, with all six source attempts counted and the native tap failures fixed. The later tap-through removed duplicate native/content headings without altering retained source. Independent visual review remains unavailable; the later report does not claim universal or fully exhaustive acceptance. Existing accepted AI artifacts may still show older technical prose. Inspect is a bounded observability facade over the existing unified logger, not provider-internal tracing or a lossless history platform. UI XML and saved captures establish hierarchy/control facts but do not substitute for human assessment of visual polish.

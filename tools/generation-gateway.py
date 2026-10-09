@@ -14,8 +14,25 @@ ENDPOINT = CONFIG['baseUrl'].rstrip('/')+'/chat/completions'
 # calls the model, so what runs here matches what would run on device.
 # One inference at a time protects the development endpoint; no request bodies are logged.
 POOL = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+# Optional development-session ceiling. Counts admissions before network calls, including
+# failed/cancelled exchanges. Stores counts only, never prompts or credentials.
+BUDGET_PATH = os.environ.get('GENERATION_BUDGET_FILE')
+SOURCE_LIMIT = int(os.environ.get('GENERATION_SOURCE_LIMIT', '0'))
+CHOICE_LIMIT = int(os.environ.get('GENERATION_CHOICE_LIMIT', '0'))
+def admit(body):
+    if not BUDGET_PATH: return
+    path = pathlib.Path(BUDGET_PATH)
+    counts = json.loads(path.read_text()) if path.exists() else {'choice': 0, 'source': 0}
+    kind = 'choice' if '\n\nISSUED OPTIONS\n' in body['input'] else 'source'
+    limit = SOURCE_LIMIT if kind == 'source' else CHOICE_LIMIT
+    if limit <= 0 or counts[kind] >= limit: raise ValueError('Explicit session call ceiling exhausted')
+    counts[kind] += 1
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_suffix('.tmp')
+    temporary.write_text(json.dumps(counts)); temporary.replace(path)
 # Return provider request/response to the caller's unified private logger; no parallel logs.
 def infer(body):
+    admit(body)
     messages=[{'role':'user','content':body['input']}]
     if body.get('previous'):
         messages.append({'role':'assistant','content':body['previous']})

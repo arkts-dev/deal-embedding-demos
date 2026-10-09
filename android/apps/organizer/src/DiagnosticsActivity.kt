@@ -8,6 +8,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
@@ -74,7 +75,8 @@ class DiagnosticsActivity : ComponentActivity() {
                 }
             }
             val traces = entries.filter { it.optString("workspace") == workspace && workspace.isNotEmpty() }.map { it.optString("trace") }.toSet()
-            val visible = entries.filter { all || if (workspace.isNotEmpty()) it.optString("workspace") == workspace || it.optString("trace") in traces else since > 0 && it.optString("time").toLongOrNull()?.let { t -> t >= since } == true }.take(200)
+            val scoped = entries.filter { all || if (workspace.isNotEmpty()) it.optString("workspace") == workspace || it.optString("trace") in traces else since > 0 && it.optString("time").toLongOrNull()?.let { t -> t >= since } == true }
+            val visible = scoped.take(200)
             Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
                 Column(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -85,11 +87,32 @@ class DiagnosticsActivity : ComponentActivity() {
                     Text("Observed activity · not AI reasoning", style = MaterialTheme.typography.bodySmall)
                     if (health.isNotEmpty()) Text(if (runCatching { JSONObject(health).optBoolean("active", true) }.getOrDefault(true)) "Logger unavailable — log incomplete" else "Logger recovered — earlier log incomplete", color = MaterialTheme.colorScheme.error)
                     if (readError.isNotEmpty()) Text(readError, color = MaterialTheme.colorScheme.error)
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        listOf("Activity", "Source", "Workspaces").forEach { name -> FilterChip(selected = tab == name, onClick = { tab = name }, label = { Text(name) }) }
+                    Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        listOf("Activity", "Dialogue", "Source", "Workspaces").forEach { name -> FilterChip(selected = tab == name, onClick = { tab = name }, label = { Text(name) }) }
                     }
                     when (tab) {
-                        "Workspaces" -> WorkspaceShelf(workspaces(), "", onOpen = { id ->
+                        "Dialogue" -> {
+                            Text("Actual AI requests and replies · not hidden reasoning", style = MaterialTheme.typography.bodySmall)
+                            FilterChip(selected = all, onClick = { all = !all }, label = { Text(if (all) "All activity" else "This request") })
+                            TextButton(onClick = { if (capture) { EmbeddingLog.capture(this@DiagnosticsActivity, false); capture = false } else confirm = true }) {
+                                Text(if (capture) "Content capture ON · turn off" else "Capture content")
+                            }
+                            Text("Latest 200 retained model events · artifacts may be omitted or evicted.", style = MaterialTheme.typography.bodySmall)
+                            val exchanges = scoped.filter { it.optString("stage") in listOf("choice", "source") && it.optString("outcome") in listOf("started", "response", "failed", "cancelled") }.take(200).reversed()
+                            LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                if (exchanges.isEmpty()) item { Text("No retained model exchange in this scope. Enable capture before Find options to inspect full requests and replies. Reopening saved options does not call AI.") }
+                                items(exchanges, key = { it.getString("time") + it.getString("sequence") + it.getString("span") }) { entry ->
+                                    OutlinedCard(onClick = { selected = entry }, modifier = Modifier.fillMaxWidth()) {
+                                        Column(Modifier.padding(12.dp)) {
+                                            val role = when (entry.optString("outcome")) { "started" -> "Request to AI"; "response" -> "AI reply"; "cancelled" -> "Cancelled"; else -> "Failed" }
+                                            Text(role + " · " + if (entry.optString("stage") == "choice") "Choose a suitable interface" else "Write or repair the interface", style = MaterialTheme.typography.titleSmall)
+                                            Text(dateTimeLabel(entry.getString("time").toLong(), java.time.ZoneId.systemDefault()) + " · " + entry.optString("content"), style = MaterialTheme.typography.bodySmall)
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        "Workspaces" -> WorkspaceShelf(workspaces().sortedWith(compareBy<SavedWorkspace> { it.id != workspace }.thenBy { it.title }), "", onOpen = { id ->
                             setResult(RESULT_OK, android.content.Intent().putExtra("openWorkspace", id)); finish()
                         }, onForget = { id -> setResult(RESULT_OK, android.content.Intent().putExtra("deleteWorkspace", id)); finish() }, enabled = !busy)
                         "Source" -> Column(Modifier.weight(1f).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -144,7 +167,13 @@ class DiagnosticsActivity : ComponentActivity() {
                 confirmButton = { TextButton(onClick = { EmbeddingLog.clear(this@DiagnosticsActivity); entries = emptyList(); clearing = false }) { Text("Clear") } },
                 dismissButton = { TextButton(onClick = { clearing = false }) { Text("Keep") } })
             selected?.let { event -> AlertDialog(onDismissRequest = { selected = null }, title = { Text(event.getString("summary")) },
-                text = { Column(Modifier.heightIn(max = 500.dp).verticalScroll(rememberScrollState())) { Text(event.toString(2)); HorizontalDivider(); Text("Captured data (untrusted)"); Text(detail) } },
+                text = { Column(Modifier.heightIn(max = 500.dp).verticalScroll(rememberScrollState())) {
+                    if (event.optString("stage") in listOf("choice", "source")) {
+                        Text("Actual model exchange (untrusted)"); Text(readableLogDetail(detail)); HorizontalDivider(); Text("Exact event metadata"); Text(event.toString(2))
+                    } else {
+                        Text(event.toString(2)); HorizontalDivider(); Text("Captured data (untrusted)"); Text(readableLogDetail(detail))
+                    }
+                } },
                 confirmButton = { TextButton(onClick = { selected = null }) { Text("Close") } }) }
             source?.let { text -> AlertDialog(onDismissRequest = { source = null }, title = { Text(".$selectedSource · untrusted source") },
                 text = { Text(text, Modifier.heightIn(max = 500.dp).verticalScroll(rememberScrollState())) },

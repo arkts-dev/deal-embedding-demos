@@ -9,18 +9,35 @@ import java.time.Instant
 /** Authored test-only source; actual compiler, sandbox, discovery and durable requirement navigation. No model call. */
 class AssistanceInstrumentation : Instrumentation() {
     private var cleanup = false
-    override fun onCreate(arguments: Bundle?) { cleanup = arguments?.getString("mode") == "cleanup"; super.onCreate(arguments); start() }
+    private var restoreWorkspace: String? = null
+    override fun onCreate(arguments: Bundle?) {
+        cleanup = arguments?.getString("mode") == "cleanup"
+        if (arguments?.getString("mode") == "restore-link") restoreWorkspace = arguments.getString("workspace")
+        super.onCreate(arguments); start()
+    }
     override fun onStart() {
         val result = Bundle()
         val host = OrganizerHost(targetContext)
         try {
+            restoreWorkspace?.let { id ->
+                // Explicit audit recovery only; never infer a link from source or title.
+                val show = ShowStore(targetContext).load() ?: error("No show")
+                val links = targetContext.getSharedPreferences("organizer-workspace-links", 0)
+                val requirement = show.requirement(links.getString("requirements.$id", null) ?: error("No explicit requirement identity")) ?: error("Unknown requirement")
+                val key = "${show.date}:${requirement.id}:${requirement.from}:${requirement.until}:${requirement.quantity}:${requirement.specification}"
+                check(!links.contains(key)) { "Never overwrite a current assistance link" }
+                host.prepare(); host.environment().reopen(id)
+                check(links.edit().putString(key, id).commit())
+                result.putString("restored", "Explicit retained assistance link restored; checked source; no inference or stock read")
+                finish(0, result); return
+            }
             if (cleanup) {
                 val test = targetContext.getSharedPreferences("assistance-device-test", 0)
                 val id = test.getString("workspace", null) ?: error("No assistance fixture to clean up")
                 val key = test.getString("key", null)!!
                 val links = targetContext.getSharedPreferences("organizer-workspace-links", 0)
                 val editor = links.edit().remove("requirements.$id")
-                if (links.getString(key, null) == id) {
+                if (links.getString(key, null) == id || !links.contains(key)) {
                     val previous = test.getString("previous", null)
                     if (previous == null) editor.remove(key) else editor.putString(key, previous)
                 }

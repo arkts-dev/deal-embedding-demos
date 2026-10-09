@@ -87,11 +87,8 @@ def ordinary():
 
 
 def provider_state():
-    result = {}
-    for name in ('rental.xml', 'proposals.xml'):
-        p = subprocess.run(ADB + ['shell','run-as','dev.deal.apps.rental','cat','shared_prefs/'+name], text=True, capture_output=True)
-        result[name] = {n.get('name'): n.text for n in ET.fromstring(p.stdout) if n.get('name') != 'allowed'} if p.returncode == 0 else {}
-    return result
+    root = ET.fromstring(private('dev.deal.apps.rental', 'shared_prefs/rental.xml'))
+    return {n.get('name'): (n.tag, n.text, n.get('value')) for n in root if n.get('name') != 'allowed'}
 
 
 before = provider_state()
@@ -103,8 +100,10 @@ time.sleep(2)
 ordinary()
 find('Needs attention')
 screenshot('overview')
-tap('Find equipment')
-wait(lambda: any(n.get('text') == 'Equipment options' for n in ui().iter('node')))
+tap('Riders')
+tap('Boom stand', True)
+tap('View equipment options')
+wait(lambda: any(n.get('content-desc') == 'Quantity increase' for n in ui().iter('node')))
 ordinary()
 screenshot('opened')
 assert not any(n['component'] == 'ui.Option' for n in nodes(snapshot()['tree']))
@@ -139,13 +138,15 @@ shell('input','keyevent','4')
 time.sleep(.5)
 tap('Back to requirement')
 find('Boom stand')
-tap('Find equipment', True)
-wait(lambda: any(n.get('text') == 'Equipment options' for n in ui().iter('node')))
+tap('View equipment options', True)
+wait(lambda: any(n.get('content-desc') == 'Quantity increase' for n in ui().iter('node')))
 assert prop(next(n for n in nodes(snapshot()['tree']) if n['component']=='ui.IntField' and prop(n,'accessibilityLabel')['stringValue']=='Quantity'),'value')['intValue'] == 2
 shell('am','start','-S','-W','--user','0','-n',PACKAGE+'/.OrganizerActivity')
 time.sleep(2)
-tap('Find equipment')
-wait(lambda: any(n.get('text') == 'Equipment options' for n in ui().iter('node')))
+tap('Riders')
+tap('Boom stand', True)
+tap('View equipment options')
+wait(lambda: any(n.get('content-desc') == 'Quantity increase' for n in ui().iter('node')))
 assert prop(next(n for n in nodes(snapshot()['tree']) if n['component']=='ui.IntField' and prop(n,'accessibilityLabel')['stringValue']=='Quantity'),'value')['intValue'] == 1
 assert not any(n['component']=='ui.Option' for n in nodes(snapshot()['tree']))
 assert hashlib.sha256(private(PACKAGE,'shared_prefs/organizer-experience.xml').encode()).hexdigest() == source_hash

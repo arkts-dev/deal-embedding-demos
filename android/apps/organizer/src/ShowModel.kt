@@ -39,7 +39,7 @@ data class Requirement(
     val ready: Boolean get() = coverage == Coverage.Covered && verified
     val summary: String get() = when {
         coverage == Coverage.Conflict -> "Needs a decision"
-        verified -> "Checked and ready"
+        ready -> "Checked and ready"
         commitment == Commitment.Confirmed -> "Committed · check still needed"
         commitment == Commitment.Proposed -> "Awaiting approval"
         commitment == Commitment.Declined -> "Declined · still missing"
@@ -94,7 +94,7 @@ class ShowState(
     fun acts(): List<String> = requirements.map { it.act }.distinct().sorted()
     fun groups(act: String): List<String> = requirements.filter { it.act == act }.map { it.group }.distinct()
     fun groupCovered(act: String, group: String): Boolean =
-        requirements.filter { it.act == act && it.group == group && it.mandatory }.all { it.coverage == Coverage.Covered }
+        requirements.filter { it.act == act && it.group == group }.all { it.coverage == Coverage.Covered }
     fun coverage(requirement: Requirement): Coverage = when {
         requirement.dependencies.isNotEmpty() && requirement.dependencies.any { dep -> requirements.firstOrNull { it.id == dep }?.coverage != Coverage.Covered } -> Coverage.Missing
         else -> requirement.coverage

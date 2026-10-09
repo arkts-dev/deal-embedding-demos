@@ -28,6 +28,8 @@ class WorkspaceInstrumentation : Instrumentation() {
             check(dev.deal.apps.organizer.displayDates(displayTree).getJSONArray("props").getJSONObject(0).getString("stringValue") == instant)
             val plan = dev.deal.apps.organizer.ShowState.fixture(java.time.LocalDate.of(2026, 10, 10))
             check(dev.deal.apps.organizer.linkedRequirements(null, plan).isEmpty())
+            check(!plan.groupCovered("Static Bloom", "Dressing room")) { "Missing negotiable requirements must not display Complete" }
+            check(!plan.requirements.first().copy(coverage = dev.deal.apps.organizer.Coverage.Missing, verified = true).summary.contains("ready"))
             val requirementId = plan.requirements.first().id
             check(dev.deal.apps.organizer.linkedRequirements("$requirementId,missing", plan) == listOf(requirementId))
             check(dev.deal.apps.organizer.validBudget("") && dev.deal.apps.organizer.validBudget("18,50"))
@@ -51,7 +53,7 @@ class WorkspaceInstrumentation : Instrumentation() {
                 owner = "review-b"; localReview.invoke("stage", args)
                 check(JSONObject(prepared.getString("workspace.review-a", null)!!).getString("title") == "Review fixture")
                 check(JSONObject(prepared.getString("workspace.review-b", null)!!).getString("title") == "Review fixture")
-                prepared.edit().remove("workspace.review-a").remove("workspace.review-b")
+                prepared.edit().remove("workspace.review-a").remove("workspace.review-b").remove("workspace.review-a.reference").remove("workspace.review-b.reference")
                     .putString("operations", originalOperations).putString("last", originalLast).commit()
             } finally { reviewHost.close() }
             val prefs = context.getSharedPreferences("organizer-experience", 0)

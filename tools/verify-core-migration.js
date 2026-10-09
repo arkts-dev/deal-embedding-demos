@@ -105,9 +105,11 @@ function expected(sourceName,selection){
  assert((await invoke('source-repair','instruction',pairRaw)).includes(digest));
  const guidance=await invoke('generation-guidance','guidance');
  // Intentional guidance revision after real-source failures; retain exact serialization regression.
- assert.equal(crypto.createHash('sha256').update(guidance).digest('hex'),'5e98d7307d6b05afed7e5b2e832ac58d0d8241fb12de4680ba3ec10c6f5b3828','Generation guidance changed unexpectedly');
+ assert.equal(crypto.createHash('sha256').update(guidance).digest('hex'),'23606c7d059586088698c6f94676de9e5cb6d53ba7a27c400c4df18f2229d374','Generation guidance changed unexpectedly');
  assert(guidance.includes('When(state.loading)') && guidance.includes('./platform.dealui-pack'));
  assert(guidance.includes('enabled: !state.loading'));
+ assert(guidance.includes('exactly two nonempty string fields') && guidance.includes('export class State'));
+ assert(guidance.includes('Button(text: "text", enabled: true'), 'Pack boolean defaults must survive guidance composition');
  assert(guidance.includes('euro-cents') && guidance.includes('integer event payload'));
  assert(guidance.includes('Do not show module paths') && guidance.includes('Native Inspect'));
  assert(guidance.includes('onSelect: action app.Action { value: payload }'));

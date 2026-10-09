@@ -31,7 +31,7 @@ fun organizerCapabilities(context: Context, invokingWorkspace: () -> String?): N
                 .put("detail", args.getString(3)).put("price", args.getString(4)).put("deadline", args.getString(5))
             val all = JSONArray(prefs.getString("operations", "[]")); all.put(record)
             val editor = prefs.edit().putString("operations", all.toString()).putString("last", reference)
-            invokingWorkspace()?.let { id -> editor.putString("workspace.$id", record.toString()) }
+            invokingWorkspace()?.let { id -> editor.putString("workspace.$id", record.toString()).putString("workspace.$id.reference", reference) }
             check(editor.commit()) { "Cannot retain prepared selection" }
             JSONObject().put("staged", true).put("reference", reference)
         },
