@@ -208,7 +208,9 @@ for app in "${TARGETS[@]}"; do
     app_cp=$(IFS=:; echo "${app_apis[*]}")
     app_classpath_args=()
     for jar in "${profile_jars[@]}" "$KOTLIN_HOME/lib/kotlin-stdlib.jar"; do app_classpath_args+=(--classpath "$jar"); done
-    "$KOTLIN_HOME/bin/kotlinc" -Xplugin="$KOTLIN_HOME/lib/compose-compiler-plugin.jar" -jvm-target 21 -no-reflect -classpath "$ANDROID:$app_cp:$RUNTIME_CP" \
+    friend_args=()
+    [[ "$app" == tests ]] && friend_args=(-Xfriend-paths="$EMBEDDING_JAR")
+    "$KOTLIN_HOME/bin/kotlinc" "${friend_args[@]}" -Xplugin="$KOTLIN_HOME/lib/compose-compiler-plugin.jar" -jvm-target 21 -no-reflect -classpath "$ANDROID:$app_cp:$RUNTIME_CP" \
         -d "build/$app/classes" "${sources[@]}"
     jar --create --file "build/$app/app.jar" -C "build/$app/classes" .
     # The app is dexed on its own so only app code is re-done on each iteration.

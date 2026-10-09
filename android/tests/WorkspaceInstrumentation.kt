@@ -27,7 +27,7 @@ class WorkspaceInstrumentation : Instrumentation() {
             registry = CapabilityRegistry(context, CapabilityDiscovery(context) { false }, listOf(local))
             registry.grantAll()
             // Independent broker streams both start at 1; draining one must not steal another reply.
-            val a = registry.openSession(); val b = registry.openSession()
+            val a = registry.openSession(dev.deal.embedding.EmbeddingLog(context)); val b = registry.openSession(dev.deal.embedding.EmbeddingLog(context))
             fun request(id: Int) = JSONObject().put("id", id).put("module", "host/organizer").put("function", "staged").put("args", JSONArray())
             a.receive(request(1), 0); b.receive(request(1), 0)
             check(a.drain(0).single().getBoolean("ok")); check(b.drain(0).single().getBoolean("ok"))

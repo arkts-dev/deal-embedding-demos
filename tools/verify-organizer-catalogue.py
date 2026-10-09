@@ -83,7 +83,7 @@ def wait(test, seconds=240):
         if test():
             return
         time.sleep(.5)
-    raise AssertionError('Timed out; inspect private generation trace and workspace snapshot')
+    raise AssertionError('Timed out; inspect unified embedding log and workspace snapshot')
 
 
 parser = argparse.ArgumentParser(description=__doc__)

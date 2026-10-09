@@ -59,13 +59,13 @@ class SourceGenerationInstrumentation : Instrumentation() {
                     val intent = "Build a rental shortlist for the disclosed Boom stand requirement. This differs from the stock template: enforce budgetCents as the TOTAL price ceiling for quantity, as well as available >= quantity. Match boom and stand across lowercased name/specification. Show only qualifying options using ui.Option with stable equipment id as value, formatted TOTAL euro price, enabled and selected state. Load only on button Load options; no reads at initialization. Selecting an option retains it. Button Prepare for review stages the selection through host/organizer.stage with provider host/rental, original item title, detail containing Item <id>:<quantity> and both exact period strings, total price, and until as deadline. Show Prepared for native review on success; never claim a reservation. Preserve selection through staging. Provide loading/empty/error states. A retry Load options must recover after a denied read. No other capability calls. Application module filename is experience. Use explicit DEAL loops and typed field reads. Return ONLY JSON with deal and dealui strings, not markdown."
                     val real = GenerationGateway("http://127.0.0.1:8787/generate")
                     val model = object : ModelClient {
-                        override fun complete(input: String, previous: String, diagnostics: String, cancellation: GenerationCancellation): String {
+                        override fun complete(input: String, previous: String, diagnostics: String, cancellation: GenerationCancellation, log: dev.deal.embedding.EmbeddingLog): String {
                             if (input.contains("ISSUED OPTIONS\n")) {
                                 choiceCalls++
                                 return "{\"answers\":{\"purpose\":\"unavailable\",\"headline\":\"text\",\"notice\":\"none\",\"read\":\"unavailable\"}}"
                             }
                             calls++
-                            val response=real.complete(input, previous, diagnostics, cancellation)
+                            val response=real.complete(input, previous, diagnostics, cancellation, log)
                             // Explicit experiment-only private evidence, including rejected attempts.
                             File(dir, "$name-attempt-$calls.json").writeText(JSONObject().put("response", response).put("diagnostics", diagnostics).put("repair", previous.isNotEmpty()).toString())
                             return response

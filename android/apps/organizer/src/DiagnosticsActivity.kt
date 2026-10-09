@@ -35,24 +35,24 @@ class DiagnosticsActivity : ComponentActivity() {
                 while (true) {
                     entries = withContext(Dispatchers.IO) {
                         listOf("previous.jsonl", "events.jsonl").flatMap { name ->
-                            File(EmbeddingLog.directory(this@DiagnosticsActivity), name).takeIf { it.exists() }?.readLines().orEmpty()
+                            File(File(filesDir, "embedding-log"), name).takeIf { it.exists() }?.readLines().orEmpty()
                         }.mapNotNull { runCatching { JSONObject(it) }.getOrNull() }.takeLast(200).reversed()
                     }
-                    health = withContext(Dispatchers.IO) { File(EmbeddingLog.directory(this@DiagnosticsActivity), "health.json").takeIf { it.exists() }?.readText().orEmpty() }
+                    health = withContext(Dispatchers.IO) { File(File(filesDir, "embedding-log"), "health.json").takeIf { it.exists() }?.readText().orEmpty() }
                     delay(500)
                 }
             }
             LaunchedEffect(selected) {
                 detail = withContext(Dispatchers.IO) {
                     selected?.optString("artifact")?.takeIf { it.isNotEmpty() }?.let { id ->
-                        File(EmbeddingLog.directory(this@DiagnosticsActivity), "$id.json").takeIf { it.exists() }?.readText()
+                        File(File(filesDir, "embedding-log"), "$id.json").takeIf { it.exists() }?.readText()
                     } ?: "Content omitted or evicted."
                 }
             }
             Column(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding().padding(16.dp)) {
                 Text("Execution", style = MaterialTheme.typography.headlineSmall)
                 Text("Live activity · not AI reasoning", style = MaterialTheme.typography.bodyMedium)
-                if (health.isNotEmpty()) Text("Incomplete log — logger failure recorded", color = MaterialTheme.colorScheme.error)
+                if (health.isNotEmpty()) Text(if (runCatching { JSONObject(health).optBoolean("active", true) }.getOrDefault(true)) "Logger unavailable — log incomplete" else "Logger recovered — earlier log incomplete", color = MaterialTheme.colorScheme.error)
                 Row {
                     TextButton(onClick = { finish() }) { Text("Back") }
                     TextButton(onClick = { EmbeddingLog.clear(this@DiagnosticsActivity); entries = emptyList() }) { Text("Clear") }

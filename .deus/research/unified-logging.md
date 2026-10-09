@@ -2,7 +2,7 @@
 kind: research
 id: unified-logging
 created_at: 2026-10-09T10:00:00Z
-updated_at: 2026-10-09T10:00:00Z
+updated_at: 2026-10-09T12:00:00Z
 status: implemented-with-limits
 references:
   - dependencies/deal-embedding/core/logging.deal
@@ -21,7 +21,7 @@ sources:
 gaps:
   - Provider internals and build-time compiler stdout are not intercepted; only embedding-owned runtime boundaries are instrumented.
   - The console is an append stream, not a full indexed query service or replay engine.
-  - Logger failure/overflow reporting is implemented, but physical disk-full, hard process death and queue-saturation fault injection were not exercised.
+  - Storage-path failure and queue saturation were exercised; actual disk exhaustion, hard process death and sandbox-engine death were not induced.
   - Model provider exchange envelope was tested without network; no fresh real inference was spent.
   - Capture settings survive process restart until explicitly disabled; captured personal data is private but not application-layer encrypted.
   - Per-event artifacts may be evicted independently and do not provide indefinitely complete histories.
@@ -55,6 +55,16 @@ Logging instrumentation passed metadata omission, explicit captured artifacts, n
 
 Native replay of retained unchanged AI source passed editable Compose controls, real Rental reads, selection, populated native review, live Resume and cold source reopen. Provider persistence remained unchanged. The terminal export showed compiler-ui/compiler-deal, model choice/source, grants/discovery/contract and sandbox/native transport events. Captured real replay artifacts were inspected through the same stream. Execution activity was opened through native controls and its live-activity label verified. No new inference was used.
 
+# Scrutiny corrections
+
+The initial implementation retained logged/unlogged ModelClient and CapabilityHost overloads and default-empty capability identities. These were compatibility scaffolding, not essential framework behavior. They are removed: one mandatory logger-aware model method and session opening method, mandatory session identity, with fixture/host consumers migrated. Span helpers and flush are internal; child creation and filesystem directory access are private. The tests use a Kotlin friend module rather than enlarging the public API for testing.
+
+Health now records active versus recovered state and retains earlier incomplete history. Successful persistence marks recovery; console observers print changed health once, and the phone labels recovery rather than repeating an apparent current failure. An old warning is not silently deleted. Logger emission contains ordinary admission exceptions; storage failures do not invalidate the sandbox. Runtime timeout/isolate termination no longer marks the shared engine dead unless the error actually indicates SandboxDeadException.
+
+A deterministic Android test blocks the writer via test-only reflection, admits 400 events and verifies explicit queue-loss evidence. Another replaces the event file with a directory, verifies real write failures preserve a block's successful value and original exception identity, restores the path and verifies active-to-recovered health with retained loss. No production injection API was added. Existing concurrent/capture/truncation tests still pass.
+
+The development gateway sends duplicate exact provider exchanges only when capture is explicitly requested. Ordinary usage, recognized finish reason and settings remain bounded metadata. Original 256 KiB model-content rejection remains independent of the larger observation envelope; an oversized capture is omitted explicitly without rejecting valid model content. A credential-free no-network test verifies both modes, secret-header exclusion, capture omission and original content limits. The old raw gateway response/usage print path remains absent.
+
 # Remaining discipline
 
-This is an initial unified implementation, not a proof of exhaustive telemetry under every crash. Add deterministic queue/storage/engine-loss tests before relying on it as a lossless audit log. No application-layer encryption, remote telemetry backend or provider logging protocol was introduced. The event stream observes calls; it does not route transport or authorize capabilities. Keep full capture off outside explicit debugging and clear sensitive history afterward.
+This is an initial unified implementation, not a proof of exhaustive telemetry under every crash. Add deterministic engine-loss tests before relying on it as a lossless audit log. No application-layer encryption, remote telemetry backend or provider logging protocol was introduced. The event stream observes calls; it does not route transport or authorize capabilities. Keep full capture off outside explicit debugging and clear sensitive history afterward.

@@ -28,7 +28,22 @@ def infer(body):
         data=json.loads(response.read(2*1024*1024))
     content=data['choices'][0]['message']['content']
     if not isinstance(content,str): raise ValueError('No text result')
-    return json.dumps({'content':content, 'model':MODEL, 'request':payload, 'response':data}).encode()
+    if len(content.encode()) > 256*1024: raise ValueError('Model content limit')
+    usage=data.get('usage') or {}
+    def count(value): return value if type(value) is int and 0<=value<=2147483647 else None
+    finish=data['choices'][0].get('finish_reason')
+    metadata={'in':count(usage.get('prompt_tokens')), 'out':count(usage.get('completion_tokens')),
+              'cached':count((usage.get('prompt_tokens_details') or {}).get('cached_tokens')),
+              'finish':finish if finish in ('stop','length','content_filter','tool_calls') else 'unknown',
+              'temperature':0.2, 'max_tokens':8192}
+    result={'content':content, 'model':MODEL, 'metadata':metadata}
+    if body['capture']: result.update(request=payload, response=data)
+    encoded=json.dumps(result).encode()
+    if len(encoded)>2*1024*1024 and body['capture']:
+        # Observation must not reject otherwise valid model content.
+        del result['request']; del result['response']; result['captureOmitted']=True
+        encoded=json.dumps(result).encode()
+    return encoded
 class Handler(http.server.BaseHTTPRequestHandler):
     def log_message(self,*args): pass
     def do_POST(self):
@@ -37,7 +52,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
             length=int(self.headers.get('Content-Length','0'))
             if not 0<length<=256*1024: raise ValueError('Request limit')
             body=json.loads(self.rfile.read(length))
-            if set(body)!={'input','previous','diagnostics'} or not all(isinstance(v,str) for v in body.values()): raise ValueError('Invalid request')
+            if set(body)!={'input','previous','diagnostics','capture'} or not all(isinstance(body[v],str) for v in ('input','previous','diagnostics')) or type(body['capture']) is not bool: raise ValueError('Invalid request')
             output=POOL.submit(infer,body).result(timeout=450)
             if len(output)>2*1024*1024: raise ValueError('Output limit')
             self.send_response(200); self.send_header('Content-Type','application/json'); self.send_header('Content-Length',str(len(output))); self.end_headers(); self.wfile.write(output)

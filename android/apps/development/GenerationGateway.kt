@@ -18,11 +18,10 @@ import java.net.Socket
 class GenerationGateway(private val endpoint: String) : ModelClient {
     init { require(endpoint == "http://127.0.0.1:8787/generate") { "Development gateway must use loopback forwarding" } }
 
-    override fun complete(input: String, previous: String, diagnostics: String, cancellation: GenerationCancellation): String = exchange(input, previous, diagnostics, cancellation, null)
-    override fun completeLogged(input: String, previous: String, diagnostics: String, cancellation: GenerationCancellation, log: EmbeddingLog): String = exchange(input, previous, diagnostics, cancellation, log)
-    private fun exchange(input: String, previous: String, diagnostics: String, cancellation: GenerationCancellation, log: EmbeddingLog?): String {
+    override fun complete(input: String, previous: String, diagnostics: String, cancellation: GenerationCancellation, log: EmbeddingLog): String {
         cancellation.check()
-        val body = JSONObject().put("input", input).put("previous", previous).put("diagnostics", diagnostics).toString().toByteArray()
+        val capture = log.capturesContent
+        val body = JSONObject().put("input", input).put("previous", previous).put("diagnostics", diagnostics).put("capture", capture).toString().toByteArray()
         val socket = Socket()
         val registration = cancellation.onCancel { runCatching { socket.close() } }
         try {
@@ -47,15 +46,22 @@ class GenerationGateway(private val endpoint: String) : ModelClient {
             check(headerEnd > 0) { "Malformed gateway response" }
             val statusLine = text.substringBefore("\r\n")
             val status = statusLine.split(' ').getOrNull(1)?.trim()?.toIntOrNull() ?: 0
-            log?.event("transport", "response", target = "development gateway", code = "HTTP_$status")
+            log.event("transport", "response", target = "development gateway", code = "HTTP_$status")
             check(status == 200) { "Generation gateway unavailable ($status)" }
             val payload = raw.copyOfRange(headerEnd + 4, raw.size)
             cancellation.check()
             require(payload.size <= 2 * 1024 * 1024) { "Gateway response too large" }
             val envelope = JSONObject(payload.toString(Charsets.UTF_8))
-            log?.event("model-provider", "completed", target = envelope.getString("model"), detail = envelope.getJSONObject("request").toString())
-            log?.event("model-provider", "response", target = envelope.getString("model"), detail = envelope.getJSONObject("response").toString())
-            return envelope.getString("content")
+            val content = envelope.getString("content")
+            require(content.toByteArray(Charsets.UTF_8).size <= 256 * 1024) { "Model content too large" }
+            // Typed, content-free provider facts remain available when full capture is disabled.
+            log.event("model-provider", "completed", target = envelope.getString("model") + " " + envelope.getJSONObject("metadata").toString())
+            if (envelope.optBoolean("captureOmitted")) log.event("model-provider", "omitted", code = "CAPTURE_LIMIT", target = envelope.getString("model"))
+            else if (capture) {
+                log.event("model-provider", "request", target = envelope.getString("model"), detail = envelope.getJSONObject("request").toString())
+                log.event("model-provider", "response", target = envelope.getString("model"), detail = envelope.getJSONObject("response").toString())
+            }
+            return content
         } finally { registration.close(); runCatching { socket.close() } }
     }
 }

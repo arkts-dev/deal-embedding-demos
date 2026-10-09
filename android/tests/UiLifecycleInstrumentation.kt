@@ -15,6 +15,7 @@ class UiLifecycleInstrumentation : Instrumentation() {
         try {
             val contract = CapabilityContract("host/work", "Controlled lifecycle fixture", listOf(CapabilityFunction("run", "Deferred integer", listOf(CapabilityParameter("value", CapabilityType.IntType)), CapabilityType.IntType)))
             class Stream : CapabilitySession {
+                override val identity = java.util.UUID.randomUUID().toString()
                 val requests = mutableListOf<JSONObject>()
                 val replies = mutableListOf<JSONObject>()
                 var closed = false
@@ -29,7 +30,7 @@ class UiLifecycleInstrumentation : Instrumentation() {
                 override fun close() { closed = true; replies.clear() }
             }
             val streams = mutableListOf<Stream>()
-            val broker = object : CapabilityHost { override fun openSession(): CapabilitySession = Stream().also { streams.add(it) } }
+            val broker = object : CapabilityHost { override fun openSession(log: dev.deal.embedding.EmbeddingLog): CapabilitySession = Stream().also { streams.add(it) } }
             val source = ExperienceSource(context.assets.open("ui-lifecycle/app.deal").bufferedReader().use { it.readText() }, context.assets.open("ui-lifecycle/app.dealui").bufferedReader().use { it.readText() })
             runtime = ExperienceRuntime(targetContext, broker, EmbeddingConfig("app", listOf(contract), "ui-lifecycle-test"))
             val host = runtime

@@ -45,7 +45,7 @@ class EditableRentalInstrumentation : Instrumentation() {
                 val digest=MessageDigest.getInstance("SHA-256").digest(("${deal.codePointCount(0,deal.length)}:$deal${ui.codePointCount(0,ui.length)}:$ui").toByteArray(Charsets.UTF_8)).joinToString("") { "%02x".format(it) }
                 var syntheticCalls=0
                 val synthetic=object: ModelClient {
-                    override fun complete(input: String, previous: String, diagnostics: String, cancellation: GenerationCancellation): String {
+                    override fun complete(input: String, previous: String, diagnostics: String, cancellation: GenerationCancellation, log: dev.deal.embedding.EmbeddingLog): String {
                         syntheticCalls++
                         if(syntheticCalls==1) return "invalid choice"
                         if(syntheticCalls==2) return JSONObject().put("deal",deal).put("dealui",ui).toString()
@@ -69,11 +69,11 @@ class EditableRentalInstrumentation : Instrumentation() {
                 try {
                     if(mode=="real") { check(!runFile.exists()) { "Already attempted; no automatic inference repetition" }; runFile.writeText("started") }
                     val model=object: ModelClient {
-                        override fun complete(input: String, previous: String, diagnostics: String, cancellation: GenerationCancellation): String {
+                        override fun complete(input: String, previous: String, diagnostics: String, cancellation: GenerationCancellation, log: dev.deal.embedding.EmbeddingLog): String {
                             if(input.contains("ISSUED OPTIONS\n")) return "{\"answers\":{\"purpose\":\"unavailable\",\"headline\":\"text\",\"notice\":\"none\",\"read\":\"unavailable\"}}"
                             val used=budget.getInt("calls",0); check(used<24) { "Initial inference ceiling reached" }
                             check(budget.edit().putInt("calls",used+1).commit());calls++
-                            val response=GenerationGateway("http://127.0.0.1:8787/generate").complete(input,previous,diagnostics,cancellation)
+                            val response=GenerationGateway("http://127.0.0.1:8787/generate").complete(input,previous,diagnostics,cancellation,log)
                             File(dir,"$task-attempt-$calls.json").writeText(JSONObject().put("response",response).put("diagnostics",diagnostics).put("repair",previous.isNotEmpty()).toString())
                             return response
                         }

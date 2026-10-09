@@ -64,25 +64,25 @@ class GenerationInstrumentation : Instrumentation() {
             val before = host.remembered()!!
             var repairCalls = 0; var observedDiagnostics = ""
             val repairModel = object : ModelClient {
-                override fun complete(input: String, previous: String, diagnostics: String, cancellation: GenerationCancellation): String {
+                override fun complete(input: String, previous: String, diagnostics: String, cancellation: GenerationCancellation, log: dev.deal.embedding.EmbeddingLog): String {
                     repairCalls++
                     if (repairCalls == 1) return JSONObject().put("answers", JSONObject().put("purpose", "unavailable").put("headline", "text").put("notice", "none").put("read", "unavailable")).toString()
                     if (repairCalls == 2) return JSONObject().put("deal", "export function main(): null { return 7; }").put("dealui", "broken").toString()
                     observedDiagnostics = diagnostics
                     // A real model receives the failure and supplies the repaired source.
-                    return real.complete(input, previous, diagnostics, cancellation)
+                    return real.complete(input, previous, diagnostics, cancellation, log)
                 }
             }
             host.generate("Build an interactive counter headed REPAIR LAB. Button Add one increments by 1 from 0.", "{}", repairModel, GenerationCancellation()) {}.use {
                 check(it.attempts >= 2 && observedDiagnostics.contains("code")); host.activate(it)
             }
             var failedCalls = 0
-            val failingModel = object : ModelClient { override fun complete(input: String, previous: String, diagnostics: String, cancellation: GenerationCancellation): String { failedCalls++; return "invalid" } }
+            val failingModel = object : ModelClient { override fun complete(input: String, previous: String, diagnostics: String, cancellation: GenerationCancellation, log: dev.deal.embedding.EmbeddingLog): String { failedCalls++; return "invalid" } }
             val stable = host.remembered()!!; val stableTree = host.poll()!!.toString()
             check(runCatching { host.generate("Test failure", "{}", failingModel, GenerationCancellation()) {} }.isFailure)
             check(failedCalls == 3 && host.remembered() == stable && host.poll()!!.toString() == stableTree)
             val token = GenerationCancellation()
-            val cancelModel = object : ModelClient { override fun complete(input: String, previous: String, diagnostics: String, cancellation: GenerationCancellation): String { cancellation.cancel(); cancellation.check(); return "" } }
+            val cancelModel = object : ModelClient { override fun complete(input: String, previous: String, diagnostics: String, cancellation: GenerationCancellation, log: dev.deal.embedding.EmbeddingLog): String { cancellation.cancel(); cancellation.check(); return "" } }
             check(runCatching { host.generate("Test cancellation", "{}", cancelModel, token) {} }.exceptionOrNull() is CancellationException)
             check(host.remembered() == stable && host.poll()!!.toString() == stableTree)
             val unauthorized = before.copy(deal = "import * as forbidden from \"embedding/model\";\n" + before.deal + "\nexport async function illicit(): string { return await forbidden.complete(\"\", \"\", \"\"); }")

@@ -24,6 +24,7 @@ if a.artifact:
  print(data if data else 'Artifact unavailable (omitted, evicted or logger failure).')
  raise SystemExit
 seen=set()
+last_health=None
 try:
  while True:
   for line in (read('previous.jsonl')+'\n'+read('events.jsonl')).splitlines():
@@ -38,7 +39,11 @@ try:
     icon={'started':'→','completed':'✓','failed':'!','cancelled':'×'}.get(e['outcome'],'·')
     print(f"{icon} {e['trace'][:8]} {e['summary']} {e['code']} {e['durationMs']}ms [{e['span']}]"+(f" artifact={e['artifact']} ({e['content']})" if e['artifact'] else ''),flush=True)
   health=read('health.json')
-  if health:print('LOGGER HEALTH '+health,flush=True)
+  if health and health != last_health:
+   try: state='ACTIVE' if json.loads(health).get('active',True) else 'RECOVERED (earlier log incomplete)'
+   except ValueError: state='UNREADABLE'
+   print('LOGGER HEALTH '+state+' '+health,flush=True)
+  last_health=health
   if not a.follow:break
   time.sleep(.3)
 except KeyboardInterrupt:pass

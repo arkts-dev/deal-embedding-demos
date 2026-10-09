@@ -72,7 +72,7 @@ class CatalogueInstrumentation : Instrumentation() {
             for (purpose in listOf("compare", "choose")) for (headline in listOf("hero", "text")) for (notice in listOf("warning", "none")) {
                 var calls = 0
                 val model = object : ModelClient {
-                    override fun complete(input: String, previous: String, diagnostics: String, cancellation: GenerationCancellation): String {
+                    override fun complete(input: String, previous: String, diagnostics: String, cancellation: GenerationCancellation, log: dev.deal.embedding.EmbeddingLog): String {
                         calls++
                         check(input.contains("ISSUED OPTIONS") && previous.isEmpty() && diagnostics.isEmpty()) { "Unexpected source repair: $diagnostics" }
                         return JSONObject().put("answers", JSONObject().put("purpose", purpose).put("headline", headline).put("notice", notice).put("read", "read0")).toString()
@@ -99,7 +99,7 @@ class CatalogueInstrumentation : Instrumentation() {
                 .put("specification", "Specs \"x\" / \\ \n \t").put("quantity", 128).put("searchTerms", JSONArray(listOf("ÄBC", "İ", "BOOM"))).toString()
             var escapedCalls = 0
             val escapedModel = object : ModelClient {
-                override fun complete(input: String, previous: String, diagnostics: String, cancellation: GenerationCancellation): String {
+                override fun complete(input: String, previous: String, diagnostics: String, cancellation: GenerationCancellation, log: dev.deal.embedding.EmbeddingLog): String {
                     escapedCalls++
                     return "{\"answers\":{\"purpose\":\"compare\",\"headline\":\"text\",\"notice\":\"warning\",\"read\":\"read0\"}}"
                 }
@@ -112,7 +112,7 @@ class CatalogueInstrumentation : Instrumentation() {
             for (unsupported in listOf("unavailable", "read999")) {
                 var calls = 0
                 val model = object : ModelClient {
-                    override fun complete(input: String, previous: String, diagnostics: String, cancellation: GenerationCancellation): String {
+                    override fun complete(input: String, previous: String, diagnostics: String, cancellation: GenerationCancellation, log: dev.deal.embedding.EmbeddingLog): String {
                         calls++
                         if (calls == 1) return JSONObject().put("answers", JSONObject().put("purpose", "compare").put("headline", "text").put("notice", "none").put("read", unsupported)).toString()
                         check(calls == 2 && diagnostics.contains("CHOICE_") && previous.isEmpty())
@@ -136,7 +136,7 @@ class CatalogueInstrumentation : Instrumentation() {
                 try {
                     var calls = 0
                     val model = object : ModelClient {
-                        override fun complete(input: String, previous: String, diagnostics: String, cancellation: GenerationCancellation): String {
+                        override fun complete(input: String, previous: String, diagnostics: String, cancellation: GenerationCancellation, log: dev.deal.embedding.EmbeddingLog): String {
                             calls++
                             if (calls == 1) {
                                 val issued = JSONObject(input.substringAfter("ISSUED OPTIONS\n"))
@@ -155,7 +155,7 @@ class CatalogueInstrumentation : Instrumentation() {
             // Slow-path repair is deterministic: reject malformed source, then check and mount the saved valid pair.
             var sourceCalls = 0
             val repairing = object : ModelClient {
-                override fun complete(input: String, previous: String, diagnostics: String, cancellation: GenerationCancellation): String {
+                override fun complete(input: String, previous: String, diagnostics: String, cancellation: GenerationCancellation, log: dev.deal.embedding.EmbeddingLog): String {
                     sourceCalls++
                     if (sourceCalls == 1) return "invalid choice"
                     if (sourceCalls == 2) { check(previous.isEmpty() && diagnostics.contains("CHOICE_JSON")); return JSONObject().put("deal", "broken").put("dealui", "broken").toString() }
@@ -172,7 +172,7 @@ class CatalogueInstrumentation : Instrumentation() {
             for (invalid in invalidEnvelopes) {
                 var calls = 0
                 val model = object : ModelClient {
-                    override fun complete(input: String, previous: String, diagnostics: String, cancellation: GenerationCancellation): String {
+                    override fun complete(input: String, previous: String, diagnostics: String, cancellation: GenerationCancellation, log: dev.deal.embedding.EmbeddingLog): String {
                         calls++
                         if (calls == 1) return "invalid choice"
                         if (calls == 2) return invalid
@@ -185,21 +185,21 @@ class CatalogueInstrumentation : Instrumentation() {
             val (retained, retainedTree) = host.check(source!!).use { host.open("Retained during generation failure", it) }
             var exhaustedCalls = 0
             val exhausted = object : ModelClient {
-                override fun complete(input: String, previous: String, diagnostics: String, cancellation: GenerationCancellation): String { exhaustedCalls++; return "invalid" }
+                override fun complete(input: String, previous: String, diagnostics: String, cancellation: GenerationCancellation, log: dev.deal.embedding.EmbeddingLog): String { exhaustedCalls++; return "invalid" }
             }
             val rejection = runCatching { host.generate("Exhaustion fixture", disclosed, exhausted, GenerationCancellation()) {} }.exceptionOrNull()
             check(rejection is GenerationRejected && rejection.reason == GenerationRejected.Reason.REPEATED_RESPONSE && rejection.attempts == 2)
             check(exhaustedCalls == 3 && host.poll(retained.id)!!.toString() == retainedTree.toString()) { "Source exhaustion changed the healthy workspace" }
             var limitedCalls = 0
             val limited = object : ModelClient {
-                override fun complete(input: String, previous: String, diagnostics: String, cancellation: GenerationCancellation): String { limitedCalls++; return "invalid-$limitedCalls" }
+                override fun complete(input: String, previous: String, diagnostics: String, cancellation: GenerationCancellation, log: dev.deal.embedding.EmbeddingLog): String { limitedCalls++; return "invalid-$limitedCalls" }
             }
             val limit = runCatching { host.generate("Distinct exhaustion fixture", disclosed, limited, GenerationCancellation()) {} }.exceptionOrNull()
             check(limit is GenerationRejected && limit.reason == GenerationRejected.Reason.ATTEMPT_LIMIT && limit.attempts == 3 && limitedCalls == 4)
             check(host.poll(retained.id)!!.toString() == retainedTree.toString())
             var failureCalls = 0
             val transportFailure = object : ModelClient {
-                override fun complete(input: String, previous: String, diagnostics: String, cancellation: GenerationCancellation): String {
+                override fun complete(input: String, previous: String, diagnostics: String, cancellation: GenerationCancellation, log: dev.deal.embedding.EmbeddingLog): String {
                     failureCalls++; error("Injected inference transport failure")
                 }
             }
@@ -209,7 +209,7 @@ class CatalogueInstrumentation : Instrumentation() {
             // Valid envelope, oversized source: native resource enforcement must stop, not repair.
             var resourceCalls = 0
             val oversized = object : ModelClient {
-                override fun complete(input: String, previous: String, diagnostics: String, cancellation: GenerationCancellation): String {
+                override fun complete(input: String, previous: String, diagnostics: String, cancellation: GenerationCancellation, log: dev.deal.embedding.EmbeddingLog): String {
                     resourceCalls++
                     if (resourceCalls == 1) return "invalid choice"
                     return JSONObject().put("deal", "x".repeat(128 * 1024 + 1)).put("dealui", "x").toString()
@@ -223,7 +223,7 @@ class CatalogueInstrumentation : Instrumentation() {
             try {
                 var calls = 0
                 val model = object : ModelClient {
-                    override fun complete(input: String, previous: String, diagnostics: String, cancellation: GenerationCancellation): String {
+                    override fun complete(input: String, previous: String, diagnostics: String, cancellation: GenerationCancellation, log: dev.deal.embedding.EmbeddingLog): String {
                         calls++
                         return JSONObject().put("answers", JSONObject().put("purpose", "compare").put("headline", "text").put("notice", "none").put("read", "read0")).toString()
                     }
@@ -264,9 +264,9 @@ class CatalogueInstrumentation : Instrumentation() {
             check(prepared!!.getString(3).contains("stand:1") && prepared!!.getString(3).contains(from) && prepared!!.getString(4) == "€8.00" && prepared!!.getString(5) == until)
             host.published(workspace.id, host.poll(workspace.id)!!.getInt("version"))
             EmbeddingLog.flush(context)
-            val receiptsFile = java.io.File(EmbeddingLog.directory(context), "events.jsonl")
+            val receiptsFile = java.io.File(context.filesDir, "embedding-log/events.jsonl")
             // A run can straddle the bounded rotation; inspect both retained pages.
-            val previousReceipts = java.io.File(EmbeddingLog.directory(context), "previous.jsonl")
+            val previousReceipts = java.io.File(context.filesDir, "embedding-log/previous.jsonl")
             val receipts = (if (previousReceipts.exists()) previousReceipts.readLines() else emptyList())
                 .plus(receiptsFile.readLines()).map { JSONObject(it) }
             val mount = receipts.last { it.optString("workspace") == workspace.id && it.getString("stage") == "mount" }
