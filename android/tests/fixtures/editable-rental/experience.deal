@@ -256,7 +256,7 @@ export async function loadOptions(state: State, action: Load): Loaded {
         }
         return { items: items, error: "" };
     } catch (e) {
-        return { items: [], error: "Could not load options: " + e.message };
+        return { items: [], error: "Couldn’t load equipment. Check sharing in the Rental app, then try again." };
     }
 }
 
@@ -329,7 +329,7 @@ export async function prepareForReview(state: State, action: Prepare): Prepared 
         }
         return { staged: true, error: "" };
     } catch (e) {
-        return { staged: false, error: "Could not prepare for review: " + e.message };
+        return { staged: false, error: "Couldn’t prepare your selection. Please try again." };
     }
 }
 

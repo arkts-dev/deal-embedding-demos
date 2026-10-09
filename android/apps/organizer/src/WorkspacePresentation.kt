@@ -46,8 +46,8 @@ fun workspacePresentation(origin: WorkspaceOrigin, attempts: Int): WorkspacePres
 fun compactGenerationStatus(status: String): String {
     return when {
         status.startsWith("Checking") -> "Checking…"
-        status.startsWith("AI writing") -> if (status.contains("attempt 1 of")) "Building…" else "Refining…"
-        status.startsWith("Finding") -> "Choosing template…"
+        status.startsWith("AI writing") -> "Getting your options ready…"
+        status.startsWith("Finding") -> "Preparing options…"
         status.startsWith("Opening") -> "Opening…"
         else -> "Connecting…"
     }
@@ -55,8 +55,8 @@ fun compactGenerationStatus(status: String): String {
 data class GenerationProblem(val title: String, val explanation: String)
 fun generationProblem(error: Throwable): GenerationProblem = when {
     error is CancellationException -> GenerationProblem("Cancelled", "Your existing workspace and plan are unchanged. Nothing was reserved by generation.")
-    error is GenerationRejected && error.reason == GenerationRejected.Reason.ATTEMPT_LIMIT -> GenerationProblem("Couldn’t build", "The code did not pass checks within ${error.attempts} source attempts. Your existing workspace and plan are unchanged. Nothing was reserved by generation.")
-    error is GenerationRejected && error.reason == GenerationRejected.Reason.REPEATED_RESPONSE -> GenerationProblem("Couldn’t build", "The AI repeated a rejected response, so generation stopped after ${error.attempts} source attempts. Your existing workspace and plan are unchanged. Nothing was reserved by generation.")
-    error is GenerationRejected -> GenerationProblem("Template unavailable", "The predefined template did not pass checks. Your existing workspace and plan are unchanged. Nothing was reserved by generation.")
-    else -> GenerationProblem("Couldn’t build", "Generation or checking was interrupted. Your existing workspace and plan are unchanged. Nothing was reserved by generation.")
+    error is GenerationRejected && error.reason == GenerationRejected.Reason.ATTEMPT_LIMIT -> GenerationProblem("Couldn’t prepare options", "The code did not pass checks within ${error.attempts} source attempts. Your existing workspace and plan are unchanged. Nothing was reserved by generation.")
+    error is GenerationRejected && error.reason == GenerationRejected.Reason.REPEATED_RESPONSE -> GenerationProblem("Couldn’t prepare options", "The AI repeated a rejected response, so generation stopped after ${error.attempts} source attempts. Your existing workspace and plan are unchanged. Nothing was reserved by generation.")
+    error is GenerationRejected -> GenerationProblem("Options unavailable", "The predefined template did not pass checks. Your existing workspace and plan are unchanged. Nothing was reserved by generation.")
+    else -> GenerationProblem("Couldn’t prepare options", "Generation or checking was interrupted. Your existing workspace and plan are unchanged. Nothing was reserved by generation.")
 }

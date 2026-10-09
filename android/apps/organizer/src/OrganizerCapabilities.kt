@@ -8,8 +8,7 @@ import org.json.*
  * The Organizer publishes exactly one capability to generated workspaces: the preparation path.
  * It stages a descriptor for native review and performs no write.
  */
-fun organizerCapabilities(context: Context): NativeCapabilities {
-    val store = ShowStore(context)
+fun organizerCapabilities(context: Context, invokingWorkspace: () -> String?): NativeCapabilities {
     val contract = CapabilityContract("host/organizer", "Stage a prepared operation for native review; never a write", listOf(
         CapabilityFunction("stage", "Prepare one operation for the organizer to confirm natively", listOf(
             CapabilityParameter("kind", CapabilityType("string", maximum = 64)),
@@ -31,7 +30,9 @@ fun organizerCapabilities(context: Context): NativeCapabilities {
             val record = JSONObject().put("kind", args.getString(0)).put("provider", args.getString(1)).put("title", args.getString(2))
                 .put("detail", args.getString(3)).put("price", args.getString(4)).put("deadline", args.getString(5))
             val all = JSONArray(prefs.getString("operations", "[]")); all.put(record)
-            prefs.edit().putString("operations", all.toString()).putString("last", reference).commit()
+            val editor = prefs.edit().putString("operations", all.toString()).putString("last", reference)
+            invokingWorkspace()?.let { id -> editor.putString("workspace.$id", record.toString()) }
+            check(editor.commit()) { "Cannot retain prepared selection" }
             JSONObject().put("staged", true).put("reference", reference)
         },
         "staged" to { _ -> JSONArray(context.getSharedPreferences("prepared", 0).getString("operations", "[]")) },

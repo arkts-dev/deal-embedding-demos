@@ -22,7 +22,6 @@ import androidx.compose.ui.unit.dp
 import dev.deal.embedding.*
 import dev.deal.shell.*
 import org.json.JSONObject
-import java.time.LocalDate
 import java.util.concurrent.Executors
 import java.util.concurrent.CancellationException
 
@@ -45,10 +44,8 @@ class OrganizerActivity : ComponentActivity() {
         var status by mutableStateOf("")
         var problem by mutableStateOf<GenerationProblem?>(null)
         var saved by mutableStateOf<List<SavedWorkspace>>(emptyList())
-        var mountedIds by mutableStateOf<Set<String>>(emptySet())
         var opening by mutableStateOf(false)
         var openError by mutableStateOf("")
-        var shelfVisible by mutableStateOf(false)
         var open by mutableStateOf<LiveWorkspace?>(null)
         val activeWorkspace = java.util.concurrent.atomic.AtomicReference<String?>(null)
         var publishedVersion = -1
@@ -57,6 +54,12 @@ class OrganizerActivity : ComponentActivity() {
         var fault by mutableStateOf("")
         var review by mutableStateOf(false)
         var chooseBuildRequirement by mutableStateOf(false)
+        var returnRequirement by mutableStateOf<String?>(null)
+        var inspectionRequest by mutableStateOf("")
+        var inspectionStartedAt by mutableStateOf(0L)
+        var inspectionError by mutableStateOf("")
+        var currentPrepared by mutableStateOf(false)
+        var currentSelection by mutableStateOf<JSONObject?>(null)
         val links = getSharedPreferences("organizer-workspace-links", 0)
         fun requirementKey(id: String): String {
             val r = show!!.requirement(id)!!
@@ -73,6 +76,9 @@ class OrganizerActivity : ComponentActivity() {
             runOnUiThread {
                 if (!isDestroyed && activeWorkspace.get() == id) {
                     tree = snapshot.getJSONObject("tree"); fault = snapshot.optString("fault")
+                    val preparedPrefs = getSharedPreferences("prepared", 0)
+                    currentSelection = preparedPrefs.getString("workspace.$id", null)?.let { JSONObject(it) }
+                    currentPrepared = currentSelection != null
                     worker.execute { host.environment().published(id, snapshot.getInt("version")) }
                 }
             }
@@ -84,13 +90,16 @@ class OrganizerActivity : ComponentActivity() {
         worker.scheduleWithFixedDelay({
             try {
                 for (workspace in host.mountedWorkspaces()) {
-                        try { host.environment().poll(workspace.id)?.let { publish(workspace.id, it) } }
+                        try { host.inWorkspace(workspace.id) { host.environment().poll(workspace.id) }?.let { publish(workspace.id, it) } }
                         catch (error: Throwable) { reportFailure(workspace.id, "poll", error); activeWorkspace.compareAndSet(workspace.id, null) }
                 }
             } catch (error: Throwable) { activeWorkspace.get()?.let { reportFailure(it, "poll", error) }; activeWorkspace.set(null) }
         }, 100, 100, java.util.concurrent.TimeUnit.MILLISECONDS)
         fun openSaved(id: String) {
-            opening = true; openError = ""
+            if (opening || generating) return
+            opening = true; openError = ""; inspectionError = ""
+            currentPrepared = false; currentSelection = null
+            inspectionStartedAt = 0L; inspectionRequest = ""
             worker.execute {
                 try {
                     host.prepare()
@@ -98,10 +107,35 @@ class OrganizerActivity : ComponentActivity() {
                     activeWorkspace.set(workspace.id); publishedVersion = -1
                     java.io.File(filesDir, "workspace-error.txt").delete()
                     publish(workspace.id, snapshot)
-                    runOnUiThread { if (!isDestroyed) { open = workspace; mountedIds = mountedIds + workspace.id; request = null; review = false; problem = null; opening = false; shelfVisible = false } }
+                    runOnUiThread { if (!isDestroyed) { open = workspace; request = null; review = false; problem = null; opening = false } }
                 } catch (error: Throwable) {
                     log.event("host", "failed", code = error.javaClass.simpleName, target = "reopen")
-                    runOnUiThread { if (!isDestroyed) { opening = false; openError = "Couldn’t open. Saved workspace kept."; shelfVisible = true } }
+                    runOnUiThread { if (!isDestroyed) { opening = false; openError = "Couldn’t open your options. They have been kept."; inspectionError = error.javaClass.simpleName + ": " + error.message } }
+                }
+            }
+        }
+        val inspect = registerForActivityResult(androidx.activity.result.contract.ActivityResultContracts.StartActivityForResult()) { result ->
+            if (result.resultCode == RESULT_OK && !generating && !opening) {
+                result.data?.getStringExtra("openWorkspace")?.let { id ->
+                    returnRequirement = linkedRequirements(links.getString("requirements.$id", null), show ?: return@let).firstOrNull()
+                    openSaved(id)
+                }
+                result.data?.getStringExtra("deleteWorkspace")?.let { id ->
+                    opening = true
+                    worker.execute {
+                        try {
+                            host.environment().forgetWorkspace(id)
+                            val entries = host.environment().savedWorkspaces()
+                            activeWorkspace.compareAndSet(id, null)
+                            val editor = links.edit().remove("requirements.$id")
+                            links.all.filterValues { it == id }.keys.forEach { editor.remove(it) }
+                            check(editor.commit()) { "Cannot remove assistance link" }
+                            runOnUiThread { saved = entries; if (open?.id == id) open = null; opening = false }
+                        } catch (error: Throwable) {
+                            log.event("storage", "failed", workspace = id, code = error.javaClass.simpleName)
+                            runOnUiThread { opening = false; openError = "Couldn’t delete your options." }
+                        }
+                    }
                 }
             }
         }
@@ -118,57 +152,63 @@ class OrganizerActivity : ComponentActivity() {
                 var destination by remember { mutableStateOf(Destination.Overview) }
                 var selectedAct by remember { mutableStateOf<String?>(null) }
                 var selectedRequirement by remember { mutableStateOf<String?>(null) }
-                BackHandler(enabled = generating || opening || request != null || review || open != null || shelfVisible) {
+                fun findEquipment(id: String) {
+                    if (generating || opening) return
+                    selectedRequirement = id; returnRequirement = id
+                    problem = null; status = ""; openError = ""; inspectionRequest = ""; inspectionStartedAt = 0L; inspectionError = ""
+                    val retained = links.getString(requirementKey(id), null)
+                    if (retained != null && saved.any { it.id == retained }) openSaved(retained) else request = listOf(id)
+                }
+                BackHandler(enabled = generating || opening || request != null || review || open != null || selectedRequirement != null) {
                     when {
                         generating -> runningGeneration?.cancel()
                         opening -> Unit // Do not abandon a mount halfway through publication.
                         request != null -> { request = null; problem = null }
                         review -> review = false
-                        open != null -> { activeWorkspace.set(null); open = null; shelfVisible = true }
-                        else -> shelfVisible = false
+                        open != null -> { activeWorkspace.set(null); open = null; selectedRequirement = returnRequirement }
+                        else -> { selectedRequirement = null; returnRequirement = null }
                     }
                 }
-                AuroraBackdrop(Modifier.fillMaxSize()) {
+                Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
                     Scaffold(
-                        containerColor = Color.Transparent,
+                        containerColor = MaterialTheme.colorScheme.background,
                         topBar = {
                             Column {
-                                OrganizerTopBar(show, onReset = { store.clear(); show = null }, onInitialize = { show = store.initialize() })
-                                Row {
-                                    if (!generating && !opening) TextButton(onClick = { shelfVisible = !shelfVisible }) { Icon(Icons.Outlined.Dashboard, null); Spacer(Modifier.width(6.dp)); Text("Workspaces · ${saved.size}") }
-                                    TextButton(onClick = { startActivity(android.content.Intent(this@OrganizerActivity, DiagnosticsActivity::class.java)) }) { Icon(Icons.Outlined.Timeline, null); Spacer(Modifier.width(6.dp)); Text("Execution") }
-                                }
+                                OrganizerTopBar(show, onInitialize = { show = store.initialize() }, onInspect = {
+                                    val engineering = android.content.Intent(this@OrganizerActivity, DiagnosticsActivity::class.java)
+                                    if (request == null) open?.let { engineering.putExtra("workspace", it.id) }
+                                    engineering.putExtra("since", inspectionStartedAt)
+                                    engineering.putExtra("request", inspectionRequest)
+                                    engineering.putExtra("error", if (fault.isNotEmpty() && open != null && request == null) fault else inspectionError)
+                                    engineering.putExtra("busy", generating || opening)
+                                    engineering.putExtra("context", if (generating) "Preparing equipment options" else request?.mapNotNull { show?.requirement(it)?.name }?.joinToString() ?: returnRequirement?.let { show?.requirement(it)?.name } ?: "Event activity")
+                                    inspect.launch(engineering)
+                                })
                             }
                         },
                         bottomBar = {
                             if (show != null) NavigationBar(containerColor = MaterialTheme.colorScheme.surface) {
                                 Destination.entries.forEach { item ->
-                                    NavigationBarItem(selected = destination == item, onClick = { if (!generating && !opening) { destination = item; selectedRequirement = null; activeWorkspace.set(null); open = null; review = false; shelfVisible = false } }, icon = { Icon(item.icon, null) }, label = { Text(item.label) })
+                                    NavigationBarItem(selected = destination == item, enabled = !generating && !opening, onClick = { destination = item; selectedRequirement = null; returnRequirement = null; activeWorkspace.set(null); open = null; review = false }, icon = { Icon(item.icon, null) }, label = { Text(item.label) })
                                 }
                             }
                         },
                     ) { padding ->
                         Column(Modifier.padding(padding).fillMaxSize()) {
                             when {
-                                opening -> Column(Modifier.fillMaxWidth().padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) { CircularProgressIndicator(); Text("Opening…") }
-                                shelfVisible -> WorkspaceShelf(saved, openError, onOpen = { openSaved(it) }, onForget = { id ->
-                                    worker.execute {
-                                        host.environment().forgetWorkspace(id)
-                                        val entries = host.environment().savedWorkspaces()
-                                        activeWorkspace.compareAndSet(id, null)
-                                        runOnUiThread { saved = entries; mountedIds = mountedIds - id; if (open?.id == id) open = null }
-                                    }
-                                }, activeIds = mountedIds)
-                                review -> ReviewSheet(preparedOperations(applicationContext), onConfirm = { runOnUiThread { review = false } }, onBack = { review = false })
+                                opening -> Column(Modifier.fillMaxWidth().padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) { CircularProgressIndicator(); Text("Opening your options…") }
+                                review -> ReviewSheet(listOfNotNull(currentSelection), onConfirm = { runOnUiThread { review = false } }, onBack = { review = false })
                                 show == null -> EmptyPlan(onInitialize = { show = store.initialize() })
                                 request != null -> RequestSheet(
                                     title = request!!.mapNotNull { id -> show!!.requirement(id)?.name }.joinToString(", "),
-                                    requirements = request!!.mapNotNull { id -> show!!.requirement(id) }, host = host, status = status, building = generating,
+                                    requirements = request!!.mapNotNull { id -> show!!.requirement(id) }, status = status, building = generating,
                                     problem = problem, hasExistingWorkspace = open != null,
                                     onDismissProblem = { problem = null; status = "" },
                                     onCancel = { if (generating) runningGeneration?.cancel() else { request = null; problem = null; status = "" } },
                                     onBuild = { goal, instruction ->
+                                        if (generating || opening) return@RequestSheet
                                         generating = true; problem = null; status = "Discovering connected apps…"
+                                        inspectionStartedAt = System.currentTimeMillis(); inspectionError = ""
                                         val selected = request!!.mapNotNull { id -> show!!.requirement(id) }
                                         val intent = "Resolve these requirements for ${selected.firstOrNull()?.act ?: "the show"}: " +
                                             selected.joinToString("; ") { "${it.quantity} × ${it.name} — ${it.specification}, needed at ${it.location} by ${it.end(true)}" } + ". " + instruction
@@ -184,6 +224,7 @@ class OrganizerActivity : ComponentActivity() {
                                                     put("searchTerms", org.json.JSONArray(requirement.name.split(" ").filter { it.length > 2 }))
                                                 }
                                             }.toString()
+                                        inspectionRequest = intent + "\n\nDISCLOSED CONTEXT\n" + disclosed
                                         val token = GenerationCancellation(); runningGeneration = token
                                         worker.execute {
                                             try {
@@ -200,22 +241,22 @@ class OrganizerActivity : ComponentActivity() {
                                                     java.io.File(filesDir, "workspace-error.txt").delete()
                                                     publish(workspace.id, snapshot)
                                                     val workspaces = host.environment().savedWorkspaces()
-                                                    runOnUiThread { if (!isDestroyed) { saved = workspaces; mountedIds = mountedIds + workspace.id; open = workspace; request = null; generating = false; status = ""; problem = null; runningGeneration = null } }
+                                                    runOnUiThread { if (!isDestroyed) { saved = workspaces; open = workspace; request = null; generating = false; status = ""; problem = null; runningGeneration = null } }
                                                 }
                                             } catch (error: Throwable) {
                                                 log.event("host", "failed", code = error.javaClass.simpleName, target = "generation")
-                                                runOnUiThread { if (!isDestroyed && runningGeneration === token) { generating = false; status = ""; problem = generationProblem(error); runningGeneration = null } }
+                                                runOnUiThread { if (!isDestroyed && runningGeneration === token) { generating = false; status = ""; problem = generationProblem(error); inspectionError = if (error is GenerationRejected) "${error.reason} · ${error.attempts} attempts\n${error.diagnostics}" else error.javaClass.simpleName + ": " + error.message; runningGeneration = null } }
                                             }
                                         }
                                     },
                                 )
                                 open != null -> WorkspaceView(
-                                    title = open!!.title, tree = displayDates(tree ?: JSONObject().put("component", "root").put("props", org.json.JSONArray()).put("children", org.json.JSONArray())),
-                                    fault = fault, origin = open!!.origin, attempts = open!!.attempts,
+                                    title = if (returnRequirement != null) "Equipment options" else open!!.title, tree = displayDates(tree ?: JSONObject().put("component", "root").put("props", org.json.JSONArray()).put("children", org.json.JSONArray())),
+                                    fault = fault,
                                     onDispatch = { slot, payload ->
                                         val id = open!!.id
                                         worker.execute {
-                                            try { host.environment().dispatch(id, slot, payload)?.let { publish(id, it) } }
+                                            try { host.inWorkspace(id) { host.environment().dispatch(id, slot, payload) }?.let { publish(id, it) } }
                                             catch (error: Throwable) { reportFailure(id, "dispatch slot=$slot", error) }
                                         }
                                     },
@@ -224,31 +265,28 @@ class OrganizerActivity : ComponentActivity() {
                                         worker.execute {
                                             activeWorkspace.compareAndSet(id, null)
                                             // Back keeps the mounted state and saved source; Delete is explicit.
-                                            runOnUiThread { open = null; shelfVisible = true }
+                                            runOnUiThread { open = null; selectedRequirement = returnRequirement }
                                         }
                                     },
                                     onNewBuild = {
+                                        inspectionStartedAt = 0L; inspectionRequest = ""
                                         val ids = linkedRequirements(links.getString("requirements.${open!!.id}", null), show!!)
                                         if (ids.isEmpty()) chooseBuildRequirement = true else request = ids
                                         problem = null; status = ""
                                     },
                                     onReview = { review = true },
-                                    prepared = preparedOperations(applicationContext).size,
+                                    hasPreparedSelection = currentPrepared,
                                 )
                                 selectedRequirement != null -> RequirementDetail(
                                     show = show!!, requirementId = selectedRequirement!!,
-                                    onBack = { selectedRequirement = null },
+                                    onBack = { selectedRequirement = null; returnRequirement = null },
+                                    assistanceError = openError,
                                     onEdit = { updated -> update { it.requirements = it.requirements.map { r -> if (r.id == updated.id) updated else r } } },
                                     onVerify = { id -> update { s -> s.requirements = s.requirements.map { r -> if (r.id == id) r.copy(verified = !r.verified) else r } } },
-                                    onArrange = { id -> if (!generating) {
-                                        problem = null; status = ""
-                                        val retained = links.getString(requirementKey(id), null)
-                                        if (retained != null && saved.any { it.id == retained }) openSaved(retained)
-                                        else request = listOf(id)
-                                    } },
+                                    onArrange = ::findEquipment,
                                 )
                                 else -> when (destination) {
-                                    Destination.Overview -> OverviewScreen(state = show!!, onOpenRequirement = { selectedAct = null; selectedRequirement = it }, onOpenRiders = { destination = Destination.Riders })
+                                    Destination.Overview -> OverviewScreen(state = show!!, onOpenRequirement = { selectedAct = null; selectedRequirement = it }, onFindEquipment = ::findEquipment, onOpenRiders = { destination = Destination.Riders })
                                     Destination.Riders -> RidersScreen(state = show!!, selectedAct, onSelectAct = { selectedAct = it }, onOpenRequirement = { selectedRequirement = it })
                                     Destination.Resources -> ResourcesScreen(state = show!!, onResolve = { allocation, agreed -> update { s ->
                                         s.allocations = s.allocations.map { if (it.id == allocation) it.copy(agreed = agreed) else it }
@@ -263,9 +301,9 @@ class OrganizerActivity : ComponentActivity() {
                 if (chooseBuildRequirement) AlertDialog(onDismissRequest = { chooseBuildRequirement = false },
                     title = { Text("Choose requirement") },
                     text = { Column(Modifier.heightIn(max = 400.dp).verticalScroll(rememberScrollState())) {
-                        Text("This saved workspace has no linked request. Choose what the new workspace should resolve.")
-                        show!!.requirements.forEach { requirement ->
-                            TextButton(onClick = { request = listOf(requirement.id); chooseBuildRequirement = false }) { Text("${requirement.name} · ${requirement.act}") }
+                        Text("Choose the equipment requirement you want to resolve.")
+                        show!!.requirements.filter { it.canFindEquipment() }.forEach { requirement ->
+                            TextButton(onClick = { returnRequirement = requirement.id; selectedRequirement = requirement.id; request = listOf(requirement.id); chooseBuildRequirement = false }) { Text("${requirement.name} · ${requirement.act}") }
                         }
                     } },
                     confirmButton = { TextButton(onClick = { chooseBuildRequirement = false }) { Text("Cancel") } })
@@ -275,7 +313,7 @@ class OrganizerActivity : ComponentActivity() {
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
-@Composable private fun OrganizerTopBar(show: ShowState?, onReset: () -> Unit, onInitialize: () -> Unit) {
+@Composable private fun OrganizerTopBar(show: ShowState?, onInitialize: () -> Unit, onInspect: () -> Unit) {
     TopAppBar(
         colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent),
         title = {
@@ -286,7 +324,7 @@ class OrganizerActivity : ComponentActivity() {
         },
         actions = {
             if (show == null) TextButton(onClick = onInitialize) { Text("Initialize demo show") }
-            else IconButton(onClick = onReset) { Icon(Icons.Outlined.RestartAlt, "Reset demo show") }
+            TextButton(onClick = onInspect) { Icon(Icons.Outlined.Timeline, null, modifier = Modifier.size(18.dp)); Spacer(Modifier.width(4.dp)); Text("Inspect") }
         },
     )
 }
@@ -298,24 +336,33 @@ class OrganizerActivity : ComponentActivity() {
     }
 }
 
-@Composable private fun OverviewScreen(state: ShowState, onOpenRequirement: (String) -> Unit, onOpenRiders: () -> Unit) {
+@Composable private fun OverviewScreen(state: ShowState, onOpenRequirement: (String) -> Unit, onFindEquipment: (String) -> Unit, onOpenRiders: () -> Unit) {
     val conflicts = state.conflicts()
-    val attention = buildList {
-        state.requirements.filter { it.coverage == Coverage.Missing && it.mandatory }.forEach { add(Triple(it.act, "${it.group} incomplete", "Missing: ${it.name}")) }
-        if (conflicts.isNotEmpty()) add(Triple(conflicts.first().act, "Amplifier allocations overlap", "Both acts need it at the same time"))
-        state.requirements.filter { it.department == "Hospitality" && it.commitment == Commitment.None }.forEach { add(Triple(it.act, "Hospitality unarranged", it.summary)) }
-    }
+    val attention = state.requirements.filter { !it.ready && (it.coverage != Coverage.Covered || it.commitment == Commitment.None && it.department == "Hospitality") }
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-        item { Hero("SHOW OVERVIEW", state.title, "${state.venue} · ${dateLabel(state.date)}", actions = { AssistChip(onClick = onOpenRiders, label = { Text("Open riders") }, leadingIcon = { Icon(Icons.Outlined.Assignment, null) }) }, illustration = { Art.Stage(150.dp) }) }
-        item { Section("Timeline") { ShowTimeline(state, conflicts) } }
-        item { Section("Needs attention") { } }
-        items(attention) { (act, title, detail) ->
-            AttentionCard(act, title, detail) {
-                val target = state.requirements.firstOrNull { r -> r.act == act && detail.contains(r.name) }
-                    ?: state.requirements.firstOrNull { it.act == act && it.coverage == Coverage.Conflict }
-                target?.let { onOpenRequirement(it.id) }
+        item {
+            Text("Needs attention", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
+            Text("${attention.size} outstanding needs · ${state.requirements.count { it.ready }} checked and ready", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        items(attention, key = { it.id }) { requirement ->
+            AssistancePanel {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Icon(if (requirement.coverage == Coverage.Conflict) Icons.Outlined.WarningAmber else Icons.Outlined.RadioButtonUnchecked, null)
+                    Column(Modifier.weight(1f)) {
+                        Text(requirement.name, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                        Text("${requirement.act} · ${requirement.location}", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text("${dateLabel(state.date)} · ${state.label(requirement.from)}–${state.label(requirement.until)}", style = MaterialTheme.typography.bodySmall)
+                    }
+                }
+                Button(onClick = { if (requirement.canFindEquipment()) onFindEquipment(requirement.id) else onOpenRequirement(requirement.id) }, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
+                    Text(if (requirement.canFindEquipment()) "Find equipment" else "Review requirement")
+                }
             }
         }
+        if (state.requirements.any { it.ready }) item {
+            Section("Ready") { state.requirements.filter { it.ready }.forEach { RequirementRow(it) { onOpenRequirement(it.id) } } }
+        }
+        item { Section("Timeline") { ShowTimeline(state, conflicts) } }
         item { Section("Departments") { } }
         items(state.requirements.map { it.department }.distinct()) { department ->
             val items = state.requirements.filter { it.department == department }
@@ -354,20 +401,6 @@ class OrganizerActivity : ComponentActivity() {
     }
 }
 
-@Composable private fun AttentionCard(act: String, title: String, detail: String, onClick: () -> Unit) {
-    Card(onClick = onClick, shape = RoundedCornerShape(24.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
-        Row(Modifier.fillMaxWidth().padding(20.dp), horizontalArrangement = Arrangement.spacedBy(16.dp), verticalAlignment = Alignment.CenterVertically) {
-            Icon(Icons.Outlined.WarningAmber, null, tint = MaterialTheme.colorScheme.error)
-            Column(Modifier.weight(1f)) {
-                Text(act, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
-                Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                Text(detail, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-            Icon(Icons.Outlined.ChevronRight, null)
-        }
-    }
-}
-
 @Composable private fun DepartmentCard(department: String, items: List<Requirement>, onClick: () -> Unit) {
     val settled = items.count { it.ready }
     Panel {
@@ -386,7 +419,7 @@ class OrganizerActivity : ComponentActivity() {
     var filter by remember { mutableStateOf("All") }
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         item {
-            Hero("RIDERS", "Technical and hospitality", "Every requirement, its dependencies and what still needs arranging.", illustration = { Art.Microphone(120.dp) })
+            OrganizerHeading("Riders", "Requirements and what still needs arranging.")
         }
         item {
             Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -458,7 +491,7 @@ class OrganizerActivity : ComponentActivity() {
     var department by remember { mutableStateOf("Sound") }
     val conflicts = state.conflicts()
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-        item { Hero("RESOURCES", "Stock and allocations", "What the venue owns, what participants bring and what clashes.", illustration = { Art.Amplifier(120.dp) }) }
+        item { OrganizerHeading("Stock and allocations", "Venue equipment, contributions and conflicts.") }
         item {
             Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 state.requirements.map { it.department }.distinct().forEach { Chip(it, department == it) { department = it } }
@@ -482,7 +515,6 @@ class OrganizerActivity : ComponentActivity() {
                     Text("Changing a preparation window changes the plan, not the act's rider. Record the agreement when both acts accept it.", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                         Button(onClick = { conflicts.firstOrNull()?.let { onResolve(it.id, true) } }, shape = RoundedCornerShape(18.dp)) { Text("Record agreement") }
-                        OutlinedButton(onClick = { }, shape = RoundedCornerShape(18.dp)) { Text("Explore with DEAL") }
                     }
                 }
             }
@@ -514,7 +546,7 @@ class OrganizerActivity : ComponentActivity() {
     var view by remember { mutableStateOf("By type") }
     val outstanding = state.requirements.filter { it.coverage != Coverage.Covered || !it.verified }
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-        item { Hero("FULFILMENT", "What is secured, what is not", "Nothing counts as ready until the organizer checks it on site.", illustration = { Art.Speaker(90.dp) }) }
+        item { OrganizerHeading("Event checklist", "Check each requirement on site before marking it ready.") }
         item {
             Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 listOf("By type", "By person", "By deadline").forEach { Chip(it, view == it) { view = it } }
@@ -540,7 +572,6 @@ class OrganizerActivity : ComponentActivity() {
                         Text(if (requirement.verified) "Undo check" else "Record check")
                     }
                     OutlinedButton(onClick = { onOpenRequirement(requirement.id) }, shape = RoundedCornerShape(18.dp)) { Text("Open") }
-                    TextButton(onClick = { onOpenRequirement(requirement.id) }) { Text("Open") }
                 }
             }
         }
@@ -548,7 +579,7 @@ class OrganizerActivity : ComponentActivity() {
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
-@Composable private fun RequirementDetail(show: ShowState, requirementId: String, onBack: () -> Unit, onEdit: (Requirement) -> Unit, onVerify: (String) -> Unit, onArrange: (String) -> Unit) {
+@Composable private fun RequirementDetail(show: ShowState, requirementId: String, onBack: () -> Unit, onEdit: (Requirement) -> Unit, onVerify: (String) -> Unit, onArrange: (String) -> Unit, assistanceError: String = "") {
     val requirement = show.requirement(requirementId) ?: return
     var editing by remember { mutableStateOf(false) }
     var draft by remember { mutableStateOf(requirement) }
@@ -562,6 +593,7 @@ class OrganizerActivity : ComponentActivity() {
                 }
             }
         }
+        if (assistanceError.isNotEmpty()) item { Text(assistanceError, color = MaterialTheme.colorScheme.error) }
         if (editing) {
             item {
                 Panel {
@@ -602,7 +634,7 @@ class OrganizerActivity : ComponentActivity() {
                     if (requirement.notes.isNotEmpty()) Text(requirement.notes, style = MaterialTheme.typography.bodyMedium)
                     Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                         OutlinedButton(onClick = { editing = true }, shape = RoundedCornerShape(18.dp)) { Text("Edit") }
-                        Button(onClick = { onArrange(requirement.id) }, shape = RoundedCornerShape(18.dp)) { Text("Arrange fulfilment") }
+                        if (requirement.canFindEquipment()) Button(onClick = { onArrange(requirement.id) }, shape = AssistanceDesign.shape) { Text("Find equipment") }
                         if (requirement.coverage == Coverage.Covered) TextButton(onClick = { onVerify(requirement.id) }) { Text(if (requirement.verified) "Undo check" else "Record check") }
                     }
                 }

@@ -3,6 +3,7 @@ package dev.deal.connectors.tests
 import android.app.Instrumentation
 import android.os.Bundle
 import dev.deal.embedding.*
+import dev.deal.apps.organizer.canFindEquipment
 import dev.deal.embedding.capabilities.*
 import org.json.*
 
@@ -29,6 +30,30 @@ class WorkspaceInstrumentation : Instrumentation() {
             check(dev.deal.apps.organizer.linkedRequirements(null, plan).isEmpty())
             val requirementId = plan.requirements.first().id
             check(dev.deal.apps.organizer.linkedRequirements("$requirementId,missing", plan) == listOf(requirementId))
+            check(dev.deal.apps.organizer.validBudget("") && dev.deal.apps.organizer.validBudget("18,50"))
+            check(!dev.deal.apps.organizer.validBudget("-1") && !dev.deal.apps.organizer.validBudget("1.234") && !dev.deal.apps.organizer.validBudget("1001"))
+            check(dev.deal.apps.organizer.equipmentInstruction("", "").contains("Compare suitable"))
+            check(dev.deal.apps.organizer.equipmentInstruction("18", "adapter").contains("editable equipment"))
+            check(plan.requirements.first { it.name == "Boom stand" }.canFindEquipment())
+            check(!plan.requirements.first { it.department == "Hospitality" }.canFindEquipment())
+            val reviewHost = dev.deal.apps.organizer.OrganizerHost(context)
+            try {
+                val failing = runCatching { reviewHost.inWorkspace("failure-fixture") { error("original operation") } }.exceptionOrNull()
+                check(failing?.message == "original operation")
+                // Binding is native invocation context; unrelated sessions cannot steal review identity.
+                var owner: String? = null
+                val localReview = dev.deal.apps.organizer.organizerCapabilities(context) { owner }
+                val args = JSONArray(listOf("fixture", "fixture", "Review fixture", "exact period", "€1.00", ""))
+                val prepared = context.getSharedPreferences("prepared", 0)
+                val originalOperations = prepared.getString("operations", null)
+                val originalLast = prepared.getString("last", null)
+                owner = "review-a"; localReview.invoke("stage", args)
+                owner = "review-b"; localReview.invoke("stage", args)
+                check(JSONObject(prepared.getString("workspace.review-a", null)!!).getString("title") == "Review fixture")
+                check(JSONObject(prepared.getString("workspace.review-b", null)!!).getString("title") == "Review fixture")
+                prepared.edit().remove("workspace.review-a").remove("workspace.review-b")
+                    .putString("operations", originalOperations).putString("last", originalLast).commit()
+            } finally { reviewHost.close() }
             val prefs = context.getSharedPreferences("organizer-experience", 0)
             val key = prefs.all.keys.firstOrNull { it.endsWith(".deal") && prefs.getString(it, "")!!.contains("host.staged()") }
                 ?: error("No saved workspace reading staged operations")

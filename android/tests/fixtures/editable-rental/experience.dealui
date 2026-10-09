@@ -3,15 +3,13 @@ import * as ui from "./platform.dealui-pack";
 // @ui-root
 export view Rental(state: app.State): View {
     ui.Column() {
-        ui.Hero(value: "Editable rental shortlist")
         ui.IntField(value: state.quantity, label: "Quantity", minimum: 0, maximum: 9, enabled: state.editable, supporting: "Required units: 1 to 8", error: state.validation, accessibilityLabel: "Quantity", onChange: action app.ChangeQuantity { value: payload })
-        ui.IntField(value: state.budgetCents, label: "Total budget in cents", minimum: 0, maximum: 100000, step: 100, enabled: state.editable, supporting: "Total for all requested units", accessibilityLabel: "Budget", onChange: action app.ChangeBudget { value: payload })
-        ui.SearchField(value: state.search, label: "Search within boom stand matches", enabled: state.editable, supporting: "Editing clears stale results and selection", accessibilityLabel: "Search", onChange: action app.ChangeSearch { value: payload })
+        ui.IntField(value: state.budgetCents, label: "Total budget (€)", minimum: 0, maximum: 100000, step: 100, format: "euro-cents", enabled: state.editable, supporting: "Total for all requested units", accessibilityLabel: "Budget", onChange: action app.ChangeBudget { value: payload })
+        ui.SearchField(value: state.search, label: "Search within boom stand matches", enabled: state.editable, supporting: "Narrow the equipment options", accessibilityLabel: "Search", onChange: action app.ChangeSearch { value: payload })
         ui.Text(value: state.periodStart)
         ui.Text(value: state.periodEnd)
-        When(state.loading) { ui.Progress(label: "Loading options") } Else {
-            ui.Button(text: "Load options", enabled: state.editable && state.validation === "", accessibilityLabel: "Load options", onClick: action app.Load {})
-        }
+        When(state.loading) { ui.Progress(label: "Loading options") }
+        ui.Button(text: "Load options", enabled: state.editable && state.validation === "", accessibilityLabel: "Load options", onClick: action app.Load {})
         When(state.error !== "") { ui.Failure(text: state.error, accessibilityLabel: "Retry Load options", onRetry: action app.Load {}) }
         When(state.empty) { ui.Text(value: "No qualifying options") }
         ForEach(state.items, item: app.Item, key: item.id) {

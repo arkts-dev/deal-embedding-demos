@@ -11,7 +11,14 @@ class OrganizerHost(private val context: Context) : AutoCloseable {
     private val discovery = CapabilityDiscovery(context) { uid ->
         context.packageManager.checkSignatures(uid, context.applicationInfo.uid) == android.content.pm.PackageManager.SIGNATURE_MATCH
     }
-    val registry = CapabilityRegistry(context, discovery, listOf(organizerCapabilities(context)))
+    private var invokingWorkspace: String? = null
+    val registry = CapabilityRegistry(context, discovery, listOf(organizerCapabilities(context) { invokingWorkspace }))
+    /** Serial native invocation context only; source does not choose its review identity. */
+    fun <T> inWorkspace(id: String, block: () -> T): T {
+        val previous = invokingWorkspace
+        invokingWorkspace = id
+        try { return block() } finally { invokingWorkspace = previous }
+    }
     private var contracts: List<CapabilityContract> = emptyList()
     private var runtime: ExperienceRuntime? = null
     private val config = EmbeddingConfig("experience", emptyList(), "organizer-experience")
@@ -23,7 +30,6 @@ class OrganizerHost(private val context: Context) : AutoCloseable {
         registry.grantAll()
     }
     fun environment() = runtime ?: error("Host not prepared")
-    fun available(): List<CapabilityContract> = contracts
     fun mountedWorkspaces(): List<LiveWorkspace> = runtime?.workspaces().orEmpty()
     fun generate(intent: String, disclosedContext: String, cancellation: GenerationCancellation, progress: (String) -> Unit): CheckedCandidate =
         environment().generate(intent, disclosedContext, GenerationGateway("http://127.0.0.1:8787/generate"), cancellation, progress)

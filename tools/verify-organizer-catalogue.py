@@ -106,11 +106,11 @@ if args.replay:
 shell(*launch)
 time.sleep(2)
 if not args.replay:
-    tap('Missing: Boom stand', scroll=True)
-    tap('Arrange fulfilment', scroll=True)
+    # Requirement-led production entry. A retained link opens without inference.
+    tap('Find equipment', scroll=True)
     # The single authorized inference workflow. Do not retry this click.
-    tap('Build workspace')
-wait(lambda: any(n.get('text') in ('AI-built', 'Template', 'Workspace') for n in ui().iter('node')))
+    tap('Find options')
+wait(lambda: any(n.get('text') == 'Load options' for n in ui().iter('node')))
 prefs = {n.get('name'): n.text for n in ET.fromstring(private(PACKAGE, 'shared_prefs/organizer-experience.xml'))}
 if args.replay:
     source_keys = {'workspace.' + args.replay + '.deal', 'workspace.' + args.replay + '.dealui'}
@@ -157,12 +157,11 @@ tap('Boom microphone stand', scroll=True)
 picked = snapshot()
 stand = next(n for n in nodes(picked['tree']) if n['component'] == 'ui.Option' and prop(n, 'value')['stringValue'] == 'stand')
 assert prop(stand, 'selected')['booleanValue']
-tap('Prepare for review', scroll=True)
-wait(lambda: any(p.get('stringValue', '').startswith('Prepared for native review') for n in nodes(snapshot()['tree']) for p in n['props']), 30)
-review = next(n.get('text') for n in ui().iter('node') if n.get('text', '').startswith('Review · ') )
-tap(review)
+tap('Prepare for review' if args.editable or args.source_experiment else 'Prepare selection', scroll=True)
+wait(lambda: any(n.get('text') == 'Review selection' for n in ui().iter('node')), 30)
+tap('Review selection')
 texts = [n.get('text', '') for n in ui().iter('node')]
-assert 'Organizer review' in texts and 'Native' in texts and 'Not reserved' in texts
+assert 'Review selection' in texts and 'Not booked' in texts and 'Native' not in texts
 # Existing locally prepared operations can place the new entry below the fold.
 for _ in range(12):
     detail_found = any(f'Item stand:{expected_quantity}' in t and (('18:00' in t and '00:00' in t and 'T16:00' not in t) if args.source_experiment or args.editable else 'Period:' in t) for t in texts)
@@ -181,7 +180,9 @@ if args.editable:
     # Ordinary navigation keeps live state; restarting checks saved code without AI.
     shell('input', 'keyevent', '4')
     time.sleep(.5)
-    tap('Back to workspaces')
+    tap('Back to requirement')
+    tap('Inspect')
+    tap('Workspaces')
     saved_title = prefs['workspace.' + args.replay + '.title']
     def open_card(action='Open'):
         find(saved_title, scroll=True)
@@ -195,16 +196,16 @@ if args.editable:
                     shell('input', 'tap', str((x1+x2)//2), str((y1+y2)//2))
                     return
         raise AssertionError('Saved workspace Open control missing')
-    open_card('Resume')
-    wait(lambda: any(n.get('text') == 'AI-built' for n in ui().iter('node')), 30)
+    open_card()
+    wait(lambda: any(n.get('text') == 'Load options' for n in ui().iter('node')), 30)
     current = list(nodes(snapshot()['tree']))
     assert prop(next(n for n in current if n['component'] == 'ui.IntField' and prop(n, 'accessibilityLabel')['stringValue'] == 'Quantity'), 'value')['intValue'] == 2
     shell('am', 'start', '-S', '-W', '--user', '0', '-n', PACKAGE + '/.OrganizerActivity')
     time.sleep(2)
-    workspaces_label = next(n.get('text') for n in ui().iter('node') if n.get('text', '').startswith('Workspaces · '))
-    tap(workspaces_label)
+    tap('Inspect')
+    tap('Workspaces')
     open_card()
-    wait(lambda: any(n.get('text') == 'AI-built' for n in ui().iter('node')), 30)
+    wait(lambda: any(n.get('text') == 'Load options' for n in ui().iter('node')), 30)
     current = list(nodes(snapshot()['tree']))
     assert prop(next(n for n in current if n['component'] == 'ui.IntField' and prop(n, 'accessibilityLabel')['stringValue'] == 'Quantity'), 'value')['intValue'] == 1
     assert not any(n['component'] == 'ui.Option' for n in current), 'Restart silently refreshed provider data'

@@ -12,20 +12,20 @@ import androidx.compose.ui.unit.dp
 import dev.deal.embedding.SavedWorkspace
 
 /** Ordinary entry to retained source, not a debug replay switch. */
-@Composable fun WorkspaceShelf(entries: List<SavedWorkspace>, error: String, onOpen: (String) -> Unit, onForget: (String) -> Unit, activeIds: Set<String> = emptySet()) {
+@Composable fun WorkspaceShelf(entries: List<SavedWorkspace>, error: String, onOpen: (String) -> Unit, onForget: (String) -> Unit, activeIds: Set<String> = emptySet(), enabled: Boolean = true) {
     var deleting by remember { mutableStateOf<SavedWorkspace?>(null) }
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         item { Text("Workspaces", style = MaterialTheme.typography.headlineSmall) }
         if (error.isNotEmpty()) item { Text(error) }
-        if (entries.isEmpty()) item { Text("No workspaces yet. Choose a requirement, then Arrange fulfilment.") }
+        if (entries.isEmpty()) item { Text("No retained source yet. Use Find equipment on an event requirement.") }
         items(entries, key = { it.id }) { entry ->
             OutlinedCard(Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(16.dp)) {
                     Text(entry.title, style = MaterialTheme.typography.titleMedium)
                     Text(workspacePresentation(entry.origin, entry.attempts).title + " · deal · deal ui", style = MaterialTheme.typography.labelLarge)
                     Row {
-                        Button(onClick = { onOpen(entry.id) }, modifier = Modifier.weight(1f).heightIn(min = 48.dp)) { Text(if (entry.id in activeIds) "Resume" else "Open") }
-                        IconButton(onClick = { deleting = entry }) { Icon(Icons.Outlined.DeleteOutline, "Delete ${entry.title}") }
+                        Button(onClick = { onOpen(entry.id) }, enabled = enabled, modifier = Modifier.weight(1f).heightIn(min = 48.dp)) { Text(if (entry.id in activeIds) "Resume" else "Open") }
+                        IconButton(onClick = { deleting = entry }, enabled = enabled) { Icon(Icons.Outlined.DeleteOutline, "Delete ${entry.title}") }
                     }
                 }
             }

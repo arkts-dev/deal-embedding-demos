@@ -41,9 +41,21 @@ function expected(sourceName,selection){
  const quantity=context.quantity,from=context.from,deadline=context.until,spec=context.specification,title=context.requirement;
  const condition=context.searchTerms.map(t=>'strings.contains(search, '+quote(t.toLowerCase())+')').join(' && ');
  const purpose=chosen.purpose==='choose'?'Choose':'Compare',header=chosen.headline==='hero'?'Hero':'Text';
- const warning=chosen.notice==='warning'?'ui.Notice(text: '+quote('Requested: '+spec+'. Availability is not a reservation.')+', tone: "warning")':'';
+ const warning=chosen.notice==='warning'?'ui.Notice(text: '+quote('Check suitability: '+spec+'. Not booked.')+', tone: "warning")':'';
  const values={'quote(readModule)':quote(read.module),'quote(prepareModule)':quote(prepare.module),readFunction:read.contractFunction.name,prepareFunction:prepare.contractFunction.name,condition,'Int.MAX_VALUE / quantity':String(Math.floor(2147483647/quantity)),quantity:String(quantity),'quote("Required: $spec. Period: $from to $deadline. ")':quote(`Required: ${spec}. Period: ${from} to ${deadline}. `),'quote(deadline)':quote(deadline),sourceName,header,'quote("$purpose $title")':quote(`${purpose} ${title}`),'quote("$quantity required · $from to $deadline")':quote(`${quantity} required · ${from} to ${deadline}`),warning,argumentSource:read.arguments.map(quote).join(', ')};
- return Object.fromEntries(Object.entries(baseline).map(([key,text])=>[key,text.replace('${(0 until arguments.length()).joinToString(", ") { quote(arguments.getString(it)) }}','$argumentSource').replace(/\$\{(.*?)\}|\$(\w+)/g,(_,a,b)=>{assert(Object.hasOwn(values,a||b),a||b);return values[a||b];})]));
+ // Explicit, reviewed UX revision against the unchanged pre-migration baseline.
+ const revised={deal:baseline.deal
+  .replace('Load available options for the requested period.','Find available equipment for your requirement.')
+  .replace('Loading catalogue…','Loading equipment…')
+  .replace('return { rows: state.rows, status: error.code + ": " + error.message, failed: true };','let message: string = "Couldn’t load equipment. Please try again."; if (error.code === "PROVIDER_DENIED" || error.code === "DENIED") { message = "Allow sharing in the Rental app, then try again."; } return { rows: state.rows, status: message, failed: true };')
+  .replace('Review the selected specification, then prepare for native review.','Check the selected specification, then prepare your selection.')
+  .replace('Prepared for native review. No reservation has been made.','Selection ready for review. Not booked.')
+  .replace('return { status: error.code + ": " + error.message, failed: true };','return { status: "Couldn’t prepare your selection. Please try again.", failed: true };'),
+ dealui:baseline.dealui
+  .replace('        When(state.loading) { ui.Progress(label: "Waiting for connected app") } Else {','        When(state.loading) { ui.Progress(label: "Getting your options ready") }\n        ui.Button(text: "Load options", enabled: !state.loading, accessibilityLabel: "Load options", onClick: action app.Load {})\n        When(!state.loading) {')
+  .replace('            ui.Button(text: "Load options", accessibilityLabel: "Load options", onClick: action app.Load {})\n','')
+  .replaceAll('Prepare for review','Prepare selection')};
+ return Object.fromEntries(Object.entries(revised).map(([key,text])=>[key,text.replace('${(0 until arguments.length()).joinToString(", ") { quote(arguments.getString(it)) }}','$argumentSource').replace(/\$\{(.*?)\}|\$(\w+)/g,(_,a,b)=>{assert(Object.hasOwn(values,a||b),a||b);return values[a||b];})]));
 }
 (async()=>{
  const str={kind:'string',maximum:8192};
@@ -93,8 +105,11 @@ function expected(sourceName,selection){
  assert((await invoke('source-repair','instruction',pairRaw)).includes(digest));
  const guidance=await invoke('generation-guidance','guidance');
  // Intentional guidance revision after real-source failures; retain exact serialization regression.
- assert.equal(crypto.createHash('sha256').update(guidance).digest('hex'),'a81e0c38a866cab8fa13a403550c6c95017da1664f9a5810155e0e5b12a02a53','Generation guidance changed unexpectedly');
+ assert.equal(crypto.createHash('sha256').update(guidance).digest('hex'),'5e98d7307d6b05afed7e5b2e832ac58d0d8241fb12de4680ba3ec10c6f5b3828','Generation guidance changed unexpectedly');
  assert(guidance.includes('When(state.loading)') && guidance.includes('./platform.dealui-pack'));
+ assert(guidance.includes('enabled: !state.loading'));
+ assert(guidance.includes('euro-cents') && guidance.includes('integer event payload'));
+ assert(guidance.includes('Do not show module paths') && guidance.includes('Native Inspect'));
  assert(guidance.includes('onSelect: action app.Action { value: payload }'));
  assert(guidance.includes('onClick: action app.Action {}'));
  console.log(`Core migration: ${combinations} exact source-pair parity cases; 7 invalid envelopes; checker/JSON/UTF-16 host failure propagation; escaping/Unicode/quantity bounds; syntax and payload guidance regression`);

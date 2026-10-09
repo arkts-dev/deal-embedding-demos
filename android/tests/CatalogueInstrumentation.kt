@@ -20,7 +20,7 @@ class CatalogueInstrumentation : Instrumentation() {
             check(dev.deal.apps.organizer.workspacePresentation(WorkspaceOrigin.CATALOGUE, 1).title == "Template")
             check(dev.deal.apps.organizer.workspacePresentation(WorkspaceOrigin.SAVED_SOURCE, 0).explanation.contains("unknown"))
             check(dev.deal.apps.organizer.workspacePresentation(WorkspaceOrigin.SAVED_SOURCE, 0).title == "Workspace")
-            check(dev.deal.apps.organizer.compactGenerationStatus("AI writing logic and screen · attempt 2 of 3") == "Refining…")
+            check(dev.deal.apps.organizer.compactGenerationStatus("AI writing logic and screen · attempt 2 of 3") == "Getting your options ready…")
             check(dev.deal.apps.organizer.compactGenerationStatus("Checking AI-written code · attempt 2 of 3") == "Checking…")
             val friendly = dev.deal.apps.organizer.generationProblem(GenerationRejected(3, GenerationRejected.Reason.ATTEMPT_LIMIT, "secret diagnostic"))
             check(friendly.explanation.contains("3 source attempts") && !friendly.explanation.contains("secret"))
@@ -258,7 +258,7 @@ class CatalogueInstrumentation : Instrumentation() {
             host.dispatch(workspace.id, prop(stand, "onSelect").getInt("actionSlot"), "stand")
             val picked = host.poll(workspace.id)!!
             check(prop(nodes(picked.getJSONObject("tree")).first { it.getString("component") == "ui.Option" }, "selected").getBoolean("booleanValue"))
-            click(picked, "Prepare for review")
+            click(picked, "Prepare selection")
             waitAfter(picked.getInt("version"))
             check(stages == 1 && prepared!!.getString(1) == "host/rental" && prepared!!.getString(2) == "Boom microphone stand")
             check(prepared!!.getString(3).contains("stand:1") && prepared!!.getString(3).contains(from) && prepared!!.getString(4) == "€8.00" && prepared!!.getString(5) == until)
