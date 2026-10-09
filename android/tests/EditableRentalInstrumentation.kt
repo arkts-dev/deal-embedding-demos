@@ -120,7 +120,9 @@ class EditableRentalInstrumentation : Instrumentation() {
                         phase="empty";change("Quantity","1");change("Budget","0");click("Load options");waitFor { texts(it).any { t -> t.contains("No qualifying options") } && rows(it).isEmpty() }
                         phase="denial-recovery";change("Budget","2000");change("Search","");registry.revoke("host/rental");click("Load options");waitFor { texts(it).any { t -> t.contains("not granted") } };registry.grant("host/rental");click("Load options");waitFor { rows(it).size==2 }
                         receipt.put("behaviorPassed",true).put("inputValidation",true).put("quantityBudgetSearch",true).put("localReview",true).put("denialRecovery",true)
-                        check(context.getSharedPreferences("organizer-experience",0).edit().putString("workspace.editable-$strategy-$task.deal",pair.getString("deal")).putString("workspace.editable-$strategy-$task.dealui",pair.getString("dealui")).putString("workspace.editable-$strategy-$task.title","Editable Rental $task").commit())
+                        check(context.getSharedPreferences("organizer-experience",0).edit().putString("workspace.editable-$strategy-$task.deal",pair.getString("deal")).putString("workspace.editable-$strategy-$task.dealui",pair.getString("dealui")).putString("workspace.editable-$strategy-$task.title","Editable Rental $task")
+                            .putString("workspace.editable-$strategy-$task.origin",if(mode=="generated" || mode=="real") WorkspaceOrigin.AI_SOURCE.name else WorkspaceOrigin.SAVED_SOURCE.name)
+                            .putInt("workspace.editable-$strategy-$task.attempts",if(mode=="real") calls else 0).commit())
                     } finally { host.closeWorkspace(workspace.id) }
                 } catch(error: Throwable) {
                     receipt.put("behaviorPassed",false).put("failedPhase",phase).put("sourceCalls",calls).put("errorClass",error.javaClass.simpleName)

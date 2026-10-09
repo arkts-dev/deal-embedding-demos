@@ -93,7 +93,7 @@ library_key=$(python3 tools/build-cache.py \
     dependencies/deal-embedding/build.sh dependencies/deal-embedding/android \
     dependencies/deal-embedding/tools dependencies/deal-embedding/core/generation.deal dependencies/deal-embedding/core/choice-policy.deal \
     dependencies/deal-embedding/core/catalogue-source.deal dependencies/deal-embedding/core/source-literals.deal \
-    dependencies/deal-embedding/core/candidate-check.deal dependencies/deal-embedding/core/generation-guidance.deal \
+    dependencies/deal-embedding/core/candidate-check.deal dependencies/deal-embedding/core/source-repair.deal dependencies/deal-embedding/core/generation-guidance.deal \
     dependencies/deal-embedding/core/generation-guidance.md dependencies/deal-embedding/core/host \
     dependencies/deal/deal dependencies/deal/std dependencies/deal/skills/write-deal/references \
     dependencies/deal-ui/ui dependencies/deal-ui/runtime-js "${ui_sources[@]}" "$ANDROID" \
@@ -171,7 +171,7 @@ for app in "${TARGETS[@]}"; do
     case "$app" in
         calendar) profile="host";   sources=(android/apps/shared-ui/*.kt android/apps/development/*.kt android/apps/calendar/src/*.kt); app_apis=("$EMBEDDING_JAR"); profile_jars=("$EMBEDDING_JAR" "${RUNTIME_JARS[@]}") ;;
         organizer) profile="host";  sources=(android/apps/shared-ui/*.kt android/apps/development/*.kt android/apps/organizer/src/*.kt); app_apis=("$EMBEDDING_JAR"); profile_jars=("$EMBEDDING_JAR" "${RUNTIME_JARS[@]}") ;;
-        tests) profile="host";      sources=(android/tests/*.kt android/apps/development/*.kt); app_apis=("$EMBEDDING_JAR"); profile_jars=("$EMBEDDING_JAR" "${RUNTIME_JARS[@]}") ;;
+        tests) profile="host";      sources=(android/tests/*.kt android/apps/development/*.kt android/apps/shared-ui/*.kt android/apps/organizer/src/*.kt); app_apis=("$EMBEDDING_JAR"); profile_jars=("$EMBEDDING_JAR" "${RUNTIME_JARS[@]}") ;;
         *) profile="provider";      sources=(android/apps/shared-ui/*.kt "android/apps/$app/src/"*.kt); app_apis=(build/capability-api.jar); profile_jars=("${COMPOSE_JARS[@]}") ;;
     esac
     if [[ "$profile" == host ]]; then

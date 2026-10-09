@@ -1,7 +1,8 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android" package="dev.deal.connectors.tests">
  <uses-sdk android:minSdkVersion="36" android:targetSdkVersion="36" />
  <queries><package android:name="dev.deal.apps.todo" /><package android:name="dev.deal.apps.vehicle" /><package android:name="dev.deal.apps.calendar" /></queries>
- <application android:debuggable="true">
+ <application android:debuggable="true" android:theme="@android:style/Theme.Material.Light.NoActionBar">
+  <activity android:name=".WorkspaceClarityActivity" android:exported="true" />
   <service android:name=".LateProviderService" android:exported="true" android:enabled="false"><intent-filter><action android:name="dev.deal.embedding.CAPABILITIES_V1" /></intent-filter></service>
  </application>
  <instrumentation android:name=".CallerInstrumentation" android:targetPackage="dev.deal.apps.todo" />

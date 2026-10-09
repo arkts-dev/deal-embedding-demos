@@ -135,7 +135,8 @@ class SourceGenerationInstrumentation : Instrumentation() {
                         context.getSharedPreferences("organizer-experience",0).edit()
                             .putString("workspace.source-$round-$name.deal",pair.getString("deal"))
                             .putString("workspace.source-$round-$name.dealui",pair.getString("dealui"))
-                            .putString("workspace.source-$round-$name.title","Source experiment $name").commit()
+                            .putString("workspace.source-$round-$name.title","Source experiment $name")
+                            .putString("workspace.source-$round-$name.origin",WorkspaceOrigin.AI_SOURCE.name).commit()
                     } finally { host.closeWorkspace(workspace.id) }
                 } catch(error: Throwable) {
                     receipt.put("behaviorPassed", false).put("failedPhase", phase).put("errorClass",error.javaClass.simpleName).put("sourceCalls",calls)

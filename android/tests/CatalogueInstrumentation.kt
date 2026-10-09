@@ -16,6 +16,11 @@ class CatalogueInstrumentation : Instrumentation() {
         var registry: CapabilityRegistry? = null
         try {
             val context = targetContext
+            check(dev.deal.apps.organizer.workspacePresentation(WorkspaceOrigin.AI_SOURCE, 2).title == "AI-built workspace")
+            check(dev.deal.apps.organizer.workspacePresentation(WorkspaceOrigin.CATALOGUE, 1).title == "Catalogue workspace")
+            check(dev.deal.apps.organizer.workspacePresentation(WorkspaceOrigin.SAVED_SOURCE, 0).explanation.contains("unknown"))
+            val friendly = dev.deal.apps.organizer.generationProblem(GenerationRejected(3, GenerationRejected.Reason.ATTEMPT_LIMIT, "secret diagnostic"))
+            check(friendly.explanation.contains("3 source attempts") && !friendly.explanation.contains("secret"))
             // Exercise the compiler failure contract without filesystem fault injection.
             val classify = Class.forName("dev.deal.embedding.ExperienceCompilerKt").getDeclaredMethod("classifyCompilerOutcome", Int::class.javaPrimitiveType, String::class.java, String::class.java, String::class.java)
             fun classification(status: Int, code: String?, file: String = "project/src/app.deal"): Throwable? {
@@ -71,12 +76,15 @@ class CatalogueInstrumentation : Instrumentation() {
                     }
                 }
                 host.generate("Compare boom stands for native review", disclosed, model, GenerationCancellation()) {}.use { candidate ->
-                    check(calls == 1 && candidate.attempts == 1) { "Template needed repair" }
+                    check(calls == 1 && candidate.attempts == 1 && candidate.origin == WorkspaceOrigin.CATALOGUE) { "Template needed repair" }
                     check(reads == 0 && stages == 0) { "Generation invoked provider data" }
                     // Source replay receipt stays app-private and contains no provider data.
                     val prefs = context.getSharedPreferences("organizer-experience", 0)
                     // Capture exact accepted source from candidate-private staging via saved workspace storage.
                     val (workspace, _) = host.open("Catalogue verification", candidate)
+                    check(workspace.origin == WorkspaceOrigin.CATALOGUE && workspace.attempts == 1)
+                    val persisted = context.getSharedPreferences("catalogue-test", 0)
+                    check(persisted.getString("workspace.${workspace.id}.origin", null) == WorkspaceOrigin.CATALOGUE.name && persisted.getInt("workspace.${workspace.id}.attempts", 0) == 1)
                     val stored = context.getSharedPreferences("catalogue-test", 0)
                     source = ExperienceSource(stored.getString("workspace.${workspace.id}.deal", null)!!, stored.getString("workspace.${workspace.id}.dealui", null)!!)
                     prefs.edit().putString("workspace.catalogue-verification.deal", source!!.deal).putString("workspace.catalogue-verification.dealui", source!!.ui).commit()
@@ -153,7 +161,7 @@ class CatalogueInstrumentation : Instrumentation() {
                 }
             }
             host.generate("Repair fixture", disclosed, repairing, GenerationCancellation()) {}.use { candidate ->
-                check(sourceCalls == 3 && candidate.attempts == 2)
+                check(sourceCalls == 3 && candidate.attempts == 2 && candidate.origin == WorkspaceOrigin.AI_SOURCE)
                 val (mounted, _) = host.open("Slow path", candidate); host.closeWorkspace(mounted.id)
             }
             // Envelope shape is rejected by DEAL before invoking the compiler, then repaired.
@@ -176,8 +184,16 @@ class CatalogueInstrumentation : Instrumentation() {
             val exhausted = object : ModelClient {
                 override fun complete(input: String, previous: String, diagnostics: String, cancellation: GenerationCancellation): String { exhaustedCalls++; return "invalid" }
             }
-            check(runCatching { host.generate("Exhaustion fixture", disclosed, exhausted, GenerationCancellation()) {} }.isFailure)
+            val rejection = runCatching { host.generate("Exhaustion fixture", disclosed, exhausted, GenerationCancellation()) {} }.exceptionOrNull()
+            check(rejection is GenerationRejected && rejection.reason == GenerationRejected.Reason.REPEATED_RESPONSE && rejection.attempts == 2)
             check(exhaustedCalls == 3 && host.poll(retained.id)!!.toString() == retainedTree.toString()) { "Source exhaustion changed the healthy workspace" }
+            var limitedCalls = 0
+            val limited = object : ModelClient {
+                override fun complete(input: String, previous: String, diagnostics: String, cancellation: GenerationCancellation): String { limitedCalls++; return "invalid-$limitedCalls" }
+            }
+            val limit = runCatching { host.generate("Distinct exhaustion fixture", disclosed, limited, GenerationCancellation()) {} }.exceptionOrNull()
+            check(limit is GenerationRejected && limit.reason == GenerationRejected.Reason.ATTEMPT_LIMIT && limit.attempts == 3 && limitedCalls == 4)
+            check(host.poll(retained.id)!!.toString() == retainedTree.toString())
             var failureCalls = 0
             val transportFailure = object : ModelClient {
                 override fun complete(input: String, previous: String, diagnostics: String, cancellation: GenerationCancellation): String {
@@ -210,7 +226,7 @@ class CatalogueInstrumentation : Instrumentation() {
                     }
                 }
                 val failure = runCatching { host.generate("Template fault test", disclosed, model, GenerationCancellation()) {} }.exceptionOrNull()
-                check(calls == 1 && failure?.message?.contains("TEMPLATE_CHECK_FAILED") == true) { "Template defect caused inference repair: $failure" }
+                check(calls == 1 && failure is GenerationRejected && failure.reason == GenerationRejected.Reason.TEMPLATE_CHECK) { "Template defect caused inference repair: $failure" }
             } finally { config.contracts = registry.contracts() }
             val (workspace, initial) = host.check(source!!).use { host.open("Interaction verification", it) }
             fun nodes(n: JSONObject): List<JSONObject> = listOf(n) + (0 until n.getJSONArray("children").length()).flatMap { nodes(n.getJSONArray("children").getJSONObject(it)) }

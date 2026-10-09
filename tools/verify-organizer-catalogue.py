@@ -31,12 +31,12 @@ def ui():
 
 
 def find(label, scroll=False):
-    for _ in range(7 if scroll else 1):
+    for _ in range(14 if scroll else 1):
         for node in ui().iter('node'):
             if label in (node.get('text'), node.get('content-desc')) and node.get('bounds') != '[0,0][0,0]':
                 return node
         if scroll:
-            shell('input', 'swipe', '540', '1900', '540', '750', '300')
+            shell('input', 'swipe', '540', '1800', '540', '1250', '300')
     raise AssertionError('Missing native control: ' + label)
 
 
@@ -110,7 +110,7 @@ if not args.replay:
     tap('Arrange fulfilment', scroll=True)
     # The single authorized inference workflow. Do not retry this click.
     tap('Build workspace')
-wait(lambda: any(n.get('text') == 'DEAL WORKSPACE · generated' for n in ui().iter('node')))
+wait(lambda: any(n.get('text') in ('AI-built workspace', 'Catalogue workspace', 'Saved-source workspace') for n in ui().iter('node')))
 prefs = {n.get('name'): n.text for n in ET.fromstring(private(PACKAGE, 'shared_prefs/organizer-experience.xml'))}
 if args.replay:
     source_keys = {'workspace.' + args.replay + '.deal', 'workspace.' + args.replay + '.dealui'}
@@ -139,7 +139,7 @@ if args.editable:
     shell('input', 'tap', str((left + right) // 2), str(min(top + 90, bottom - 20)))
     time.sleep(.5)
     shell('input', 'text', 'adapter')
-    shell('input', 'keyevent', '111')
+    shell('input', 'keyevent', '4')
     time.sleep(.5)
     controls = list(nodes(snapshot()['tree']))
     assert prop(next(n for n in controls if n['component'] == 'ui.IntField' and prop(n, 'accessibilityLabel')['stringValue'] == 'Quantity'), 'value')['intValue'] == 2
@@ -159,10 +159,10 @@ stand = next(n for n in nodes(picked['tree']) if n['component'] == 'ui.Option' a
 assert prop(stand, 'selected')['booleanValue']
 tap('Prepare for review', scroll=True)
 wait(lambda: any(p.get('stringValue', '').startswith('Prepared for native review') for n in nodes(snapshot()['tree']) for p in n['props']), 30)
-review = next(n.get('text') for n in ui().iter('node') if n.get('text', '').startswith('Review '))
+review = next(n.get('text') for n in ui().iter('node') if n.get('text', '').startswith('Organizer review · ') )
 tap(review)
 texts = [n.get('text', '') for n in ui().iter('node')]
-assert 'Prepared operations' in texts
+assert 'Organizer review · native' in texts
 # Existing locally prepared operations can place the new entry below the fold.
 for _ in range(12):
     detail_found = any(f'Item stand:{expected_quantity}' in t and (('2026-10-10T16:00:00Z' in t and '2026-10-10T22:00:00Z' in t) if args.source_experiment or args.editable else 'Period:' in t) for t in texts)

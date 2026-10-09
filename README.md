@@ -70,6 +70,14 @@ Organizer's **Editable rental** goal requests quantity, total-budget and search 
 
 `tools/verify-organizer-catalogue.py --replay editable-full-denial-recovery --editable` verifies retained LLM source using actual Compose quantity/budget/search controls, input validation, real Rental, selection and native review without inference or provider writes. Install Organizer/tests and first run the generated fixture instrumentation. Device output stays under ignored `build/`.
 
+# Workspace origin and generation failure UX
+
+Organizer's native header distinguishes **AI-built workspace** (the model authored DEAL and Deal UI), **Catalogue workspace** (a checked predefined template) and **Saved-source workspace** (legacy/unknown authorship). Origin and attempt count come from trusted generation results and app-private workspace metadata, never generated labels. **Source details** explains checks, repairs or unknown replay history; checking is not correctness or write authorization. **Organizer review · native** is a separate screen, explicitly marked preparation rather than reservation.
+
+Generation progress, cancellation and failure stay visible in the request sheet's bottom panel. Exhausted source attempts, repeated rejected responses, template defects and operational interruptions have distinct typed presentation; raw compiler diagnostics are not displayed. Existing plan/workspace is retained. **Change request**, **Keep existing workspace / Back to plan**, and **Build again · new run** are explicit actions, with no automatic repetition. Money constraints are labelled separately from generation attempts.
+
+`tools/verify-workspace-clarity.py` uses test-APK-only native surface fixtures, never inference. It verifies origin labels/details, native review, exhaustion and controls in normal mode and dark/grayscale mode with enlarged font, restoring device settings afterward. It captures screenshots/XML under ignored `build/workspace-clarity/`; this is bedtime-style presentation testing, not a claim to control Android Bedtime scheduling, DND or Extra dim. Live-region text, solid surfaces, text labels, borders and at-least-48dp controls avoid reliance on accent colors or transient notifications.
+
 # Verification
 
 `tools/CheckUiLifecycle.java` compiles framework-owned JS session fixtures through Android's production source-generation entry. Run `node dependencies/deal-ui/src/test/js/session.test.js build/ui-lifecycle/js dependencies/deal-embedding/android/assets/embedding/bindings` for overlap/arrival ordering, reentrant drain, atomic rejection, fault/version, late completion and replacement readiness. `UiLifecycleInstrumentation` exercises controlled completions and replacement on the Android sandbox without inference.

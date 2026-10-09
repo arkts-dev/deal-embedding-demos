@@ -33,13 +33,15 @@ class OrganizerActivity : ComponentActivity() {
     private val store by lazy { ShowStore(this) }
     private val host by lazy { OrganizerHost(this) }
     private val worker = Executors.newSingleThreadScheduledExecutor()
-    override fun onDestroy() { worker.execute { host.close() }; worker.shutdown(); super.onDestroy() }
+    private var runningGeneration: GenerationCancellation? = null
+    override fun onDestroy() { runningGeneration?.cancel(); worker.execute { host.close() }; worker.shutdown(); super.onDestroy() }
     override fun onCreate(state: Bundle?) {
         super.onCreate(state)
         var show by mutableStateOf(store.load())
         var request by mutableStateOf<List<String>?>(null)
         var generating by mutableStateOf(false)
         var status by mutableStateOf("")
+        var problem by mutableStateOf<GenerationProblem?>(null)
         var live by mutableStateOf<List<LiveWorkspace>>(emptyList())
         var open by mutableStateOf<LiveWorkspace?>(null)
         val activeWorkspace = java.util.concurrent.atomic.AtomicReference<String?>(null)
@@ -48,7 +50,6 @@ class OrganizerActivity : ComponentActivity() {
         var tree by mutableStateOf<JSONObject?>(null)
         var fault by mutableStateOf("")
         var review by mutableStateOf(false)
-        var cancellation by mutableStateOf<GenerationCancellation?>(null)
         fun update(block: (ShowState) -> Unit) { val current = show ?: return; block(current); store.save(current); show = current }
         fun publish(id: String, snapshot: JSONObject) {
             if (activeWorkspace.get() != id || (snapshot.getInt("version") == publishedVersion && snapshot.optString("fault") == publishedFault)) return
@@ -89,7 +90,9 @@ class OrganizerActivity : ComponentActivity() {
                         prefs.getString("workspace.$replayId.deal", null) ?: error("Saved workspace not found"),
                         prefs.getString("workspace.$replayId.dealui", null) ?: error("Saved view not found"))
                     host.prepare()
-                    host.environment().check(source).use { candidate ->
+                    val origin = runCatching { WorkspaceOrigin.valueOf(prefs.getString("workspace.$replayId.origin", "")!!) }.getOrDefault(WorkspaceOrigin.SAVED_SOURCE)
+                    val attempts = prefs.getInt("workspace.$replayId.attempts", 0).coerceIn(0, 3)
+                    host.environment().check(source, origin, attempts).use { candidate ->
                         val (workspace, snapshot) = host.environment().open(prefs.getString("workspace.$replayId.title", null) ?: "Saved workspace replay", candidate)
                         activeWorkspace.set(workspace.id); publishedVersion = -1
                         java.io.File(filesDir, "workspace-error.txt").delete()
@@ -127,9 +130,11 @@ class OrganizerActivity : ComponentActivity() {
                                 request != null -> RequestSheet(
                                     title = request!!.mapNotNull { id -> show!!.requirement(id)?.name }.joinToString(", "),
                                     requirements = request!!.mapNotNull { id -> show!!.requirement(id) }, host = host, status = status, building = generating,
-                                    onCancel = { request = null },
+                                    problem = problem, hasExistingWorkspace = open != null,
+                                    onDismissProblem = { problem = null; status = "" },
+                                    onCancel = { if (generating) runningGeneration?.cancel() else { request = null; problem = null; status = "" } },
                                     onBuild = { goal, instruction ->
-                                        generating = true; status = "Discovering capabilities…"
+                                        generating = true; problem = null; status = "Discovering connected apps…"
                                         val selected = request!!.mapNotNull { id -> show!!.requirement(id) }
                                         val intent = "Resolve these requirements for ${selected.firstOrNull()?.act ?: "the show"}: " +
                                             selected.joinToString("; ") { "${it.quantity} × ${it.name} — ${it.specification}, needed at ${it.location} by ${it.end(true)}" } + ". " + instruction
@@ -145,11 +150,11 @@ class OrganizerActivity : ComponentActivity() {
                                                     put("searchTerms", org.json.JSONArray(requirement.name.split(" ").filter { it.length > 2 }))
                                                 }
                                             }.toString()
-                                        val token = GenerationCancellation(); cancellation = token
+                                        val token = GenerationCancellation(); runningGeneration = token
                                         worker.execute {
                                             try {
                                                 host.prepare()
-                                                val candidate = host.generate(intent, disclosed, token) { message -> runOnUiThread { status = message } }
+                                                val candidate = host.generate(intent, disclosed, token) { message -> runOnUiThread { if (!isDestroyed && runningGeneration === token) status = message } }
                                                 candidate.use {
                                                     token.check()
                                                     val (workspace, snapshot) = host.environment().open(intent.take(60), candidate)
@@ -157,18 +162,18 @@ class OrganizerActivity : ComponentActivity() {
                                                     java.io.File(filesDir, "workspace-error.txt").delete()
                                                     publish(workspace.id, snapshot)
                                                     val workspaces = host.environment().workspaces()
-                                                    runOnUiThread { live = workspaces; open = workspace; request = null; generating = false; status = "" }
+                                                    runOnUiThread { if (!isDestroyed) { live = workspaces; open = workspace; request = null; generating = false; status = ""; problem = null; runningGeneration = null } }
                                                 }
                                             } catch (error: Throwable) {
                                                 android.util.Log.e("Organizer", "generation failed", error)
-                                                runOnUiThread { generating = false; status = if (error is CancellationException) "Generation cancelled; the plan is unchanged" else "Generation failed; the plan is unchanged: ${error.message?.take(160)}" }
+                                                runOnUiThread { if (!isDestroyed && runningGeneration === token) { generating = false; status = ""; problem = generationProblem(error); runningGeneration = null } }
                                             }
                                         }
                                     },
                                 )
                                 open != null -> WorkspaceView(
                                     title = open!!.title, tree = tree ?: JSONObject().put("component", "root").put("props", org.json.JSONArray()).put("children", org.json.JSONArray()),
-                                    fault = fault,
+                                    fault = fault, origin = open!!.origin, attempts = open!!.attempts,
                                     onDispatch = { slot, payload ->
                                         val id = open!!.id
                                         worker.execute {
@@ -193,7 +198,7 @@ class OrganizerActivity : ComponentActivity() {
                                     onBack = { selectedRequirement = null },
                                     onEdit = { updated -> update { it.requirements = it.requirements.map { r -> if (r.id == updated.id) updated else r } } },
                                     onVerify = { id -> update { s -> s.requirements = s.requirements.map { r -> if (r.id == id) r.copy(verified = !r.verified) else r } } },
-                                    onArrange = { id -> request = listOf(id) },
+                                    onArrange = { id -> if (!generating) { problem = null; status = ""; request = listOf(id) } },
                                 )
                                 else -> when (destination) {
                                     Destination.Overview -> OverviewScreen(state = show!!, onOpenRequirement = { selectedAct = null; selectedRequirement = it }, onOpenRiders = { destination = Destination.Riders })
