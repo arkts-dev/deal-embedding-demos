@@ -16,6 +16,26 @@ class WorkspaceInstrumentation : Instrumentation() {
         var runtime: ExperienceRuntime? = null
         try {
             val context = targetContext
+            // Newest exchange first, without reversing its request/reply/check sequence.
+            fun observed(trace: String, sequence: Int, stage: String, outcome: String, span: String, parent: String = "") =
+                JSONObject().put("trace", trace).put("sequence", sequence).put("time", sequence.toString()).put("stage", stage).put("outcome", outcome).put("span", span).put("parent", parent)
+            val dialogue = listOf(
+                observed("a", 1, "source", "started", "first"),
+                observed("b", 2, "choice", "started", "other"),
+                observed("a", 3, "source", "response", "reply", "first"),
+                observed("a", 4, "check", "failed", "check"),
+                observed("a", 5, "source", "started", "repair"),
+                observed("a", 6, "source", "response", "reply2", "repair"),
+                observed("a", 7, "check", "completed", "check2"))
+            val exchanges = dev.deal.apps.organizer.dialogueExchanges(dialogue.reversed())
+            check(exchanges.map { it.key } == listOf("a:repair", "b:other", "a:first"))
+            check(exchanges[0].events.map { it.getInt("sequence") } == listOf(5, 6, 7))
+            check(exchanges[2].events.map { it.getInt("sequence") } == listOf(1, 3, 4))
+            check(dev.deal.apps.organizer.dialogueRole(exchanges[2].events.last()) == "Check feedback")
+            check(dev.deal.apps.organizer.dialogueExchanges(dialogue, 1).single().events.size == 3)
+            val incomplete = dev.deal.apps.organizer.dialogueExchanges(listOf(observed("a", 8, "source", "response", "orphan", "evicted"))).single()
+            check(incomplete.events.size == 1 && incomplete.events[0].getString("outcome") == "response")
+            check(dev.deal.apps.organizer.dialogueExchanges(listOf(observed("a", 9, "source", "started", "pending"))).single().events.size == 1)
             val instant = "2026-10-10T16:00:00Z"
             val friendly = dev.deal.shell.friendlyDates(instant, dev.deal.apps.organizer.SHOW_ZONE)
             check(!friendly.contains("T16") && friendly.endsWith("18:00"))

@@ -97,16 +97,20 @@ class DiagnosticsActivity : ComponentActivity() {
                             TextButton(onClick = { if (capture) { EmbeddingLog.capture(this@DiagnosticsActivity, false); capture = false } else confirm = true }) {
                                 Text(if (capture) "Content capture ON · turn off" else "Capture content")
                             }
-                            Text("Latest 200 retained model events · artifacts may be omitted or evicted.", style = MaterialTheme.typography.bodySmall)
-                            val exchanges = scoped.filter { it.optString("stage") in listOf("choice", "source") && it.optString("outcome") in listOf("started", "response", "failed", "cancelled") }.take(200).reversed()
+                            Text("Newest exchange first · request, reply and check feedback in order. Latest 100 retained exchanges; missing events/artifacts may be omitted or evicted.", style = MaterialTheme.typography.bodySmall)
+                            val exchanges = dialogueExchanges(scoped)
                             LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                                 if (exchanges.isEmpty()) item { Text("No retained model exchange in this scope. Enable capture before Find options to inspect full requests and replies. Reopening saved options does not call AI.") }
-                                items(exchanges, key = { it.getString("time") + it.getString("sequence") + it.getString("span") }) { entry ->
-                                    OutlinedCard(onClick = { selected = entry }, modifier = Modifier.fillMaxWidth()) {
-                                        Column(Modifier.padding(12.dp)) {
-                                            val role = when (entry.optString("outcome")) { "started" -> "Request to AI"; "response" -> "AI reply"; "cancelled" -> "Cancelled"; else -> "Failed" }
-                                            Text(role + " · " + if (entry.optString("stage") == "choice") "Choose a suitable interface" else "Write or repair the interface", style = MaterialTheme.typography.titleSmall)
-                                            Text(dateTimeLabel(entry.getString("time").toLong(), java.time.ZoneId.systemDefault()) + " · " + entry.optString("content"), style = MaterialTheme.typography.bodySmall)
+                                items(exchanges, key = { it.key }) { exchange ->
+                                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                        Text("Exchange · " + dateTimeLabel(exchange.events.first().getString("time").toLong(), java.time.ZoneId.systemDefault()) + " · " + exchange.events.first().optString("trace").take(8), style = MaterialTheme.typography.labelMedium)
+                                        exchange.events.forEach { entry ->
+                                            OutlinedCard(onClick = { selected = entry }, modifier = Modifier.fillMaxWidth()) {
+                                                Column(Modifier.padding(12.dp)) {
+                                                    Text(dialogueRole(entry) + " · " + if (exchange.stage == "choice") "Choose a suitable interface" else "Write or repair the interface", style = MaterialTheme.typography.titleSmall)
+                                                    Text(dateTimeLabel(entry.getString("time").toLong(), java.time.ZoneId.systemDefault()) + " · " + entry.optString("code") + " · " + entry.optString("content"), style = MaterialTheme.typography.bodySmall)
+                                                }
+                                            }
                                         }
                                     }
                                 }
