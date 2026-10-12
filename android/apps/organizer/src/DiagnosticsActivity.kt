@@ -16,15 +16,12 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import dev.deal.embedding.EmbeddingLog
-import dev.deal.embedding.SavedWorkspace
-import dev.deal.embedding.WorkspaceOrigin
+import dev.deal.embedding.Experience
 import dev.deal.shell.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
-import java.io.File
 
 /** Engineering only: exact source and bounded observed activity, never a second operational engine. */
 class DiagnosticsActivity : ComponentActivity() {
@@ -33,15 +30,12 @@ class DiagnosticsActivity : ComponentActivity() {
         val workspace = intent.getStringExtra("workspace").orEmpty()
         val since = intent.getLongExtra("since", 0)
         val busy = intent.getBooleanExtra("busy", false)
-        val prefs = getSharedPreferences("organizer-experience", 0)
-        fun workspaces(): List<SavedWorkspace> = prefs.all.keys.filter { it.startsWith("workspace.") && it.endsWith(".title") }.map { key ->
-            val prefix = key.removeSuffix(".title")
-            SavedWorkspace(prefix.removePrefix("workspace."), prefs.getString(key, "")!!,
-                runCatching { WorkspaceOrigin.valueOf(prefs.getString("$prefix.origin", "SAVED_SOURCE")!!) }.getOrDefault(WorkspaceOrigin.SAVED_SOURCE), prefs.getInt("$prefix.attempts", 0))
-        }
+        val host=OrganizerProtocol.host(this)
+        val embedding=host.embedding
+        fun workspaces(): List<Experience> = embedding.saved()
         setContent { AppTheme(Accent.Organizer) {
             var entries by remember { mutableStateOf<List<JSONObject>>(emptyList()) }
-            var capture by remember { mutableStateOf(getSharedPreferences("embedding-logging", 0).getBoolean("content", false)) }
+            var capture by remember { mutableStateOf(embedding.capturesContent()) }
             var selected by remember { mutableStateOf<JSONObject?>(null) }
             var detail by remember { mutableStateOf("") }
             var health by remember { mutableStateOf("") }
@@ -55,22 +49,21 @@ class DiagnosticsActivity : ComponentActivity() {
             LaunchedEffect(Unit) {
                 while (true) {
                     val read = withContext(Dispatchers.IO) { runCatching {
-                        val directory = File(filesDir, "embedding-log")
-                        val events = listOf("previous.jsonl", "events.jsonl").flatMap { name ->
-                            File(directory, name).takeIf { it.isFile }?.readLines().orEmpty()
-                        }.map { JSONObject(it) }.reversed()
-                        events to File(directory, "health.json").takeIf { it.isFile }?.readText().orEmpty()
+                        val events=mutableListOf<JSONObject>();var cursor=""
+                        do {val page=embedding.events("",cursor,200);events.addAll(page.events);cursor=page.cursor}while(cursor.isNotEmpty())
+                        val health=embedding.health()
+                        events.reversed() to if(health.incomplete)JSONObject().put("active",health.active).toString()else ""
                     } }
                     read.onSuccess { (events, status) -> entries = events; health = status; readError = "" }
                         .onFailure { readError = "Couldn’t read activity: ${it.javaClass.simpleName}. Retained display may be stale." }
-                    capture = getSharedPreferences("embedding-logging", 0).getBoolean("content", false)
+                    capture = embedding.capturesContent()
                     delay(500)
                 }
             }
             LaunchedEffect(selected) {
                 detail = withContext(Dispatchers.IO) {
                     selected?.optString("artifact")?.takeIf { it.isNotEmpty() }?.let { id ->
-                        runCatching { File(File(filesDir, "embedding-log"), "$id.json").takeIf { it.isFile }?.readText() }.getOrNull()
+                        runCatching { embedding.artifact(id).let{if(it.status=="unavailable")null else it.text} }.getOrNull()
                     } ?: "Content omitted or evicted. Capture is explicit and not retroactive."
                 }
             }
@@ -94,7 +87,7 @@ class DiagnosticsActivity : ComponentActivity() {
                         "Dialogue" -> {
                             Text("Actual AI requests and replies · not hidden reasoning", style = MaterialTheme.typography.bodySmall)
                             FilterChip(selected = all, onClick = { all = !all }, label = { Text(if (all) "All activity" else "This request") })
-                            TextButton(onClick = { if (capture) { EmbeddingLog.capture(this@DiagnosticsActivity, false); capture = false } else confirm = true }) {
+                            TextButton(onClick = { if (capture) { embedding.capture(false); capture = false } else confirm = true }) {
                                 Text(if (capture) "Content capture ON · turn off" else "Capture content")
                             }
                             Text("Newest exchange first · request, reply and check feedback in order. Latest 100 retained exchanges; missing events/artifacts may be omitted or evicted.", style = MaterialTheme.typography.bodySmall)
@@ -116,18 +109,17 @@ class DiagnosticsActivity : ComponentActivity() {
                                 }
                             }
                         }
-                        "Workspaces" -> WorkspaceShelf(workspaces().sortedWith(compareBy<SavedWorkspace> { it.id != workspace }.thenBy { it.title }), "", onOpen = { id ->
+                        "Workspaces" -> WorkspaceShelf(workspaces().sortedWith(compareBy<Experience> { it.id != workspace }.thenBy { it.title }), "", onOpen = { id ->
                             setResult(RESULT_OK, android.content.Intent().putExtra("openWorkspace", id)); finish()
                         }, onForget = { id -> setResult(RESULT_OK, android.content.Intent().putExtra("deleteWorkspace", id)); finish() }, enabled = !busy)
                         "Source" -> Column(Modifier.weight(1f).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                             if (workspace.isNotEmpty()) {
-                                val prefix = "workspace.$workspace"
                                 Text("Workspace $workspace", style = MaterialTheme.typography.titleSmall)
-                                val origin = runCatching { WorkspaceOrigin.valueOf(prefs.getString("$prefix.origin", "SAVED_SOURCE")!!) }.getOrDefault(WorkspaceOrigin.SAVED_SOURCE)
-                                val presentation = workspacePresentation(origin, prefs.getInt("$prefix.attempts", 0))
+                                val experience=embedding.saved().first{it.id==workspace}
+                                val presentation = workspacePresentation(experience.origin, experience.attempts)
                                 Text(presentation.title + "\n" + presentation.explanation + "\n" + presentation.details)
                                 listOf("deal", "dealui").forEach { extension ->
-                                    OutlinedButton(onClick = { selectedSource = extension; source = prefs.getString("$prefix.$extension", null) ?: "Saved source unavailable." }) { Text("View .$extension") }
+                                    OutlinedButton(onClick = { selectedSource = extension; source = embedding.source(experience).let{if(extension=="deal")it.deal else it.dealui} }) { Text("View .$extension") }
                                 }
                             } else Text("No accepted workspace selected. Generation and compiler exchanges appear in Activity; full content requires capture before the call.")
                             val failure = intent.getStringExtra("error").orEmpty()
@@ -144,7 +136,7 @@ class DiagnosticsActivity : ComponentActivity() {
                                 Spacer(Modifier.weight(1f))
                                 TextButton(onClick = { clearing = true }) { Text("Clear") }
                             }
-                            TextButton(onClick = { if (capture) { EmbeddingLog.capture(this@DiagnosticsActivity, false); capture = false } else confirm = true }) {
+                            TextButton(onClick = { if (capture) { embedding.capture(false); capture = false } else confirm = true }) {
                                 Text(if (capture) "Content capture ON · turn off" else "Capture content")
                             }
                             Text("Latest 200 matching events · bounded retained history. Missing terminal events are incomplete, not success.", style = MaterialTheme.typography.bodySmall)
@@ -165,10 +157,10 @@ class DiagnosticsActivity : ComponentActivity() {
             }
             if (confirm) AlertDialog(onDismissRequest = { confirm = false }, title = { Text("Capture private content?") },
                 text = { Text("Future prompts, responses and provider payloads are stored privately with size limits. May contain personal data. Turn off after debugging. Credentials and authorization headers are excluded.") },
-                confirmButton = { TextButton(onClick = { EmbeddingLog.capture(this@DiagnosticsActivity, true); capture = true; confirm = false }) { Text("Enable") } },
+                confirmButton = { TextButton(onClick = { embedding.capture(true); capture = true; confirm = false }) { Text("Enable") } },
                 dismissButton = { TextButton(onClick = { confirm = false }) { Text("Cancel") } })
             if (clearing) AlertDialog(onDismissRequest = { clearing = false }, title = { Text("Clear retained diagnostics?") }, text = { Text("Deletes retained activity, captured artifacts and logger health evidence. Saved workspaces are kept.") },
-                confirmButton = { TextButton(onClick = { EmbeddingLog.clear(this@DiagnosticsActivity); entries = emptyList(); clearing = false }) { Text("Clear") } },
+                confirmButton = { TextButton(onClick = { embedding.clearObservation(); entries = emptyList(); clearing = false }) { Text("Clear") } },
                 dismissButton = { TextButton(onClick = { clearing = false }) { Text("Keep") } })
             selected?.let { event -> AlertDialog(onDismissRequest = { selected = null }, title = { Text(event.getString("summary")) },
                 text = { Column(Modifier.heightIn(max = 500.dp).verticalScroll(rememberScrollState())) {

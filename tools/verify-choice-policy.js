@@ -2,7 +2,7 @@
 // Compare compiled DEAL policy against the frozen, previously verified Kotlin decisions.
 // This test-only oracle is not shipped and is not an implementation fallback.
 const fs = require('fs'), path = require('path'), vm = require('vm'), assert = require('assert');
-const base = path.resolve('build/embedding-consumer/assets/generation');
+const base = path.resolve('build/organizer-policy/js');
 const factories = Object.create(null);
 function walk(dir) {
   for (const name of fs.readdirSync(dir)) {
@@ -13,11 +13,11 @@ function walk(dir) {
 }
 walk(base);
 vm.runInThisContext(fs.readFileSync('dependencies/deal-embedding/android/assets/embedding/bindings/sandbox.js','utf8'));
-configureDealCapabilities([{module:'embedding/policy-data',functions:[{name:'parse',parameters:[{name:'input',type:{kind:'string'}}],result:{kind:'json-object'}},{name:'lowercase',parameters:[{name:'input',type:{kind:'string'}}],result:{kind:'string'}},{name:'utf16Length',parameters:[{name:'input',type:{kind:'string'}}],result:{kind:'int'}},{name:'sha256',parameters:[{name:'input',type:{kind:'string'}}],result:{kind:'string'}}]}]);
-const {rt,entry: policy} = dealLoad(factories,'choice-policy.js');
+configureDealCapabilities([{module:'embedding/policy-data',functions:[{name:'parse',parameters:[{name:'input',type:{kind:'string'}}],result:{kind:'json-object'}},{name:'catalogJson',parameters:[{name:'input',type:{kind:'json-object'}}],result:{kind:'string'}},{name:'contextEntries',parameters:[{name:'input',type:{kind:'string'}}],result:{kind:'string'}},{name:'member',parameters:[{name:'input',type:{kind:'json-object'}},{name:'key',type:{kind:'string'}}],result:{kind:'json-object'}},{name:'stringMember',parameters:[{name:'input',type:{kind:'json-object'}},{name:'key',type:{kind:'string'}}],result:{kind:'string'}},{name:'lowercase',parameters:[{name:'input',type:{kind:'string'}}],result:{kind:'string'}},{name:'utf16Length',parameters:[{name:'input',type:{kind:'string'}}],result:{kind:'int'}},{name:'sha256',parameters:[{name:'input',type:{kind:'string'}}],result:{kind:'string'}}]}]);
+const {rt,entry: policy} = dealLoad(factories,'equipment-choice.js');
 async function invoke(fn,...args) {
   let done=false,result,error;
-  fn.$f(...args).then(v=>{done=true;result=v;},e=>{done=true;error=e;});
+  Promise.resolve(fn.$f(...args)).then(v=>{done=true;result=v;},e=>{done=true;error=e;});
   for(let i=0;i<100&&!done;i++) {
     for(const req of JSON.parse(dealCapabilities.take())) {
       try { const v=req.function==='utf16Length'?req.args[0].length:req.function==='lowercase'?req.args[0].toLowerCase():JSON.parse(req.args[0]); if(req.function==='parse'&&(v===null||Array.isArray(v)||typeof v!=='object'))throw Error('object required'); dealCapabilities.deliver([{id:req.id,ok:true,value:v}]); }
@@ -61,6 +61,22 @@ function oracle(catalog,context) {
     const inv=await invoke(policy.inventory,JSON.stringify(contracts),JSON.stringify(ctx),JSON.stringify(entries));
     const actual=inv.get('reads').map(r=>({alias:r.get('alias'),module:r.get('module'),arguments:r.get('arguments')}));
     assert.deepStrictEqual(actual,oracle(contracts,ctx),label);
+    const issued=JSON.parse(await invoke(policy.issued,JSON.stringify(contracts),inv));
+    assert.deepStrictEqual(Object.keys(issued.decisionQuestions).sort(),Object.keys(issued.questions).sort());
+    for(const [name,question] of Object.entries(issued.decisionQuestions)) {
+      assert.equal(question.type,'choice');assert(question.instructions.length>0);
+      assert.deepStrictEqual(Object.keys(question.criteria).sort(),issued.questions[name].slice().sort());
+      assert(Object.values(question.criteria).every(description=>typeof description==='string'&&description.length>0));
+    }
+    if(label==='supported' && process.env.JEV_FIXTURE) fs.writeFileSync(process.env.JEV_FIXTURE,JSON.stringify({context:ctx,catalogue:contracts,issued}));
+    if(label==='supported' && process.env.JEV_RESULTS) {
+      const live=JSON.parse(fs.readFileSync(process.env.JEV_RESULTS,'utf8'));
+      const comparison=await invoke(policy.validate,JSON.stringify({answers:live[0].answers}),inv);
+      assert.equal(comparison.get('accepted'),true,'Live Jev comparison must pass DEAL policy');
+      const unsupported=await invoke(policy.validate,JSON.stringify({answers:live[1].answers}),inv);
+      assert.equal(unsupported.get('accepted'),false,'Live unsupported Jev request must fall back');
+      assert(unsupported.get('diagnostics').startsWith('CHOICE_UNSUPPORTED'));
+    }
     for(const purpose of ['compare','choose'])for(const headline of ['hero','text'])for(const notice of ['warning','none']){
       const answer={answers:{purpose,headline,notice,read:'read0'}};
       const decision=await invoke(policy.validate,JSON.stringify(answer),inv);

@@ -91,8 +91,8 @@ done
 library_key=$(python3 tools/build-cache.py \
     tools/build.sh tools/build-cache.py \
     dependencies/deal-embedding/build.sh dependencies/deal-embedding/android \
-    dependencies/deal-embedding/tools dependencies/deal-embedding/core/generation.deal dependencies/deal-embedding/core/choice-policy.deal \
-    dependencies/deal-embedding/core/catalogue-source.deal dependencies/deal-embedding/core/source-literals.deal \
+    dependencies/deal-embedding/tools dependencies/deal-embedding/core/generation.deal dependencies/deal-embedding/api \
+    dependencies/deal-embedding/core/host dependencies/deal-embedding/core/source-literals.deal \
     dependencies/deal-embedding/core/candidate-check.deal dependencies/deal-embedding/core/source-repair.deal dependencies/deal-embedding/core/logging.deal dependencies/deal-embedding/core/generation-guidance.deal \
     dependencies/deal-embedding/core/generation-guidance.md dependencies/deal-embedding/core/host \
     dependencies/deal/deal dependencies/deal/std dependencies/deal/skills/write-deal/references \
@@ -191,15 +191,7 @@ for app in "${TARGETS[@]}"; do
     if [[ "$profile" == "host" ]]; then
         rm -rf "build/assets/$app"; mkdir -p "build/assets/$app"
         cp -r build/embedding-consumer/assets/* "build/assets/$app/"
-        if [[ "$app" == tests ]]; then
-            mkdir -p "build/assets/$app/ui-lifecycle"
-            cp dependencies/deal-ui/src/test/fixtures/js-session/app.deal dependencies/deal-ui/src/test/fixtures/js-session/app.dealui "build/assets/$app/ui-lifecycle/"
-            mkdir -p "build/assets/$app/source-generation"
-            cp android/tests/fixtures/source-generation/*.json "build/assets/$app/source-generation/"
-            mkdir -p "build/assets/$app/editable-rental"
-            cp android/tests/fixtures/editable-rental/* "build/assets/$app/editable-rental/"
-            cp -r android/tests/fixtures/editable-generated "build/assets/$app/"
-        fi
+        if [[ "$app" == organizer || "$app" == tests ]]; then python3 tools/build-organizer-policy.py; fi
         if [[ "$app" == calendar ]]; then
             mkdir -p "build/assets/$app/experience"
             cp android/apps/calendar/experiences/departure/*.deal "build/assets/$app/experience/" 2>/dev/null || true

@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Loopback development gateway. Reads Pi credentials in memory; never logs provider data."""
 import argparse, concurrent.futures, http.server, json, os, pathlib, subprocess, time, urllib.request, urllib.error
+from jev_chooser import infer as infer_jev
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 CONFIG = json.loads((pathlib.Path.home()/'.pi/agent/models.json').read_text())['providers']['devagent']
 KEY = CONFIG['apiKey']
@@ -21,7 +22,13 @@ parser.add_argument('--counts', type=pathlib.Path, help='Persist admission count
 parser.add_argument('--audit', action='store_true', help='Explicit bounded autonomous-test mode, NOT a demo launcher')
 parser.add_argument('--source-limit', type=int)
 parser.add_argument('--choice-limit', type=int)
+parser.add_argument('--chooser', choices=('llm', 'jev'), default='llm', help='Choice transport; source generation remains on the configured generative model')
+parser.add_argument('--jev-key-file', type=pathlib.Path, default=pathlib.Path.home()/'jev.key', help='Read the Jev credential in memory; never packaged or logged')
+parser.add_argument('--jev-model', default='jev-latest')
 options = parser.parse_args()
+JEV_KEY = options.jev_key_file.read_text().strip() if options.chooser == 'jev' else ''
+if options.chooser == 'jev' and (not JEV_KEY or any(c.isspace() for c in JEV_KEY)):
+    parser.error('Jev credential must be a nonempty single token')
 if options.audit and (not options.counts or options.source_limit is None or options.choice_limit is None or options.source_limit <= 0 or options.choice_limit <= 0):
     parser.error('--audit requires --counts and positive source/choice limits')
 if not options.audit and (options.source_limit is not None or options.choice_limit is not None):
@@ -48,6 +55,8 @@ def admit(body):
 # Return provider request/response to the caller's unified private logger; no parallel logs.
 def infer(body):
     admit(body)
+    if options.chooser == 'jev' and '\n\nISSUED OPTIONS\n' in body['input']:
+        return infer_jev(body, JEV_KEY, options.jev_model)
     messages=[{'role':'user','content':body['input']}]
     if body.get('previous'):
         messages.append({'role':'assistant','content':body['previous']})
@@ -84,7 +93,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
     def do_GET(self):
         if self.path != '/health': self.send_error(404); return
         # Readiness of this transport/configuration only, NOT a provider success claim.
-        self.reply(200, {'mode':'audit' if options.audit else 'demo', 'configured':bool(KEY), 'automaticRetries':False})
+        self.reply(200, {'mode':'audit' if options.audit else 'demo', 'configured':bool(KEY) and (options.chooser != 'jev' or bool(JEV_KEY)), 'automaticRetries':False, 'chooser':options.chooser})
     def do_POST(self):
         if self.path!='/generate': self.send_error(404); return
         try:
@@ -108,5 +117,5 @@ class Handler(http.server.BaseHTTPRequestHandler):
         except Exception:
             self.reply(502, {'error':{'code':'GATEWAY_FAILURE', 'message':'Development gateway could not complete the request'}})
 if __name__=='__main__':
-    print('Development generation gateway listening on loopback:8787 · '+('AUDIT limits enabled' if options.audit else 'DEMO · no audit ceiling')+' · no automatic retries',flush=True)
+    print('Development generation gateway listening on loopback:8787 · '+('AUDIT limits enabled' if options.audit else 'DEMO · no audit ceiling')+' · chooser '+options.chooser+' · no automatic retries',flush=True)
     http.server.ThreadingHTTPServer(('127.0.0.1',8787),Handler).serve_forever()

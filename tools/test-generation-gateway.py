@@ -23,7 +23,7 @@ class GatewayTest(unittest.TestCase):
         tree=ast.parse(pathlib.Path('tools/generation-gateway.py').read_text())
         definitions=[n for n in tree.body if isinstance(n,ast.ClassDef) and n.name in ('GatewayFailure','Handler')]
         namespace={'json':json,'http':types.SimpleNamespace(server=http.server),'urllib':types.SimpleNamespace(error=urllib.error),
-                   'concurrent':types.SimpleNamespace(futures=concurrent.futures),'options':types.SimpleNamespace(audit=False),'KEY':'private-key'}
+                   'concurrent':types.SimpleNamespace(futures=concurrent.futures),'options':types.SimpleNamespace(audit=False,chooser='llm'),'KEY':'private-key'}
         exec(compile(ast.Module(body=definitions,type_ignores=[]),'safe-handler','exec'),namespace)
         class Failed:
             def result(self,**kwargs):raise namespace['GatewayFailure']('AUDIT_LIMIT','Explicit audit ceiling exhausted')
@@ -32,11 +32,24 @@ class GatewayTest(unittest.TestCase):
         try:
             base='http://127.0.0.1:'+str(server.server_port)
             with urllib.request.urlopen(base+'/health') as response:
-                health=json.load(response);self.assertEqual(health,{'mode':'demo','configured':True,'automaticRetries':False});self.assertNotIn('private-key',json.dumps(health))
+                health=json.load(response);self.assertEqual(health,{'mode':'demo','configured':True,'automaticRetries':False,'chooser':'llm'});self.assertNotIn('private-key',json.dumps(health))
             request=urllib.request.Request(base+'/generate',data=json.dumps({'input':'x','previous':'','diagnostics':'','capture':False}).encode())
             with self.assertRaises(urllib.error.HTTPError) as caught:urllib.request.urlopen(request)
             self.assertEqual(caught.exception.code,503);self.assertEqual(json.load(caught.exception)['error']['code'],'AUDIT_LIMIT')
         finally:server.shutdown();server.server_close();thread.join()
+    def test_jev_routing(self):
+        tree=ast.parse(pathlib.Path('tools/generation-gateway.py').read_text())
+        infer=next(n for n in tree.body if isinstance(n,ast.FunctionDef) and n.name=='infer')
+        calls=[]
+        namespace={'options':types.SimpleNamespace(chooser='jev',jev_model='jev-test'),'JEV_KEY':'private-key',
+                   'admit':lambda body:calls.append('admit'),'infer_jev':lambda *args:calls.append(args) or b'jev'}
+        exec(compile(ast.Module(body=[infer],type_ignores=[]),'routing','exec'),namespace)
+        body={'input':'state\n\nISSUED OPTIONS\n{}'}
+        self.assertEqual(namespace['infer'](body),b'jev')
+        self.assertEqual(calls,['admit',(body,'private-key','jev-test')])
+        namespace['infer_jev']=lambda *args:(_ for _ in ()).throw(urllib.error.URLError('unreachable'))
+        with self.assertRaises(urllib.error.URLError):namespace['infer'](body)
+
     def test_exchange(self):
         tree=ast.parse(pathlib.Path('tools/generation-gateway.py').read_text())
         infer=next(n for n in tree.body if isinstance(n,ast.FunctionDef) and n.name=='infer')
@@ -49,7 +62,7 @@ class GatewayTest(unittest.TestCase):
             def read(self,limit):return json.dumps(response).encode()
         def request(url,data,headers):
             seen.append(json.loads(data));headers_seen.append(headers);return object()
-        namespace={'admit': lambda body: None, 'json':json,'MODEL':'fixture','ENDPOINT':'unused','KEY':'private-key','urllib':types.SimpleNamespace(request=types.SimpleNamespace(Request=request,urlopen=lambda *a,**k:Reply()))}
+        namespace={'options':types.SimpleNamespace(chooser='jev'),'admit': lambda body: None, 'json':json,'MODEL':'fixture','ENDPOINT':'unused','KEY':'private-key','urllib':types.SimpleNamespace(request=types.SimpleNamespace(Request=request,urlopen=lambda *a,**k:Reply()))}
         exec(compile(ast.Module(body=[infer],type_ignores=[]),'gateway','exec'),namespace)
         body={'input':'prompt','previous':'prior','diagnostics':'E3003','capture':True}
         result=json.loads(namespace['infer'](body))

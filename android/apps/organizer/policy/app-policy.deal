@@ -1,0 +1,51 @@
+import * as embedding from "embedding";
+import * as types from "catalogue-policy";
+import * as equipment from "./equipment-choice";
+import * as source from "./equipment-source";
+import * as data from "embedding/policy-data";
+import * as json from "std/json";
+import * as tables from "std/table";
+
+// Trusted, build-linked Organizer domain policy. No provider calls during preparation.
+export async function offer(intent: string, context: embedding.GenerationContext, capabilities: embedding.CapabilityContract[]): types.CatalogueOffer {
+    let disclosed: string = embedding.contextJson(context);
+    let catalog: string = await data.catalogJson(capabilities);
+    let entries: string = await data.contextEntries(disclosed);
+    let inventory: table = await equipment.inventory(catalog, disclosed, entries);
+    let reads: table[] = inventory.reads;
+    if (reads.length === 0) { return { available: false }; }
+    let issued: table = await data.parse(equipment.issued(catalog, inventory));
+    let decisions: table = issued.decisionQuestions;
+    let keys: string[] = ["purpose", "headline", "notice", "read"];
+    let questions: types.ChoiceQuestion[] = [];
+    for (let key: string of keys) {
+        let decision: table = await data.member(decisions, key);
+        let criteria: table = decision.criteria;
+        let options: types.ChoiceOption[] = [];
+        for (let name: string of tables.keys(criteria)) {
+            let description: string = await data.stringMember(criteria, name);
+            let option: types.ChoiceOption = { name: name, description: description };
+            options[options.length] = option;
+        }
+        let instructions: string = decision.instructions;
+        let question: types.ChoiceQuestion = { name: key, instructions: instructions, options: options };
+        questions[questions.length] = question;
+    }
+    return { available: true, questions: questions, stateJson: json.stringify(inventory) };
+}
+
+export async function lower(stateJson: string, answers: types.ChoiceAnswer[]): types.CatalogueLowering {
+    let inventory: table = await data.parse(stateJson);
+    let chosen: table = {};
+    for (let answer: types.ChoiceAnswer of answers) { chosen[answer.question] = answer.choice; }
+    let decision: table = await equipment.validate(json.stringify({ answers: chosen }), inventory);
+    let accepted: boolean = decision.accepted;
+    if (!accepted) { let reason: string = decision.diagnostics; return { reason: reason }; }
+    let selection: table = decision.selection;
+    let envelope: string = await source.lower("experience", selection);
+    let pair: table = await data.parse(envelope);
+    let deal: string = pair.deal; let dealui: string = pair.dealui;
+    let output: embedding.Source = { deal: deal, dealui: dealui };
+    return { source: output };
+}
+export function main(): null { return null; }

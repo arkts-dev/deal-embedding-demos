@@ -1,7 +1,6 @@
 package dev.deal.apps.organizer
 
 import dev.deal.embedding.GenerationRejected
-import dev.deal.embedding.WorkspaceOrigin
 import java.util.concurrent.CancellationException
 import org.json.JSONObject
 import dev.deal.shell.friendlyDates
@@ -36,11 +35,11 @@ internal fun displayDates(tree: JSONObject): JSONObject {
 
 /** Native presentation of trusted facts; never parse a model's text to establish provenance. */
 data class WorkspacePresentation(val title: String, val explanation: String, val details: String)
-fun workspacePresentation(origin: WorkspaceOrigin, attempts: Int): WorkspacePresentation = when (origin) {
-    WorkspaceOrigin.AI_SOURCE -> WorkspacePresentation("AI-built", "AI wrote the logic and screen. Checked before opening.",
+fun workspacePresentation(origin: String, attempts: Int): WorkspacePresentation = when (origin) {
+    "generated" -> WorkspacePresentation("AI-built", "AI wrote the logic and screen. Checked before opening.",
         if (attempts > 0) "Source attempts: $attempts. Repairs: ${(attempts - 1).coerceAtLeast(0)}. Checks do not guarantee correctness or authorize provider writes." else "Replayed AI-authored source; original attempt count unavailable. Checked again before opening.")
-    WorkspaceOrigin.CATALOGUE -> WorkspacePresentation("Template", "Built from a predefined template. Checked before opening.", "The model selected presentation choices; it did not author this workspace's source.")
-    WorkspaceOrigin.SAVED_SOURCE -> WorkspacePresentation("Workspace", "Checked source replay. Original authorship is unknown.", "No inference was used to open this saved pair. Its origin was not recorded; it is not labelled AI-authored or catalogue-built.")
+    "catalogue" -> WorkspacePresentation("Template", "Built from a predefined template. Checked before opening.", "The model selected presentation choices; it did not author this workspace's source.")
+    else -> WorkspacePresentation("Workspace", "Checked source replay. Original authorship is unknown.", "No inference was used to open this saved pair. Its origin was not recorded; it is not labelled AI-authored or catalogue-built.")
 }
 /** Short native status; source adapter text is presentation input, not provenance. */
 fun compactGenerationStatus(status: String): String {

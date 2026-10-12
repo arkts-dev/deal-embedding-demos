@@ -45,7 +45,7 @@ class GenerationGateway(private val endpoint: String) : ModelClient {
             } }.toByteArray()
             val text = raw.toString(Charsets.ISO_8859_1)
             val headerEnd = text.indexOf("\r\n\r\n")
-            check(headerEnd > 0) { "Malformed gateway response" }
+            if(headerEnd<=0)throw GenerationGatewayFailure("GATEWAY_FAILURE","Demo gateway disconnected without a response")
             val statusLine = text.substringBefore("\r\n")
             val status = statusLine.split(' ').getOrNull(1)?.trim()?.toIntOrNull() ?: 0
             log.event("transport", "response", target = "development gateway", code = "HTTP_$status")
@@ -73,6 +73,7 @@ class GenerationGateway(private val endpoint: String) : ModelClient {
             // Cancellation closes the socket; present deliberate cancellation rather
             // than misclassifying that resulting SocketException as connection failure.
             cancellation.check()
+            if(error is java.net.SocketException && error !is java.net.ConnectException)throw GenerationGatewayFailure("PROVIDER_UNREACHABLE","Demo AI connection unavailable")
             throw error
         } finally { registration.close(); runCatching { socket.close() } }
     }

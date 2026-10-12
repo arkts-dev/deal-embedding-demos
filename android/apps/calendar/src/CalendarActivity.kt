@@ -40,7 +40,9 @@ class CalendarActivity : ComponentActivity() {
     private var discloseEvent by mutableStateOf(false)
     private var generating by mutableStateOf(false)
     private var generationStatus by mutableStateOf("")
-    @Volatile private var cancellation: GenerationCancellation? = null
+    @Volatile private var cancellation: GenerationRequest? = null
+    @Volatile private var cancelRequested=false
+    private fun cancelGeneration(){cancelRequested=true;cancellation?.let{experience.embedding.cancel(it)}}
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -72,7 +74,7 @@ class CalendarActivity : ComponentActivity() {
                         OutlinedTextField(generationIntent, { generationIntent = it.take(4096) }, label = { Text("What would you like to do?") }, modifier = Modifier.fillMaxWidth(), minLines = 2, maxLines = 4, enabled = !generating)
                         Row { Checkbox(discloseEvent, { discloseEvent = it }, enabled = !generating); Text("Share selected event with the model") }
                         Text("Development inference uses a remote model. Capability descriptions are shared; provider data is not read during generation.")
-                        if (generating) Button(onClick = { cancellation?.cancel(); generationStatus = "Cancelling generation…" }) { Text("Cancel generation") }
+                        if (generating) Button(onClick = { cancelGeneration(); generationStatus = "Cancelling generation…" }) { Text("Cancel generation") }
                         else Button(onClick = { generate() }, enabled = generationIntent.isNotBlank()) { Text("Generate experience") }
                         if (generationStatus.isNotEmpty()) Text(generationStatus)
                     }
@@ -132,8 +134,8 @@ class CalendarActivity : ComponentActivity() {
                 if (connected) experience.registry.grantAll()
                 val remembered = experience.remembered()
                 val source = deal ?: remembered?.deal ?: assets.open("experience/departure.deal").bufferedReader().use { it.readText() }
-                val view = ui ?: remembered?.ui ?: assets.open("experience/departure.dealui").bufferedReader().use { it.readText() }
-                val snapshot = experience.activate(ExperienceSource(source, view))
+                val view = ui ?: remembered?.dealui ?: assets.open("experience/departure.dealui").bufferedReader().use { it.readText() }
+                val snapshot = experience.activate(Source(source, view))
                 version = -1
                 File(filesDir, "ui-error.txt").delete()
                 runOnUiThread { proposal = null; status = "" }
@@ -145,20 +147,23 @@ class CalendarActivity : ComponentActivity() {
         val objective = generationIntent
         val origin = if (discloseEvent) selected else null
         val context = origin?.let { JSONObject().put("eventTitle", it.title).put("startMinute", it.startMinute).toString() } ?: "{}"
-        val token = GenerationCancellation(); cancellation = token; generating = true; generationStatus = "Discovering capabilities…"
+        generating = true; cancelRequested=false; generationStatus = "Discovering capabilities…"
         File(filesDir, "generation-status.json").writeText(JSONObject().put("status", "running").toString())
         worker.execute {
             try {
                 experience.prepare(applicationContext)
-                val candidate = experience.generate(objective, context, GenerationGateway("http://127.0.0.1:8787/generate"), token) { message -> runOnUiThread { generationStatus = message } }
-                candidate.use {
-                    token.check()
-                    check(origin == null || origin == selected) { "Selected event changed; regenerate" }
-                    val snapshot = experience.activate(candidate)
-                    version = -1; publish(snapshot)
-                    File(filesDir, "generation-status.json").writeText(JSONObject().put("status", "activated").put("attempts", candidate.attempts).toString())
-                    runOnUiThread { proposal = null; status = ""; generationStatus = "Generated experience activated" }
-                }
+                val schema=WireType("record",fields=listOf(WireField("eventTitle",WireType("string",maximum=1024),true),WireField("startMinute",WireType("int"),true)))
+                val facts=experience.embedding.snapshot(schema,context)
+                val request=experience.embedding.request("Departure",objective,facts);cancellation=request
+                if(cancelRequested)experience.embedding.cancel(request)
+                val prepared=experience.embedding.generate(request)
+                if(cancelRequested){experience.embedding.release(prepared);throw java.util.concurrent.CancellationException("Cancelled")}
+                check(origin == null || origin == selected) { "Selected event changed; regenerate" }
+                val previous=experience.session;val next=experience.embedding.run(prepared);experience.session=next
+                previous?.let{experience.embedding.close(it)}
+                version=-1;publish(experience.embedding.poll(next).json())
+                File(filesDir,"generation-status.json").writeText(JSONObject().put("status","activated").put("attempts",prepared.attempts).toString())
+                runOnUiThread{proposal=null;status="";generationStatus="Generated experience activated"}
             } catch (error: Throwable) {
                 File(filesDir, "generation-status.json").writeText(JSONObject().put("status", if (error is java.util.concurrent.CancellationException) "cancelled" else "failed").put("message", error.message?.take(1000)).toString())
                 runOnUiThread { generationStatus = if (error is java.util.concurrent.CancellationException) "Generation cancelled; current experience retained" else "Generation failed; current experience retained" }
@@ -183,7 +188,7 @@ class CalendarActivity : ComponentActivity() {
         runOnUiThread { if (!isDestroyed) status = error.message ?: "Experience unavailable" }
     }
     override fun onDestroy() {
-        cancellation?.cancel()
+        cancelGeneration()
         worker.execute { experience.close() }
         worker.shutdown(); super.onDestroy()
     }

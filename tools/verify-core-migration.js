@@ -5,10 +5,13 @@ const base=path.resolve(process.env.CORE_ASSETS||'build/embedding-consumer/asset
 const factories={};
 function walk(dir){for(const name of fs.readdirSync(dir)){const file=path.join(dir,name);if(fs.statSync(file).isDirectory())walk(file);else if(name.endsWith('.js'))factories[path.relative(base,file).split(path.sep).join('/')]=new Function('require','module','exports','process','console',fs.readFileSync(file,'utf8'));}}
 walk(base);
+const policyBase=path.resolve('build/organizer-policy/js');
+for(const name of ['equipment-choice','equipment-source'])factories[name+'.js']=new Function('require','module','exports','process','console',fs.readFileSync(path.join(policyBase,name+'.js'),'utf8'));
+
 vm.runInThisContext(fs.readFileSync('dependencies/deal-embedding/android/assets/embedding/bindings/sandbox.js','utf8'));
 let calls=[],failure=null,dataFailure=null;
 configureDealCapabilities([
- {module:'embedding/policy-data',functions:[{name:'parse',parameters:[{name:'input',type:{kind:'string'}}],result:{kind:'json-object'}},{name:'lowercase',parameters:[{name:'input',type:{kind:'string'}}],result:{kind:'string'}},{name:'utf16Length',parameters:[{name:'input',type:{kind:'string'}}],result:{kind:'int'}},{name:'sha256',parameters:[{name:'input',type:{kind:'string'}}],result:{kind:'string'}}]},
+ {module:'embedding/policy-data',functions:[{name:'parse',parameters:[{name:'input',type:{kind:'string'}}],result:{kind:'json-object'}},{name:'catalogJson',parameters:[{name:'input',type:{kind:'json-object'}}],result:{kind:'string'}},{name:'contextEntries',parameters:[{name:'input',type:{kind:'string'}}],result:{kind:'string'}},{name:'member',parameters:[{name:'input',type:{kind:'json-object'}},{name:'key',type:{kind:'string'}}],result:{kind:'json-object'}},{name:'stringMember',parameters:[{name:'input',type:{kind:'json-object'}},{name:'key',type:{kind:'string'}}],result:{kind:'string'}},{name:'lowercase',parameters:[{name:'input',type:{kind:'string'}}],result:{kind:'string'}},{name:'utf16Length',parameters:[{name:'input',type:{kind:'string'}}],result:{kind:'int'}},{name:'sha256',parameters:[{name:'input',type:{kind:'string'}}],result:{kind:'string'}}]},
  {module:'embedding/checker',functions:[{name:'check',parameters:['deal','dealui'].map(name=>({name,type:{kind:'string'}})),result:JSON.parse(fs.readFileSync('dependencies/deal-embedding/core/host/check-result.json','utf8'))}]},
  {module:'embedding/observer',functions:[{name:'record',parameters:['stage','outcome','code'].map(name=>({name,type:{kind:'string'}})),result:{kind:'null'}}]}
 ]);
@@ -68,11 +71,11 @@ function expected(sourceName,selection){
   {requirement:'"Slash/Back\\Tab\tLine\n😀"',specification:'Specs "x" / \\ \n \t',quantity:128,from:'start',until:'end',searchTerms:['ÄBC','İ','BOOM']}
  ]){
   const entries=Object.entries(ctx).filter(([k,v])=>typeof v==='string').map(([key,value])=>({key,value}));
-  const inv=await invoke('choice-policy','inventory',JSON.stringify(catalog),JSON.stringify(ctx),JSON.stringify({entries}));
+  const inv=await invoke('equipment-choice','inventory',JSON.stringify(catalog),JSON.stringify(ctx),JSON.stringify({entries}));
   for(const purpose of ['compare','choose'])for(const headline of ['hero','text'])for(const notice of ['warning','none']){
    const answers={purpose,headline,notice,read:'read0'};
-   const decision=await invoke('choice-policy','validate',JSON.stringify({answers}),inv);assert.equal(decision.get('accepted'),true);
-   const actual=JSON.parse(await invoke('catalogue-source','lower','experience',decision.get('selection')));
+   const decision=await invoke('equipment-choice','validate',JSON.stringify({answers}),inv);assert.equal(decision.get('accepted'),true);
+   const actual=JSON.parse(await invoke('equipment-source','lower','experience',decision.get('selection')));
    const selection={answers,read:{module:'host/rental',contractFunction:read,arguments:[ctx.from,ctx.until]},preparation:{module:'host/organizer',contractFunction:prepare},context:ctx};
    assert.deepStrictEqual(actual,expected('experience',selection));combinations++;
   }
@@ -82,13 +85,13 @@ function expected(sourceName,selection){
  }
  assert.equal((await invoke('candidate-check','check','{"deal":"x","dealui":"y"}')).get('candidateId'),'checked');assert.deepStrictEqual(calls.at(-1),['x','y']);
  failure={code:'RESOURCE_FAILURE',message:'injected'};await assert.rejects(invoke('candidate-check','check','{"deal":"x","dealui":"y"}'),error=>error.code==='RESOURCE_FAILURE'&&error.message==='injected');failure=null;
- const emptyInventory=await invoke('choice-policy','inventory','[]','{}','{\"entries\":[]}');
+ const emptyInventory=await invoke('equipment-choice','inventory','[]','{}','{\"entries\":[]}');
  dataFailure={function:'parse'};
- await assert.rejects(invoke('choice-policy','validate','{}',emptyInventory),error=>error.code==='DATA_FAILED');
- await assert.rejects(invoke('choice-policy','inventory','[]','{}','{\"entries\":[]}'),error=>error.code==='DATA_FAILED');
+ await assert.rejects(invoke('equipment-choice','validate','{}',emptyInventory),error=>error.code==='DATA_FAILED');
+ await assert.rejects(invoke('equipment-choice','inventory','[]','{}','{\"entries\":[]}'),error=>error.code==='DATA_FAILED');
  dataFailure={function:'utf16Length'};
  const ctx={requirement:'Stand',specification:'Boom',quantity:1,from:'start',until:'end',searchTerms:['stand']};
- await assert.rejects(invoke('choice-policy','inventory',JSON.stringify(catalog),JSON.stringify(ctx),JSON.stringify({entries:Object.entries(ctx).filter(([k,v])=>typeof v==='string').map(([key,value])=>({key,value}))})),error=>error.code==='DATA_FAILED');
+ await assert.rejects(invoke('equipment-choice','inventory',JSON.stringify(catalog),JSON.stringify(ctx),JSON.stringify({entries:Object.entries(ctx).filter(([k,v])=>typeof v==='string').map(([key,value])=>({key,value}))})),error=>error.code==='DATA_FAILED');
  dataFailure=null;
  assert.equal(await invoke('source-literals','decimal',-2147483648),'-2147483648');
  const pair={deal:'ab😀cd',dealui:'view'}; const pairRaw=JSON.stringify(pair);

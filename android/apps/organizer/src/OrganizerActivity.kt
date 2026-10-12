@@ -31,11 +31,14 @@ private enum class Destination(val label: String, val icon: androidx.compose.ui.
 
 class OrganizerActivity : ComponentActivity() {
     private val store by lazy { ShowStore(this) }
-    private val host by lazy { OrganizerHost(this) }
+    private val host by lazy { OrganizerProtocol.host(this) }
     private val log by lazy { EmbeddingLog(this) }
     private val worker = Executors.newSingleThreadScheduledExecutor()
-    @Volatile private var runningGeneration: GenerationCancellation? = null
-    override fun onDestroy() { runningGeneration?.cancel(); worker.execute { host.close() }; worker.shutdown(); super.onDestroy() }
+    @Volatile private var runningGeneration: GenerationRequest? = null
+    private val liveSessions=java.util.concurrent.ConcurrentHashMap<String,Session>()
+    @Volatile private var cancelRequested=false
+    private fun cancelGeneration(){cancelRequested=true;runningGeneration?.let{host.embedding.cancel(it)}}
+    override fun onDestroy() { cancelGeneration(); worker.execute { OrganizerProtocol.shutdown() }; worker.shutdown(); super.onDestroy() }
     override fun onCreate(state: Bundle?) {
         super.onCreate(state)
         var show by mutableStateOf(store.load())
@@ -43,10 +46,10 @@ class OrganizerActivity : ComponentActivity() {
         var generating by mutableStateOf(false)
         var status by mutableStateOf("")
         var problem by mutableStateOf<GenerationProblem?>(null)
-        var saved by mutableStateOf<List<SavedWorkspace>>(emptyList())
+        var saved by mutableStateOf<List<Experience>>(emptyList())
         var opening by mutableStateOf(false)
         var openError by mutableStateOf("")
-        var open by mutableStateOf<LiveWorkspace?>(null)
+        var open by mutableStateOf<Experience?>(null)
         val activeWorkspace = java.util.concurrent.atomic.AtomicReference<String?>(null)
         var publishedVersion = -1
         var publishedFault = ""
@@ -93,7 +96,7 @@ class OrganizerActivity : ComponentActivity() {
                         currentPrepared = prepared != null
                         reviewReady[id] = currentPrepared
                     }
-                    worker.execute { host.environment().published(id, snapshot.getInt("version")) }
+                    worker.execute { liveSessions[id]?.let{host.embedding.published(it,snapshot.getInt("version"))} }
                 }
             }
         }
@@ -103,8 +106,8 @@ class OrganizerActivity : ComponentActivity() {
         }
         worker.scheduleWithFixedDelay({
             try {
-                for (workspace in host.mountedWorkspaces()) {
-                        try { host.inWorkspace(workspace.id) { host.environment().poll(workspace.id) }?.let { publish(workspace.id, it) } }
+                for ((workspace,session) in host.sessions()) {
+                        try { host.inSession(session) { host.embedding.poll(session) }.let { publish(workspace.id, it.json()) } }
                         catch (error: Throwable) { reportFailure(workspace.id, "poll", error); activeWorkspace.compareAndSet(workspace.id, null) }
                 }
             } catch (error: Throwable) { activeWorkspace.get()?.let { reportFailure(it, "poll", error) }; activeWorkspace.set(null) }
@@ -122,7 +125,9 @@ class OrganizerActivity : ComponentActivity() {
             worker.execute {
                 try {
                     host.prepare()
-                    val (workspace, snapshot) = host.environment().reopen(id)
+                    val workspace = host.embedding.saved().first{it.id==id}
+                    val session=host.run(workspace);liveSessions[id]=session
+                    val snapshot=host.embedding.poll(session).json()
                     activeWorkspace.set(workspace.id); publishedVersion = -1
                     java.io.File(filesDir, "workspace-error.txt").delete()
                     publish(workspace.id, snapshot)
@@ -143,8 +148,8 @@ class OrganizerActivity : ComponentActivity() {
                     opening = true
                     worker.execute {
                         try {
-                            host.environment().forgetWorkspace(id)
-                            val entries = host.environment().savedWorkspaces()
+                            host.forget(host.embedding.saved().first{it.id==id});liveSessions.remove(id)
+                            val entries = host.embedding.saved()
                             activeWorkspace.compareAndSet(id, null)
                             val editor = links.edit().remove("requirements.$id")
                             links.all.filterValues { it == id }.keys.forEach { editor.remove(it) }
@@ -161,7 +166,7 @@ class OrganizerActivity : ComponentActivity() {
         worker.execute {
             try {
                 host.prepare()
-                val entries = host.environment().savedWorkspaces()
+                val entries = host.embedding.saved()
                 runOnUiThread { if (!isDestroyed) saved = entries }
             } catch (error: Throwable) { log.event("host", "failed", code = error.javaClass.simpleName, target = "list") }
         }
@@ -181,7 +186,7 @@ class OrganizerActivity : ComponentActivity() {
                 }
                 BackHandler(enabled = generating || opening || request != null || review || open != null || selectedRequirement != null) {
                     when {
-                        generating -> runningGeneration?.cancel()
+                        generating -> cancelGeneration()
                         opening -> Unit // Do not abandon a mount halfway through publication.
                         request != null -> { request = null; problem = null }
                         review -> review = false
@@ -224,10 +229,10 @@ class OrganizerActivity : ComponentActivity() {
                                     requirements = request!!.mapNotNull { id -> show!!.requirement(id) }, status = status, building = generating,
                                     problem = problem, hasExistingWorkspace = open != null,
                                     onDismissProblem = { problem = null; status = "" },
-                                    onCancel = { if (generating) runningGeneration?.cancel() else { request = null; problem = null; status = "" } },
+                                    onCancel = { if (generating) cancelGeneration() else { request = null; problem = null; status = "" } },
                                     onBuild = { goal, instruction ->
                                         if (generating || opening) return@RequestSheet
-                                        generating = true; problem = null; status = "Discovering connected apps…"
+                                        generating = true; cancelRequested=false; problem = null; status = "Discovering connected apps…"
                                         inspectionStartedAt = System.currentTimeMillis(); inspectionError = ""
                                         val selected = request!!.mapNotNull { id -> show!!.requirement(id) }
                                         val intent = "Resolve these requirements for ${selected.firstOrNull()?.act ?: "the show"}: " +
@@ -245,15 +250,20 @@ class OrganizerActivity : ComponentActivity() {
                                                 }
                                             }.toString()
                                         inspectionRequest = intent + "\n\nDISCLOSED CONTEXT\n" + disclosed
-                                        val token = GenerationCancellation(); runningGeneration = token
+                                        val token = java.util.concurrent.atomic.AtomicReference<GenerationRequest?>(null)
                                         worker.execute {
                                             try {
                                                 host.prepare()
-                                                val candidate = host.generate(intent, disclosed, token) { message -> runOnUiThread { if (!isDestroyed && runningGeneration === token) status = message } }
-                                                candidate.use {
-                                                    token.check()
-                                                    val (workspace, snapshot) = host.environment().open("$goal · ${selected.joinToString { it.name }}", candidate)
-                                                    try { token.check() } catch (error: CancellationException) { host.environment().forgetWorkspace(workspace.id); throw error }
+                                                val context=host.embedding.snapshot(organizerContextSchema(),disclosed)
+                                                val generation=host.embedding.request("$goal · ${selected.joinToString { it.name }}",intent,context)
+                                                token.set(generation);runningGeneration=generation
+                                                if(cancelRequested)host.embedding.cancel(generation)
+                                                val workspace=host.embedding.generate(generation)
+                                                run {
+                                                    if(cancelRequested){host.embedding.release(workspace);throw CancellationException("Generation cancelled")}
+                                                    val session=host.run(workspace);liveSessions[workspace.id]=session
+                                                    val snapshot=host.embedding.poll(session).json()
+                                                    if(cancelRequested){host.forget(workspace);liveSessions.remove(workspace.id);throw CancellationException("Generation cancelled")}
                                                     val editor = links.edit().putString("requirements.${workspace.id}", selected.joinToString(",") { it.id })
                                                     selected.forEach { editor.putString(requirementKey(it.id), workspace.id) }
                                                     check(editor.commit()) { "Cannot retain workspace link" }
@@ -261,12 +271,12 @@ class OrganizerActivity : ComponentActivity() {
                                                     activeWorkspace.set(workspace.id); publishedVersion = -1
                                                     java.io.File(filesDir, "workspace-error.txt").delete()
                                                     publish(workspace.id, snapshot)
-                                                    val workspaces = host.environment().savedWorkspaces()
+                                                    val workspaces = host.embedding.saved()
                                                     runOnUiThread { if (!isDestroyed) { saved = workspaces; open = workspace; request = null; generating = false; status = ""; problem = null; runningGeneration = null } }
                                                 }
                                             } catch (error: Throwable) {
                                                 log.event("host", "failed", code = error.javaClass.simpleName, target = "generation")
-                                                runOnUiThread { if (!isDestroyed && runningGeneration === token) { generating = false; status = ""; problem = generationProblem(error); inspectionError = if (error is GenerationRejected) "${error.reason} · ${error.attempts} attempts\n${error.diagnostics}" else error.javaClass.simpleName + ": " + error.message; runningGeneration = null } }
+                                                runOnUiThread { if (!isDestroyed && runningGeneration === token.get()) { generating = false; status = ""; problem = generationProblem(error); inspectionError = if (error is GenerationRejected) "${error.reason} · ${error.attempts} attempts\n${error.diagnostics}" else error.javaClass.simpleName + ": " + error.message; runningGeneration = null } }
                                             }
                                         }
                                     },
@@ -280,7 +290,7 @@ class OrganizerActivity : ComponentActivity() {
                                         // newly staged native record restores the review entrance.
                                         currentPrepared = false; reviewReady[id] = false
                                         worker.execute {
-                                            try { host.inWorkspace(id) { host.environment().dispatch(id, slot, payload) }?.let { publish(id, it) } }
+                                            try { val session=liveSessions[id] ?: error("Closed session");host.inSession(session) { host.embedding.dispatch(session, slot, payload) }.let { publish(id, it.json()) } }
                                             catch (error: Throwable) { reportFailure(id, "dispatch slot=$slot", error) }
                                         }
                                     },

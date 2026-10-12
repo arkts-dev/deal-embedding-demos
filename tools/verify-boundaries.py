@@ -8,15 +8,15 @@ for obsolete in ['android/embedding', 'android/connectors', 'android/shell', 'ex
                  'android/apps/calendar/src/ConnectorBroker.kt', 'android/apps/calendar/src/ProviderAdapters.kt']:
     assert not (root / obsolete).exists(), obsolete
 library = root / 'dependencies/deal-embedding'
-expected = {'ExperienceRuntime.kt'}
+expected = {'ExperienceRuntime.kt','Embedding.kt','Protocol.kt','Observation.kt'}
 assert {p.name for p in (library/'android/src').glob('*.kt')} == expected
 assert {p.name for p in (library/'android/src/capabilities').glob('*.kt')} == {
     'CapabilityContract.kt','CapabilityRegistry.kt','CapabilityDiscovery.kt','CapabilityService.kt'}
 assert (library/'core/generation.deal').exists()
 assert not (library/'backends').exists()
-assert {p.name for p in (library/'core/host').glob('*.d.deal')} == {'checker.d.deal', 'discovery.d.deal', 'model.d.deal', 'chooser.d.deal', 'policy-data.d.deal', 'observer.d.deal'}
+assert {p.name for p in (library/'core/host').glob('*.d.deal')} == {'checker.d.deal', 'discovery.d.deal', 'model.d.deal', 'chooser.d.deal', 'policy-data.d.deal', 'observer.d.deal', 'embedding.d.deal', 'catalogue-policy.d.deal', 'protocol.d.deal'}
 assert (library/'android/src/compiler/ExperienceCompiler.kt').exists()
-assert {p.name for p in (library/'android/src/bindings').glob('*.kt')} == {'CapabilityBindings.kt', 'DealSessionBindings.kt', 'ExperienceGenerator.kt', 'SandboxProgram.kt', 'EmbeddingLog.kt'}
+assert {p.name for p in (library/'android/src/bindings').glob('*.kt')} == {'CapabilityBindings.kt', 'DealSessionBindings.kt', 'ExperienceGenerator.kt', 'SandboxProgram.kt', 'EmbeddingLog.kt', 'ChoiceProtocol.kt', 'PublicProtocolBinding.kt'}
 assert {p.name for p in (library/'android/src/inference').glob('*.kt')} == {'ModelClient.kt'}
 assert (root/'android/apps/development/GenerationGateway.kt').exists()
 assert 'getSharedPreferences' not in (library/'android/src/capabilities/CapabilityService.kt').read_text()
@@ -52,13 +52,21 @@ with zipfile.ZipFile(os.environ.get('EMBEDDING_AAR', root / 'build/embedding-lib
         contracts = app.read('assets/embedding/bindings/generation-contracts.js').decode()
         import json
         metadata = json.loads(contracts.removeprefix('configureDealCapabilities(').strip().removesuffix(');'))
-        assert {m['module'] for m in metadata} == {'embedding/checker', 'embedding/model', 'embedding/discovery', 'embedding/chooser', 'embedding/policy-data', 'embedding/observer'}
+        assert {m['module'] for m in metadata} == {'embedding/checker', 'embedding/model', 'embedding/discovery', 'embedding/chooser', 'embedding/observer'}
         checker = next(m for m in metadata if m['module'] == 'embedding/checker')
         assert checker['functions'][0]['result'] == json.loads((library/'core/host/check-result.json').read_text())
         assert [p['name'] for p in checker['functions'][0]['parameters']] == ['deal', 'dealui']
         chooser = next(m for m in metadata if m['module'] == 'embedding/chooser')
         assert [f['name'] for f in chooser['functions']] == ['choose']
-        for module in ['catalogue-source', 'candidate-check', 'generation-guidance', 'source-literals']:
+        assert 'assets/generation/catalogue-source.js' not in app.namelist()
+        assert 'assets/generation/choice-policy.js' not in app.namelist()
+        assert 'assets/organizer-policy/app-policy.js' in app.namelist()
+        assert 'assets/protocol/embedding.d.deal' in app.namelist()
+        assert 'assets/embedding/bindings/protocol-contracts.js' in app.namelist()
+        for declaration in ['embedding.d.deal','catalogue-policy.d.deal']:
+            assert (library/'api'/declaration).read_bytes()==(library/'core/host'/declaration).read_bytes()
+        assert 'getSharedPreferences' not in (root/'android/apps/organizer/src/DiagnosticsActivity.kt').read_text()
+        for module in ['candidate-check', 'generation-guidance', 'source-literals']:
             assert f'assets/generation/{module}.js' in app.namelist()
         assert not any(n.startswith('assets/deal-backend/') for n in app.namelist())
 for provider, other in [('todo', 'vehicle'), ('vehicle', 'todo')]:

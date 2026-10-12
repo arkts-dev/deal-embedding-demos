@@ -9,11 +9,11 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import dev.deal.embedding.SavedWorkspace
+import dev.deal.embedding.Experience
 
 /** Ordinary entry to retained source, not a debug replay switch. */
-@Composable fun WorkspaceShelf(entries: List<SavedWorkspace>, error: String, onOpen: (String) -> Unit, onForget: (String) -> Unit, activeIds: Set<String> = emptySet(), enabled: Boolean = true) {
-    var deleting by remember { mutableStateOf<SavedWorkspace?>(null) }
+@Composable fun WorkspaceShelf(entries: List<Experience>, error: String, onOpen: (String) -> Unit, onForget: (String) -> Unit, activeIds: Set<String> = emptySet(), enabled: Boolean = true) {
+    var deleting by remember { mutableStateOf<Experience?>(null) }
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         item { Text("Workspaces", style = MaterialTheme.typography.headlineSmall) }
         if (error.isNotEmpty()) item { Text(error) }
