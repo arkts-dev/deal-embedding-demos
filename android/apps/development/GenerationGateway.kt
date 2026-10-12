@@ -15,6 +15,8 @@ import java.net.Socket
  * Uses a raw socket: HttpURLConnection buffers a POST body unless the response is read
  * concurrently, which leaves client and server waiting on each other.
  */
+class GenerationGatewayFailure(val code: String, message: String) : java.io.IOException(message)
+
 class GenerationGateway(private val endpoint: String) : ModelClient {
     init { require(endpoint == "http://127.0.0.1:8787/generate") { "Development gateway must use loopback forwarding" } }
 
@@ -47,9 +49,14 @@ class GenerationGateway(private val endpoint: String) : ModelClient {
             val statusLine = text.substringBefore("\r\n")
             val status = statusLine.split(' ').getOrNull(1)?.trim()?.toIntOrNull() ?: 0
             log.event("transport", "response", target = "development gateway", code = "HTTP_$status")
-            check(status == 200) { "Generation gateway unavailable ($status)" }
             val payload = raw.copyOfRange(headerEnd + 4, raw.size)
             cancellation.check()
+            if (status != 200) {
+                val error = runCatching { JSONObject(payload.toString(Charsets.UTF_8)).getJSONObject("error") }.getOrNull()
+                val code = error?.optString("code")?.takeIf { it in setOf("AUDIT_LIMIT", "PROVIDER_HTTP", "MODEL_TIMEOUT", "PROVIDER_UNREACHABLE", "GATEWAY_FAILURE") } ?: "HTTP_$status"
+                log.event("model-provider", "failed", code = code, target = "development gateway")
+                throw GenerationGatewayFailure(code, "Generation gateway HTTP $status · $code · ${error?.optString("message").orEmpty()}" + (error?.optInt("providerStatus", 0)?.takeIf { it > 0 }?.let { " · provider HTTP $it" } ?: ""))
+            }
             require(payload.size <= 2 * 1024 * 1024) { "Gateway response too large" }
             val envelope = JSONObject(payload.toString(Charsets.UTF_8))
             val content = envelope.getString("content")
@@ -62,6 +69,11 @@ class GenerationGateway(private val endpoint: String) : ModelClient {
                 log.event("model-provider", "response", target = envelope.getString("model"), detail = envelope.getJSONObject("response").toString())
             }
             return content
+        } catch (error: Exception) {
+            // Cancellation closes the socket; present deliberate cancellation rather
+            // than misclassifying that resulting SocketException as connection failure.
+            cancellation.check()
+            throw error
         } finally { registration.close(); runCatching { socket.close() } }
     }
 }

@@ -54,9 +54,13 @@ fun compactGenerationStatus(status: String): String {
 }
 data class GenerationProblem(val title: String, val explanation: String)
 fun generationProblem(error: Throwable): GenerationProblem = when {
-    error is CancellationException -> GenerationProblem("Cancelled", "Your existing workspace and plan are unchanged. Nothing was reserved by generation.")
-    error is GenerationRejected && error.reason == GenerationRejected.Reason.ATTEMPT_LIMIT -> GenerationProblem("Couldn’t prepare options", "The code did not pass checks within ${error.attempts} source attempts. Your existing workspace and plan are unchanged. Nothing was reserved by generation.")
-    error is GenerationRejected && error.reason == GenerationRejected.Reason.REPEATED_RESPONSE -> GenerationProblem("Couldn’t prepare options", "The AI repeated a rejected response, so generation stopped after ${error.attempts} source attempts. Your existing workspace and plan are unchanged. Nothing was reserved by generation.")
-    error is GenerationRejected -> GenerationProblem("Options unavailable", "The predefined template did not pass checks. Your existing workspace and plan are unchanged. Nothing was reserved by generation.")
-    else -> GenerationProblem("Couldn’t prepare options", "Generation or checking was interrupted. Your existing workspace and plan are unchanged. Nothing was reserved by generation.")
+    error is CancellationException -> GenerationProblem("Cancelled", "Your request, previous options and plan are unchanged. Nothing booked.")
+    error is GenerationRejected && error.reason == GenerationRejected.Reason.ATTEMPT_LIMIT -> GenerationProblem("Couldn’t prepare options", "The AI could not prepare usable options for this request. Your previous options and plan are unchanged. Edit the request or tap Retry to make a new attempt. Nothing booked.")
+    error is GenerationRejected && error.reason == GenerationRejected.Reason.REPEATED_RESPONSE -> GenerationProblem("Couldn’t prepare options", "The AI could not improve these options, so preparation stopped. Your previous options and plan are unchanged. Edit the request or tap Retry to make a new attempt. Nothing booked.")
+    error is GenerationRejected -> GenerationProblem("Options unavailable", "These options could not be prepared safely. Your previous options and plan are unchanged. Return to your previous options or edit the request. Nothing booked.")
+    error is dev.deal.apps.development.GenerationGatewayFailure && error.code == "AUDIT_LIMIT" -> GenerationProblem("Demo connection needs attention", "The connected AI service is still in limited test mode. Ask the demonstrator to start its demo connection, then tap Retry. Your previous options are kept.")
+    error is java.net.ConnectException -> GenerationProblem("AI connection unavailable", "Check that the demo AI connection is running and the device is connected, then tap Retry. Your previous options are kept.")
+    error is java.net.SocketTimeoutException || error is dev.deal.apps.development.GenerationGatewayFailure && error.code == "MODEL_TIMEOUT" -> GenerationProblem("AI took too long", "The AI service did not finish in time. Your request and previous options are kept. Tap Retry when the connection is ready.")
+    error is dev.deal.apps.development.GenerationGatewayFailure -> GenerationProblem("AI service unavailable", "The connected AI service could not complete this request. Check the demo connection and tap Retry. Your previous options are kept.")
+    else -> GenerationProblem("Couldn’t prepare options", "Preparing or checking your options was interrupted. Your request and previous options are kept. You can edit the request or tap Retry. Nothing booked.")
 }

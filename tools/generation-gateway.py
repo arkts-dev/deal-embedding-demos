@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Loopback development gateway. Reads Pi credentials in memory; never logs provider data."""
-import concurrent.futures, http.server, json, os, pathlib, subprocess, time, urllib.request
+import argparse, concurrent.futures, http.server, json, os, pathlib, subprocess, time, urllib.request, urllib.error
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 CONFIG = json.loads((pathlib.Path.home()/'.pi/agent/models.json').read_text())['providers']['devagent']
 KEY = CONFIG['apiKey']
@@ -14,18 +14,33 @@ ENDPOINT = CONFIG['baseUrl'].rstrip('/')+'/chat/completions'
 # calls the model, so what runs here matches what would run on device.
 # One inference at a time protects the development endpoint; no request bodies are logged.
 POOL = concurrent.futures.ThreadPoolExecutor(max_workers=1)
-# Optional development-session ceiling. Counts admissions before network calls, including
-# failed/cancelled exchanges. Stores counts only, never prompts or credentials.
-BUDGET_PATH = os.environ.get('GENERATION_BUDGET_FILE')
-SOURCE_LIMIT = int(os.environ.get('GENERATION_SOURCE_LIMIT', '0'))
-CHOICE_LIMIT = int(os.environ.get('GENERATION_CHOICE_LIMIT', '0'))
+# Demo is the default: deliberate requests, with bounded repairs owned by DEAL.
+# Audit ceilings require explicit CLI arguments, never inherited environment state.
+parser = argparse.ArgumentParser(description=__doc__)
+parser.add_argument('--counts', type=pathlib.Path, help='Persist admission counts only; no content')
+parser.add_argument('--audit', action='store_true', help='Explicit bounded autonomous-test mode, NOT a demo launcher')
+parser.add_argument('--source-limit', type=int)
+parser.add_argument('--choice-limit', type=int)
+options = parser.parse_args()
+if options.audit and (not options.counts or options.source_limit is None or options.choice_limit is None or options.source_limit <= 0 or options.choice_limit <= 0):
+    parser.error('--audit requires --counts and positive source/choice limits')
+if not options.audit and (options.source_limit is not None or options.choice_limit is not None):
+    parser.error('Call ceilings require explicit --audit mode')
+COUNTS_PATH = options.counts
+SOURCE_LIMIT = options.source_limit if options.audit else None
+CHOICE_LIMIT = options.choice_limit if options.audit else None
+class GatewayFailure(Exception):
+    def __init__(self, code, message, status=503):
+        super().__init__(message); self.code=code; self.status=status
+
 def admit(body):
-    if not BUDGET_PATH: return
-    path = pathlib.Path(BUDGET_PATH)
+    if not COUNTS_PATH: return
+    path = pathlib.Path(COUNTS_PATH)
     counts = json.loads(path.read_text()) if path.exists() else {'choice': 0, 'source': 0}
     kind = 'choice' if '\n\nISSUED OPTIONS\n' in body['input'] else 'source'
     limit = SOURCE_LIMIT if kind == 'source' else CHOICE_LIMIT
-    if limit <= 0 or counts[kind] >= limit: raise ValueError('Explicit session call ceiling exhausted')
+    if limit is not None and counts[kind] >= limit:
+        raise GatewayFailure('AUDIT_LIMIT', 'Explicit audit call ceiling exhausted; start the gateway in demo mode for user demonstrations.')
     counts[kind] += 1
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_suffix('.tmp')
@@ -63,6 +78,13 @@ def infer(body):
     return encoded
 class Handler(http.server.BaseHTTPRequestHandler):
     def log_message(self,*args): pass
+    def reply(self, status, body):
+        output=json.dumps(body).encode()
+        self.send_response(status); self.send_header('Content-Type','application/json'); self.send_header('Content-Length',str(len(output))); self.end_headers(); self.wfile.write(output)
+    def do_GET(self):
+        if self.path != '/health': self.send_error(404); return
+        # Readiness of this transport/configuration only, NOT a provider success claim.
+        self.reply(200, {'mode':'audit' if options.audit else 'demo', 'configured':bool(KEY), 'automaticRetries':False})
     def do_POST(self):
         if self.path!='/generate': self.send_error(404); return
         try:
@@ -74,8 +96,17 @@ class Handler(http.server.BaseHTTPRequestHandler):
             if len(output)>2*1024*1024: raise ValueError('Output limit')
             self.send_response(200); self.send_header('Content-Type','application/json'); self.send_header('Content-Length',str(len(output))); self.end_headers(); self.wfile.write(output)
         except (BrokenPipeError,ConnectionResetError): pass
-        except Exception as error:
-            self.send_error(502,'Generation failed')
+        except GatewayFailure as error:
+            self.reply(error.status, {'error':{'code':error.code, 'message':str(error)}})
+        except urllib.error.HTTPError as error:
+            # Never reflect provider bodies, URLs, credentials or authentication headers.
+            self.reply(502, {'error':{'code':'PROVIDER_HTTP', 'message':'Model provider rejected the request', 'providerStatus':error.code}})
+        except (TimeoutError, concurrent.futures.TimeoutError):
+            self.reply(504, {'error':{'code':'MODEL_TIMEOUT', 'message':'Model provider did not finish within the request deadline'}})
+        except urllib.error.URLError:
+            self.reply(503, {'error':{'code':'PROVIDER_UNREACHABLE', 'message':'Cannot connect to the model provider'}})
+        except Exception:
+            self.reply(502, {'error':{'code':'GATEWAY_FAILURE', 'message':'Development gateway could not complete the request'}})
 if __name__=='__main__':
-    print('Development generation gateway listening on loopback:8787',flush=True)
+    print('Development generation gateway listening on loopback:8787 · '+('AUDIT limits enabled' if options.audit else 'DEMO · no audit ceiling')+' · no automatic retries',flush=True)
     http.server.ThreadingHTTPServer(('127.0.0.1',8787),Handler).serve_forever()

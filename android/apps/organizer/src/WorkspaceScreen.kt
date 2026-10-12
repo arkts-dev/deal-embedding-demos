@@ -44,7 +44,7 @@ import org.json.JSONObject
                 if (problem != null && !building) {
                     Text(problem.title, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.error,
                         modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite })
-                    Text("We couldn’t finish preparing your options. You can edit the request or retry. Your plan and previous options are unchanged. Nothing booked.", style = MaterialTheme.typography.bodyMedium)
+                    Text(problem.explanation, style = MaterialTheme.typography.bodyMedium)
                     Row {
                         TextButton(onClick = onDismissProblem) { Text("Edit request") }
                         TextButton(onClick = onCancel) { Text(if (hasExistingWorkspace) "Keep previous options" else "Back to event") }
@@ -80,7 +80,7 @@ import org.json.JSONObject
                 Text("Preferences")
             }
             if (extra) OutlinedTextField(preferences, { preferences = it }, enabled = !building, label = { Text("Anything else? (optional)") },
-                supportingText = { Text("For example, an adapter or an alternative specification.") }, modifier = Modifier.fillMaxWidth(), shape = AssistanceDesign.shape)
+                supportingText = { Text("For example, an adapter or an alternative specification. Adding a budget or preferences prepares options with editable quantity, budget and search.") }, modifier = Modifier.fillMaxWidth(), shape = AssistanceDesign.shape)
             Text("Your requirement, event timing and preferences are sent to AI to prepare these options. Stock is fetched only when you choose Load options.",
                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }

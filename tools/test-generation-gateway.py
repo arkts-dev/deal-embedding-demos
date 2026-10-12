@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """No credentials loaded, no network: exact provider exchange envelope contract."""
-import ast, json, pathlib, types, unittest, tempfile
+import ast, json, pathlib, types, unittest, tempfile, http.server, urllib.request, urllib.error, concurrent.futures, threading
 
 class GatewayTest(unittest.TestCase):
     def test_budget(self):
@@ -8,13 +8,35 @@ class GatewayTest(unittest.TestCase):
         admit=next(n for n in tree.body if isinstance(n,ast.FunctionDef) and n.name=='admit')
         with tempfile.TemporaryDirectory() as directory:
             path=pathlib.Path(directory)/'counts.json'
-            namespace={'json':json,'pathlib':pathlib,'BUDGET_PATH':str(path),'SOURCE_LIMIT':8,'CHOICE_LIMIT':2}
+            failure=type('GatewayFailure',(Exception,),{})
+            namespace={'json':json,'pathlib':pathlib,'COUNTS_PATH':str(path),'SOURCE_LIMIT':8,'CHOICE_LIMIT':2,'GatewayFailure':failure}
             exec(compile(ast.Module(body=[admit],type_ignores=[]),'budget','exec'),namespace)
             for _ in range(8): namespace['admit']({'input':'DEAL RULES source'})
             for _ in range(2): namespace['admit']({'input':'DEAL RULES\n\nISSUED OPTIONS\nx'})
             self.assertEqual(json.loads(path.read_text()),{'source':8,'choice':2})
             for text in ('source','\n\nISSUED OPTIONS\nx'):
-                with self.assertRaises(ValueError): namespace['admit']({'input':text})
+                with self.assertRaises(failure): namespace['admit']({'input':text})
+            namespace.update(SOURCE_LIMIT=None, CHOICE_LIMIT=None)
+            namespace['admit']({'input':'source'}); namespace['admit']({'input':'\n\nISSUED OPTIONS\nx'})
+            self.assertEqual(json.loads(path.read_text()),{'source':9,'choice':3})
+    def test_safe_failures_and_health(self):
+        tree=ast.parse(pathlib.Path('tools/generation-gateway.py').read_text())
+        definitions=[n for n in tree.body if isinstance(n,ast.ClassDef) and n.name in ('GatewayFailure','Handler')]
+        namespace={'json':json,'http':types.SimpleNamespace(server=http.server),'urllib':types.SimpleNamespace(error=urllib.error),
+                   'concurrent':types.SimpleNamespace(futures=concurrent.futures),'options':types.SimpleNamespace(audit=False),'KEY':'private-key'}
+        exec(compile(ast.Module(body=definitions,type_ignores=[]),'safe-handler','exec'),namespace)
+        class Failed:
+            def result(self,**kwargs):raise namespace['GatewayFailure']('AUDIT_LIMIT','Explicit audit ceiling exhausted')
+        namespace.update(POOL=types.SimpleNamespace(submit=lambda *a:Failed()),infer=lambda body:None)
+        server=http.server.ThreadingHTTPServer(('127.0.0.1',0),namespace['Handler']);thread=threading.Thread(target=server.serve_forever,daemon=True);thread.start()
+        try:
+            base='http://127.0.0.1:'+str(server.server_port)
+            with urllib.request.urlopen(base+'/health') as response:
+                health=json.load(response);self.assertEqual(health,{'mode':'demo','configured':True,'automaticRetries':False});self.assertNotIn('private-key',json.dumps(health))
+            request=urllib.request.Request(base+'/generate',data=json.dumps({'input':'x','previous':'','diagnostics':'','capture':False}).encode())
+            with self.assertRaises(urllib.error.HTTPError) as caught:urllib.request.urlopen(request)
+            self.assertEqual(caught.exception.code,503);self.assertEqual(json.load(caught.exception)['error']['code'],'AUDIT_LIMIT')
+        finally:server.shutdown();server.server_close();thread.join()
     def test_exchange(self):
         tree=ast.parse(pathlib.Path('tools/generation-gateway.py').read_text())
         infer=next(n for n in tree.body if isinstance(n,ast.FunctionDef) and n.name=='infer')
