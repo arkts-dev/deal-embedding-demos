@@ -79,8 +79,7 @@ class CalendarActivity : ComponentActivity() {
                     }
                     EmbeddedExperience {
                         surface?.let { current->ExperienceSurface(current,onAction={proposal=null},onSnapshot={snapshot->
-                            val temporary=File(filesDir,"ui-snapshot.tmp").apply{writeText(snapshot.json().toString())}
-                            check(temporary.renameTo(File(filesDir,"ui-snapshot.json"))){"Cannot retain UI diagnostic snapshot"}
+                            DiagnosticFiles.write(filesDir,"ui-snapshot.json",snapshot.json().toString())
                             if(snapshot.fault.isNotEmpty())status=snapshot.fault
                         }) } ?: Text(status)
                     }
@@ -148,7 +147,7 @@ class CalendarActivity : ComponentActivity() {
         val origin = if (discloseEvent) selected else null
         val context = origin?.let { JSONObject().put("eventTitle", it.title).put("startMinute", it.startMinute).toString() } ?: "{}"
         generating = true; cancelRequested=false; generationStatus = "Discovering capabilities…"
-        File(filesDir, "generation-status.json").writeText(JSONObject().put("status", "running").toString())
+        DiagnosticFiles.write(filesDir,"generation-status.json",JSONObject().put("status", "running").toString())
         worker.execute {
             try {
                 experience.prepare(applicationContext)
@@ -162,10 +161,10 @@ class CalendarActivity : ComponentActivity() {
                     check(origin == null || origin == selected) { "Selected event changed; regenerate" }
                     activate(it)
                 }
-                File(filesDir,"generation-status.json").writeText(JSONObject().put("status","activated").put("attempts",prepared.attempts).toString())
+                DiagnosticFiles.write(filesDir,"generation-status.json",JSONObject().put("status","activated").put("attempts",prepared.attempts).toString())
                 runOnUiThread{proposal=null;status="";generationStatus="Generated experience activated"}
             } catch (error: Throwable) {
-                File(filesDir, "generation-status.json").writeText(JSONObject().put("status", if (error is java.util.concurrent.CancellationException || error is ProtocolFailure && error.code=="CANCELLED") "cancelled" else "failed").put("message", error.message?.take(1000)).toString())
+                DiagnosticFiles.write(filesDir,"generation-status.json",JSONObject().put("status", if (error is java.util.concurrent.CancellationException || error is ProtocolFailure && error.code=="CANCELLED") "cancelled" else "failed").put("message", error.message?.take(1000)).toString())
                 runOnUiThread { generationStatus = if (error is java.util.concurrent.CancellationException || error is ProtocolFailure && error.code=="CANCELLED") "Generation cancelled; current experience retained" else "Generation failed; current experience retained" }
             } finally { cancellation = null; runOnUiThread { generating = false } }
         }
@@ -181,7 +180,7 @@ class CalendarActivity : ComponentActivity() {
     }
     private fun showError(error: Throwable) {
         android.util.Log.e("DealUi", "Experience error", error)
-        File(filesDir, "ui-error.txt").writeText(android.util.Log.getStackTraceString(error))
+        DiagnosticFiles.write(filesDir,"ui-error.txt",android.util.Log.getStackTraceString(error))
         runOnUiThread { if (!isDestroyed) status = error.message ?: "Experience unavailable" }
     }
     override fun onDestroy() {

@@ -85,9 +85,7 @@ class OrganizerActivity : ComponentActivity() {
         }
         fun publish(id: String, snapshot: JSONObject) {
             if (activeWorkspace.get() != id) return
-            java.io.File(filesDir, "workspace-snapshot.tmp").apply { writeText(snapshot.toString()) }.let {
-                check(it.renameTo(java.io.File(filesDir, "workspace-snapshot.json"))) { "Cannot publish workspace snapshot" }
-            }
+            DiagnosticFiles.write(filesDir,"workspace-snapshot.json",snapshot.toString())
             runOnUiThread {
                 if (!isDestroyed && activeWorkspace.get() == id) {
                     fault = snapshot.optString("fault")
