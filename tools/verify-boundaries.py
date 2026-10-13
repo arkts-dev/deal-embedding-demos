@@ -8,7 +8,7 @@ for obsolete in ['android/embedding', 'android/connectors', 'android/shell', 'ex
                  'android/apps/calendar/src/ConnectorBroker.kt', 'android/apps/calendar/src/ProviderAdapters.kt']:
     assert not (root / obsolete).exists(), obsolete
 library = root / 'dependencies/deal-embedding'
-expected = {'ExperienceRuntime.kt','Embedding.kt','Protocol.kt','Observation.kt','UpdateCursor.kt'}
+expected = {'ExperienceRuntime.kt','Embedding.kt','Protocol.kt','Observation.kt','UpdateCursor.kt','Teardown.kt'}
 assert {p.name for p in (library/'android/src').glob('*.kt')} == expected
 assert {p.name for p in (library/'android/src/capabilities').glob('*.kt')} == {
     'CapabilityContract.kt','CapabilityRegistry.kt','CapabilityDiscovery.kt','CapabilityService.kt'}
@@ -16,7 +16,7 @@ assert (library/'core/generation.deal').exists()
 assert not (library/'backends').exists()
 assert {p.name for p in (library/'core/host').glob('*.d.deal')} == {'checker.d.deal', 'discovery.d.deal', 'model.d.deal', 'chooser.d.deal', 'policy-data.d.deal', 'observer.d.deal', 'embedding.d.deal', 'catalogue-policy.d.deal', 'protocol.d.deal'}
 assert (library/'android/src/compiler/ExperienceCompiler.kt').exists()
-assert {p.name for p in (library/'android/src/bindings').glob('*.kt')} == {'CapabilityBindings.kt', 'DealSessionBindings.kt', 'ExperienceGenerator.kt', 'SandboxProgram.kt', 'EmbeddingLog.kt', 'ChoiceProtocol.kt', 'ApplicationProtocol.kt', 'ProtocolController.kt','ObservationPresentation.kt'}
+assert {p.name for p in (library/'android/src/bindings').glob('*.kt')} == {'CapabilityBindings.kt', 'DealSessionBindings.kt', 'ExperienceGenerator.kt', 'SandboxProgram.kt', 'EmbeddingLog.kt', 'ChoiceProtocol.kt', 'ApplicationProtocol.kt', 'ProtocolController.kt','ObservationPresentation.kt','DiagnosticFiles.kt','FailureEvidence.kt'}
 assert {p.name for p in (library/'android/src/inference').glob('*.kt')} == {'ModelClient.kt'}
 assert (root/'android/apps/development/GenerationGateway.kt').exists()
 assert not (library/'android/src/bindings/PublicProtocolBinding.kt').exists()
