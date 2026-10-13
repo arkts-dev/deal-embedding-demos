@@ -25,6 +25,8 @@ for app in ('organizer','calendar'):
         text=path.read_text()
         assert '.poll(' not in text and 'scheduleWithFixedDelay' not in text and 'newSingleThreadScheduledExecutor' not in text, path
         assert '.inSession(' not in text, path
+        assert not any(call in text for call in ('.run(','.next(','.dispatch(','.published(','.observe(','DealRenderer(')), path
+assert (library/'android/src/rendering/ExperienceSurface.kt').exists()
 protocol=(library/'android/assets/embedding/bindings/public-protocol.js').read_text()
 assert "case 'poll'" not in protocol and "control(name,args);result=null;break;" not in protocol
 assert 'private val grants' not in (library/'android/src/capabilities/CapabilityRegistry.kt').read_text()

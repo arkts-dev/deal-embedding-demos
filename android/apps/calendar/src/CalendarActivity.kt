@@ -22,7 +22,8 @@ import java.util.concurrent.Executors
 class CalendarActivity : ComponentActivity() {
     private val worker = Executors.newSingleThreadExecutor()
     private lateinit var experience: CalendarEmbedding
-    private var tree by mutableStateOf<JSONObject?>(null)
+    private var surface by mutableStateOf<ExperienceSurface?>(null)
+    @Volatile private var ownedSurface:ExperienceSurface?=null
     private var status by mutableStateOf("Preparing your experience…")
     private var events by mutableStateOf<List<CalendarEvent>>(emptyList())
     @Volatile private var selected: CalendarEvent? = null
@@ -34,7 +35,6 @@ class CalendarActivity : ComponentActivity() {
     private var proposalEvent: CalendarEvent? = null
     @Volatile private var observedEvent: CalendarEvent? = null
     private var saved by mutableStateOf("")
-    private var version = -1
     private var generationIntent by mutableStateOf("")
     private var discloseEvent by mutableStateOf(false)
     private var generating by mutableStateOf(false)
@@ -78,7 +78,11 @@ class CalendarActivity : ComponentActivity() {
                         if (generationStatus.isNotEmpty()) Text(generationStatus)
                     }
                     EmbeddedExperience {
-                        tree?.let { DealRenderer(it, ::dispatch) } ?: Text(status)
+                        surface?.let { current->ExperienceSurface(current,onAction={proposal=null},onSnapshot={snapshot->
+                            val temporary=File(filesDir,"ui-snapshot.tmp").apply{writeText(snapshot.json().toString())}
+                            check(temporary.renameTo(File(filesDir,"ui-snapshot.json"))){"Cannot retain UI diagnostic snapshot"}
+                            if(snapshot.fault.isNotEmpty())status=snapshot.fault
+                        }) } ?: Text(status)
                     }
                     Panel {
                         Text("Your connected apps", style = MaterialTheme.typography.titleLarge)
@@ -96,7 +100,7 @@ class CalendarActivity : ComponentActivity() {
                         }
                     }
                     if (saved.isNotEmpty()) Text(saved)
-                    if (tree != null && status.isNotEmpty()) Text(status, color = MaterialTheme.colorScheme.error)
+                    if (surface != null && status.isNotEmpty()) Text(status, color = MaterialTheme.colorScheme.error)
                 }
                 if (dialog) AlertDialog(onDismissRequest = { dialog = false }, title = { Text("Confirm Calendar change") }, text = { Text("Add a departure reminder to ${proposalEvent?.title}? Existing reminders are kept.") }, confirmButton = {
                     TextButton(onClick = {
@@ -132,11 +136,10 @@ class CalendarActivity : ComponentActivity() {
                 val remembered = experience.remembered()
                 val source = deal ?: remembered?.deal ?: assets.open("experience/departure.deal").bufferedReader().use { it.readText() }
                 val view = ui ?: remembered?.dealui ?: assets.open("experience/departure.dealui").bufferedReader().use { it.readText() }
-                val session = experience.activate(Source(source, view))
-                version = -1
+                val prepared=experience.embedding.load("Departure",Source(source,view))
+                activate(prepared)
                 File(filesDir, "ui-error.txt").delete()
                 runOnUiThread { proposal = null; status = "" }
-                observe(session)
             } catch (error: Throwable) { showError(error) }
         }
     }
@@ -156,9 +159,7 @@ class CalendarActivity : ComponentActivity() {
                 val prepared=experience.embedding.generate(request)
                 if(cancelRequested){experience.embedding.release(prepared);throw java.util.concurrent.CancellationException("Cancelled")}
                 check(origin == null || origin == selected) { "Selected event changed; regenerate" }
-                val previous=experience.session;val next=experience.embedding.run(prepared);experience.session=next
-                previous?.let{experience.embedding.close(it)}
-                version=-1;observe(next)
+                activate(prepared)
                 File(filesDir,"generation-status.json").writeText(JSONObject().put("status","activated").put("attempts",prepared.attempts).toString())
                 runOnUiThread{proposal=null;status="";generationStatus="Generated experience activated"}
             } catch (error: Throwable) {
@@ -167,18 +168,14 @@ class CalendarActivity : ComponentActivity() {
             } finally { cancellation = null; runOnUiThread { generating = false } }
         }
     }
-    private fun dispatch(slot: Int, payload: String?) {
-        proposal = null
-        worker.execute { try { experience.dispatch(slot, payload) } catch (error: Throwable) { showError(error) } }
-    }
-    private fun observe(session:Session){experience.embedding.observe(session,{snapshot->if(experience.session==session)publish(snapshot.json())},{error->if(experience.session==session)showError(error)})}
-    private fun publish(snapshot: JSONObject) {
-        if (snapshot.getInt("version") == version) return
-        version = snapshot.getInt("version")
-        val temporary = File(filesDir, "ui-snapshot.tmp").apply { writeText(snapshot.toString()) }
-        check(temporary.renameTo(File(filesDir, "ui-snapshot.json"))) { "Cannot publish UI snapshot" }
-        val next = snapshot.getJSONObject("tree")
-        runOnUiThread { if (!isDestroyed) { tree = next;experience.session?.let{experience.embedding.published(it,snapshot.getInt("version"))}; if (snapshot.optString("fault").isNotEmpty()) status = snapshot.getString("fault") } }
+    private fun activate(prepared:Experience) {
+        val next=ExperienceSurface(experience.embedding,prepared)
+        try{next.activate(::showError)}catch(error:Throwable){next.close();throw error}
+        val previous=ownedSurface;ownedSurface=next
+        runOnUiThread {if(!isDestroyed&&ownedSurface===next)surface=next}
+        // Calendar explicitly replaces/closes its prior experience after successful activation.
+        previous?.close()
+        if(isDestroyed)next.close()
     }
     private fun showError(error: Throwable) {
         android.util.Log.e("DealUi", "Experience error", error)
@@ -187,7 +184,7 @@ class CalendarActivity : ComponentActivity() {
     }
     override fun onDestroy() {
         cancelGeneration()
-        worker.execute { experience.close() }
+        worker.execute { ownedSurface?.close();ownedSurface=null;experience.close() }
         worker.shutdown(); super.onDestroy()
     }
 }

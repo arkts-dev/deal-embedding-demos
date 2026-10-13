@@ -38,8 +38,7 @@ class WorkspaceClarityActivity : ComponentActivity() {
                         onCancel = { screen = "saved" }, onBuild = { _, _ -> screen = "progress" },
                         problem = if (screen == "failure") problem else null, hasExistingWorkspace = true, onDismissProblem = { problem = null; screen = "request" })
                     "review" -> ReviewSheet(emptyList(), { screen = "saved" }, { screen = "saved" })
-                    else -> WorkspaceView("Equipment options", JSONObject().put("component", "root").put("props", org.json.JSONArray()).put("children", org.json.JSONArray()), "", { _, _ -> },
-                        { finish() }, { screen = "review" }, hasPreparedSelection = true)
+                    else -> WorkspaceView("Equipment options", "", { finish() }, { screen = "review" }, hasPreparedSelection = true) { Text("Frozen equipment options") }
                 }
             }
         } }

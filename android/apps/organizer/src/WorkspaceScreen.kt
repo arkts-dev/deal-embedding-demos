@@ -88,8 +88,8 @@ import org.json.JSONObject
 }
 
 /** The native shell names the task, not its source. Inspect is supplied once by the event toolbar. */
-@Composable fun WorkspaceView(title: String, tree: JSONObject, fault: String, onDispatch: (Int, String?) -> Unit, onClose: () -> Unit,
-    onReview: () -> Unit, onNewBuild: (() -> Unit)? = null, hasPreparedSelection: Boolean = false) {
+@Composable fun WorkspaceView(title: String, fault: String, onClose: () -> Unit,
+    onReview: () -> Unit, onNewBuild: (() -> Unit)? = null, hasPreparedSelection: Boolean = false, content: @Composable () -> Unit) {
     var replacing by remember { mutableStateOf(false) }
     Column(Modifier.fillMaxSize()) {
         Surface(color = MaterialTheme.colorScheme.surface) {
@@ -106,7 +106,7 @@ import org.json.JSONObject
             Text("Options unavailable", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.error)
             Text("Return to the requirement and try opening your options again. Your plan is unchanged.")
         }
-        Column(Modifier.fillMaxWidth().weight(1f).verticalScroll(rememberScrollState()).padding(16.dp)) { DealRenderer(tree, onDispatch) }
+        Column(Modifier.fillMaxWidth().weight(1f).verticalScroll(rememberScrollState()).padding(16.dp)) { content() }
         if (hasPreparedSelection) Surface(color = MaterialTheme.colorScheme.surface, tonalElevation = 2.dp) {
             Button(onClick = onReview, modifier = Modifier.fillMaxWidth().padding(16.dp).heightIn(min = 56.dp)) {
                 Icon(Icons.Outlined.FactCheck, null); Spacer(Modifier.width(8.dp)); Text("Review selection")

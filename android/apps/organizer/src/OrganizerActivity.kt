@@ -35,10 +35,10 @@ class OrganizerActivity : ComponentActivity() {
     private val log by lazy { EmbeddingLog(this) }
     private val worker = Executors.newSingleThreadExecutor()
     @Volatile private var runningGeneration: GenerationRequest? = null
-    private val liveSessions=java.util.concurrent.ConcurrentHashMap<String,Session>()
+    private val surfaces=java.util.concurrent.ConcurrentHashMap<String,ExperienceSurface>()
     @Volatile private var cancelRequested=false
     private fun cancelGeneration(){cancelRequested=true;runningGeneration?.let{host.embedding.cancel(it)}}
-    override fun onDestroy() { cancelGeneration(); worker.execute { OrganizerProtocol.shutdown() }; worker.shutdown(); super.onDestroy() }
+    override fun onDestroy() { cancelGeneration(); worker.execute { surfaces.values.forEach{it.close()};surfaces.clear();OrganizerProtocol.shutdown() }; worker.shutdown(); super.onDestroy() }
     override fun onCreate(state: Bundle?) {
         super.onCreate(state)
         var show by mutableStateOf(store.load())
@@ -51,9 +51,7 @@ class OrganizerActivity : ComponentActivity() {
         var openError by mutableStateOf("")
         var open by mutableStateOf<Experience?>(null)
         val activeWorkspace = java.util.concurrent.atomic.AtomicReference<String?>(null)
-        var publishedVersion = -1
-        var publishedFault = ""
-        var tree by mutableStateOf<JSONObject?>(null)
+        var activeSurface by mutableStateOf<ExperienceSurface?>(null)
         var fault by mutableStateOf("")
         var review by mutableStateOf(false)
         var chooseBuildRequirement by mutableStateOf(false)
@@ -78,15 +76,13 @@ class OrganizerActivity : ComponentActivity() {
             block(next); store.save(next); show = next
         }
         fun publish(id: String, snapshot: JSONObject) {
-            if (activeWorkspace.get() != id || (snapshot.getInt("version") == publishedVersion && snapshot.optString("fault") == publishedFault)) return
-            publishedVersion = snapshot.getInt("version")
-            publishedFault = snapshot.optString("fault")
+            if (activeWorkspace.get() != id) return
             java.io.File(filesDir, "workspace-snapshot.tmp").apply { writeText(snapshot.toString()) }.let {
                 check(it.renameTo(java.io.File(filesDir, "workspace-snapshot.json"))) { "Cannot publish workspace snapshot" }
             }
             runOnUiThread {
                 if (!isDestroyed && activeWorkspace.get() == id) {
-                    tree = snapshot.getJSONObject("tree"); fault = snapshot.optString("fault")
+                    fault = snapshot.optString("fault")
                     val preparedPrefs = getSharedPreferences("prepared", 0)
                     val prepared = preparedPrefs.getString("workspace.$id", null)?.let { JSONObject(it) }
                     val reference = preparedPrefs.getString("workspace.$id.reference", "").orEmpty()
@@ -96,7 +92,6 @@ class OrganizerActivity : ComponentActivity() {
                         currentPrepared = prepared != null
                         reviewReady[id] = currentPrepared
                     }
-                    worker.execute { liveSessions[id]?.let{host.embedding.published(it,snapshot.getInt("version"))} }
                 }
             }
         }
@@ -104,9 +99,10 @@ class OrganizerActivity : ComponentActivity() {
             log.event("host", "failed", workspace = id, operation = operation, code = error.javaClass.simpleName)
             runOnUiThread { if (!isDestroyed && activeWorkspace.get() == id) fault = error.message ?: "Workspace error" }
         }
-        val observed=java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
-        fun observe(workspace:Experience,session:Session) {
-            if(observed.add(session.id))host.embedding.observe(session,{snapshot->publish(workspace.id,snapshot.json())},{error->reportFailure(workspace.id,"next",error)})
+        fun activate(workspace:Experience):ExperienceSurface {
+            val surface=surfaces.getOrPut(workspace.id){ExperienceSurface(host.embedding,workspace)}
+            surface.activate{error->reportFailure(workspace.id,"surface",error)}
+            return surface
         }
         fun openSaved(id: String) {
             if (opening || generating) return
@@ -122,11 +118,10 @@ class OrganizerActivity : ComponentActivity() {
                 try {
                     host.prepare()
                     val workspace = host.embedding.saved().first{it.id==id}
-                    val session=host.run(workspace);liveSessions[id]=session
-                    activeWorkspace.set(workspace.id); publishedVersion = -1
+                    val surface=activate(workspace)
+                    activeWorkspace.set(workspace.id)
                     java.io.File(filesDir, "workspace-error.txt").delete()
-                    publish(workspace.id,host.embedding.next(session,"").snapshot.json());observe(workspace,session)
-                    runOnUiThread { if (!isDestroyed) { open = workspace; request = null; review = false; problem = null; opening = false } }
+                    runOnUiThread { if (!isDestroyed) { activeSurface=surface;open = workspace; request = null; review = false; problem = null; opening = false } }
                 } catch (error: Throwable) {
                     log.event("host", "failed", code = error.javaClass.simpleName, target = "reopen")
                     runOnUiThread { if (!isDestroyed) { opening = false; openError = "Couldn’t open your options. They have been kept."; inspectionError = error.javaClass.simpleName + ": " + error.message } }
@@ -143,7 +138,7 @@ class OrganizerActivity : ComponentActivity() {
                     opening = true
                     worker.execute {
                         try {
-                            host.forget(host.embedding.saved().first{it.id==id});liveSessions.remove(id)
+                            surfaces.remove(id)?.close();host.forget(host.embedding.saved().first{it.id==id})
                             val entries = host.embedding.saved()
                             activeWorkspace.compareAndSet(id, null)
                             val editor = links.edit().remove("requirements.$id")
@@ -256,18 +251,16 @@ class OrganizerActivity : ComponentActivity() {
                                                 val workspace=host.embedding.generate(generation)
                                                 run {
                                                     if(cancelRequested){host.embedding.release(workspace);throw CancellationException("Generation cancelled")}
-                                                    val session=host.run(workspace);liveSessions[workspace.id]=session
-                                                    val snapshot=host.embedding.next(session,"").snapshot.json()
-                                                    if(cancelRequested){host.forget(workspace);liveSessions.remove(workspace.id);throw CancellationException("Generation cancelled")}
+                                                    val surface=activate(workspace)
+                                                    if(cancelRequested){surfaces.remove(workspace.id)?.close();host.forget(workspace);throw CancellationException("Generation cancelled")}
                                                     val editor = links.edit().putString("requirements.${workspace.id}", selected.joinToString(",") { it.id })
                                                     selected.forEach { editor.putString(requirementKey(it.id), workspace.id) }
                                                     check(editor.commit()) { "Cannot retain workspace link" }
                                                     currentPrepared = false; currentSelection = null; preparedReference = ""
-                                                    activeWorkspace.set(workspace.id); publishedVersion = -1
+                                                    activeWorkspace.set(workspace.id)
                                                     java.io.File(filesDir, "workspace-error.txt").delete()
-                                                    publish(workspace.id, snapshot);observe(workspace,session)
                                                     val workspaces = host.embedding.saved()
-                                                    runOnUiThread { if (!isDestroyed) { saved = workspaces; open = workspace; request = null; generating = false; status = ""; problem = null; runningGeneration = null } }
+                                                    runOnUiThread { if (!isDestroyed) { saved = workspaces; activeSurface=surface;open = workspace; request = null; generating = false; status = ""; problem = null; runningGeneration = null } }
                                                 }
                                             } catch (error: Throwable) {
                                                 log.event("host", "failed", code = error.javaClass.simpleName, target = "generation")
@@ -277,18 +270,8 @@ class OrganizerActivity : ComponentActivity() {
                                     },
                                 )
                                 open != null -> WorkspaceView(
-                                    title = if (returnRequirement != null) "" else open!!.title, tree = displayDates(tree ?: JSONObject().put("component", "root").put("props", org.json.JSONArray()).put("children", org.json.JSONArray())),
+                                    title = if (returnRequirement != null) "" else open!!.title,
                                     fault = fault,
-                                    onDispatch = { slot, payload ->
-                                        val id = open!!.id
-                                        // A new application action may invalidate the selection. Only a
-                                        // newly staged native record restores the review entrance.
-                                        currentPrepared = false; reviewReady[id] = false
-                                        worker.execute {
-                                            try { val session=liveSessions[id] ?: error("Closed session");host.embedding.dispatch(session, slot, payload) }
-                                            catch (error: Throwable) { reportFailure(id, "dispatch slot=$slot", error) }
-                                        }
-                                    },
                                     onClose = {
                                         val id = open!!.id
                                         worker.execute {
@@ -305,7 +288,11 @@ class OrganizerActivity : ComponentActivity() {
                                     },
                                     onReview = { review = true },
                                     hasPreparedSelection = currentPrepared,
-                                )
+                                ) {
+                                    activeSurface?.let{surface->ExperienceSurface(surface,transformTree=::displayDates,
+                                        onAction={currentPrepared=false;reviewReady[surface.experience.id]=false},
+                                        onSnapshot={snapshot->publish(surface.experience.id,snapshot.json())})}
+                                }
                                 selectedRequirement != null -> RequirementDetail(
                                     show = show!!, requirementId = selectedRequirement!!,
                                     onBack = { selectedRequirement = null; returnRequirement = null },

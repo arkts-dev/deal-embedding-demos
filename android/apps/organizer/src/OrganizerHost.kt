@@ -12,7 +12,6 @@ class OrganizerHost(private val context: Context) : AutoCloseable {
     private val mechanisms=Embedding(context,registry,GenerationGateway("http://127.0.0.1:8787/generate"),EmbeddingConfig("experience",emptyList(),"organizer-protocol",policyAssets="organizer-policy"))
     val embedding=ApplicationProtocol(context,mechanisms)
     fun prepare(){embedding.refresh().forEach{embedding.grant(it.module)}}
-    fun run(experience:Experience):Session=embedding.run(experience)
     fun forget(experience:Experience)=embedding.forget(experience)
     override fun close(){embedding.shutdown()}
 }
