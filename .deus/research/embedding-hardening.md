@@ -18,6 +18,9 @@ sources:
   - dependencies/deal-embedding/android/src/storage/StagingReclamation.kt
   - android/apps/calendar/src/CalendarActivity.kt
   - android/apps/organizer/src/WorkspacePresentation.kt
+  - android/tests/CompoundFailureInstrumentation.kt
+  - dependencies/deal-embedding/android/src/ExperienceRuntime.kt
+  - dependencies/deal-embedding/android/src/compiler/ExperienceCompiler.kt
   - android/tests/HardeningInstrumentation.kt
   - android/tests/SurfaceInstrumentation.kt
   - android/tests/ProtocolPolicyInstrumentation.kt
@@ -39,7 +42,7 @@ Session-update cursors use authenticated session-local revisions with a fixed se
 
 Capability admission no longer has a 128-request lifetime quota. Concurrent pending calls, buffered reply count and bytes are bounded, and local results are validated/bounded. Request sequence identity, provider authentication, consent, deadlines and permission epochs remain independent checks.
 
-Synchronous release still retires public preparation authority immediately. Native release failures stay in controller reclamation ownership, with paced retry and explicit `flushReclamation` failure. Physical staging deletion checks its result and journals pending directories privately before deletion. Bootstrap/checking/shutdown retry journaled cleanup. Saved source is not staging. Cleanup errors do not replace original generation/compiler failures; shutdown attempts remaining resources despite individual cleanup failure.
+Synchronous release still retires public preparation authority immediately. Native release failures stay in controller reclamation ownership, with paced retry and explicit `flushReclamation` failure. Physical staging deletion checks its result and journals pending directories privately before deletion. Bootstrap/checking/shutdown retry journaled cleanup. Saved source is not staging. The initial implementation preserved selected generation/compiler errors, but subsequent scrutiny exposed controller shutdown being vetoed by failed release reclamation, runtime cleanup masking primary failures, and discarded suppression during UI diagnostic translation. Those claims were too broad; the compound-failure correction below supersedes them.
 
 Shared framework helpers now own retained-event paging, observed exchange correlation and copy-only display-prop traversal. Organizer owns domain date formatting and wording, not generic traversal or paging. Typed generation reasons and provider/transport codes survive the DEAL/native error boundary; ordinary presentation and Inspect no longer require native generator/gateway exception classes.
 
@@ -50,6 +53,18 @@ First source scrutiny found callback fencing, reentrant waiter completion, retry
 The fresh hardening instrumentation directly exercised 10,000 authenticated revisions, 309 registry admissions and a compiled DEAL effect making 140 sequential capability calls. Fifty attach/detach cycles retained no native waiter/controller next future and produced no callback after detach. Authored checked source with a forced catalogue revision mismatch failed actual mounting while the existing healthy session remained unchanged. Changed-context rejection removed preparation. Injected deletion failure retained native ownership and the private journal; restoration reclaimed it. Failed session-close deletion remained retryable and retained saved source. Fixtures verified repeated-response, attempt-limit, provider refusal, connection and timeout codes, plus presentation distinctions and shared helper behavior.
 
 Fresh Compose instrumentation exercised accessibility clicks/publication, detached action execution with no surface reception, reattachment, actual isolate termination, cold recovery of the same owner, rejection of a stale callback, explicit close and source retention. Protocol, Organizer policy and logging suites also passed. A second serialized run of all five suites passed with instrumentation code zero. Declaration parity, boundary checks, policy/core fixture regressions and gateway/chooser/build-cache tests passed separately.
+
+## Compound-failure correction
+
+`ProtocolController.close` now attempts reclamation, trusted shutdown, executor stopping, native embedding shutdown, wait rejection, executor termination, capture-policy detachment, isolate closure and engine release independently. It aggregates failures only after teardown; pending staging deletion remains in the private journal. A native shutdown-request flag avoids invoking the stopped DEAL consumer again after explicit shutdown. Interrupted executor work is not claimed to stop noncooperative remote computation.
+
+`ExperienceRuntime.advance` rethrows the original isolate/runtime error with cleanup failures suppressed. `closeWorkspace` attempts both session closure and staging deletion, preserving session closure as the primary error if both fail. Mount/guarded cleanup and engine release follow the same preservation rule. Compiler UI diagnostic translation attaches cleanup suppression to the `CandidateRejected` actually thrown, avoiding a discarded intermediate diagnostic.
+
+New tracked `CompoundFailureInstrumentation` combines actual isolate termination with injected persistent deletion failure. It checks the primary runtime failure, suppressed cleanup, retained journal, session removal and saved source. A separately injected capability-session close failure checks exact primary-object identity when deletion also fails. Invalid Deal UI plus deletion failure checks suppression on the translated rejection.
+
+The shutdown regression holds deletion failure throughout closure of a controller with a live session, unused released preparation and registered pending next wait. It checks aggregated reported failure; terminated controller executors and embedding driver; closed controller isolate and capability registry; empty native delivery/session/wait bookkeeping; rejected wait; and retained journal/source. A new bootstrap reclaims the journal without deleting saved source.
+
+Organizer, Calendar and tests rebuilt successfully. All six device suites (compound failure, hardening, surface, protocol, policy and logging) passed on the final artifacts, then passed again serially. Declaration parity, byte-for-byte artifact boundaries, policy/core fixture tests and gateway/chooser/cache regressions also passed. Local receipts are `build/compound-final-build.txt`, `build/compound-final-*.txt` and `build/compound-review2-*.txt`; no raw logs are retained here. These tests establish the named compound paths, not all possible teardown/interleaving failures.
 
 ## Failed attempts and limits
 
