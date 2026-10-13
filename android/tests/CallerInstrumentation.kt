@@ -40,13 +40,3 @@ open class CallerInstrumentation : Instrumentation() {
     }
 }
 class VehicleCallerInstrumentation : CallerInstrumentation() { override val provider = "vehicle" }
-
-/** Late-installed fixture: an unknown package implementing the published travel capability. */
-class LateProviderService : CapabilityService() {
-    override val capabilities = NativeCapabilities(CapabilityContract("host/trip", "Late-installed test travel provider", listOf(
-        CapabilityFunction("estimate", "Return test travel duration", listOf(CapabilityParameter("distanceKm", CapabilityType.IntType)), CapabilityType.IntType))),
-        mapOf("estimate" to { args -> 5 + 2 * args.getInt(0) }))
-    override fun consent() = true
-    override fun authorize(uid: Int) = packageManager.getPackagesForUid(uid)?.toSet() == setOf("dev.deal.apps.calendar") &&
-        packageManager.checkSignatures(uid, applicationInfo.uid) == android.content.pm.PackageManager.SIGNATURE_MATCH
-}

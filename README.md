@@ -52,8 +52,6 @@ Enable **Dialogue → Capture content → Enable** before generation to inspect 
 python3 tools/verify-protocol-api.py <authoritative-protocol-document>
 python3 tools/test-jev-chooser.py
 python3 tools/test-generation-gateway.py
-node tools/verify-choice-policy.js
-node tools/verify-core-migration.js
 python3 tools/verify-boundaries.py
 python3 tools/test-build-cache.py
 adb install --user 0 -r build/tests.apk
