@@ -27,7 +27,10 @@ def observe():
     while not stop.is_set():
         try:
             for page in ['previous.jsonl','events.jsonl']:
-                text=private('files/embedding-log/'+page)
+                try:text=private('files/embedding-log/'+page)
+                except Exception:
+                    if page=='previous.jsonl':continue
+                    raise
                 for l in text.splitlines():
                     try:e=json.loads(l)
                     except ValueError:continue
@@ -73,6 +76,7 @@ try:
     else:raise AssertionError('Fresh generation deadline exceeded; no restart')
     m['capture']('dialogue-complete')
     role='AI reply · Write or repair the interface' if a.task=='editable' else 'AI reply · Choose a suitable interface'
+    if 'This request' in m['labels'](m['ui']()):tap('This request')
     scrolltap(role);m['capture']('actual-model-reply');tap('Close');tap('Source');m['capture']('source-after-acceptance');back()
     # Re-enter Inspect through accepted assistance to establish trusted provenance.
     tap('Inspect');tap('Source');r=m['capture']('trusted-source-provenance')

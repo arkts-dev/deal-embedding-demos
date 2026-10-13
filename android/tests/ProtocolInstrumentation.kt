@@ -79,6 +79,14 @@ export view Main(state: app.State): View { ui.Column() { ui.Text(value: "Protoco
   ProtocolController(context,restartHost).use{c->c.call("prepareCapabilities");val e=c.call("load",JSONArray().put("Across bootstrap").put(deal).put(view)) as JSONObject;val s=c.call("run",JSONArray().put(e.getString("id"))) as JSONObject;c.call("close",JSONArray().put(s.getString("id")))}
   val restarted=Embedding(context,CapabilityRegistry(context,CapabilityDiscovery(context){false},listOf(probe)),model,restartConfig)
   ProtocolController(context,restarted).use{c->c.call("prepareCapabilities");check(c.call("resumeSaved")==1)}
+  // A valid generation may exceed the adapter's ordinary 120-second operation deadline.
+  val longModel=object:ModelClient{override fun complete(input:String,previous:String,diagnostics:String,cancellation:GenerationCancellation,log:EmbeddingLog):String{
+   Thread.sleep(121000);cancellation.check();return JSONObject().put("deal",deal).put("dealui",view).toString()
+  }}
+  ApplicationProtocol(context,Embedding(context,CapabilityRegistry(context,CapabilityDiscovery(context){false},listOf(probe)),longModel,EmbeddingConfig("experience",emptyList(),"protocol-long-generation"))).use{api->
+   val request=api.request("Long generation","Authored source fixture",api.snapshot(WireType("record"),"{}"))
+   val prepared=api.generate(request);check(prepared.origin=="generated");api.release(prepared);api.flushReclamation()
+  }
   val entered=java.util.concurrent.CountDownLatch(1)
   val waitingModel=object:ModelClient {override fun complete(input:String,previous:String,diagnostics:String,cancellation:GenerationCancellation,log:EmbeddingLog):String {entered.countDown();while(true){cancellation.check();Thread.sleep(5)}}}
   val waitingHost=Embedding(context,CapabilityRegistry(context,CapabilityDiscovery(context){false},emptyList()),waitingModel,EmbeddingConfig("experience",emptyList(),"protocol-controller-cancel"))
