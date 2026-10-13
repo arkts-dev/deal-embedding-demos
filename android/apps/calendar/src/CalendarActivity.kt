@@ -18,10 +18,9 @@ import dev.deal.embedding.*
 import org.json.JSONObject
 import java.io.File
 import java.util.concurrent.Executors
-import java.util.concurrent.TimeUnit
 
 class CalendarActivity : ComponentActivity() {
-    private val worker = Executors.newSingleThreadScheduledExecutor()
+    private val worker = Executors.newSingleThreadExecutor()
     private lateinit var experience: CalendarEmbedding
     private var tree by mutableStateOf<JSONObject?>(null)
     private var status by mutableStateOf("Preparing your experience…")
@@ -86,7 +85,7 @@ class CalendarActivity : ComponentActivity() {
                         Text("Enable discovered capabilities here, then approve access in each provider. Consent stays under native control.")
                         Switch(connected, { enabled ->
                             connected = enabled
-                            if (enabled) experience.registry.grantAll() else experience.registry.revokeAll()
+                            worker.execute{experience.permissions(enabled)}
                         })
                     }
                     proposal?.let { departure ->
@@ -112,9 +111,7 @@ class CalendarActivity : ComponentActivity() {
             }
         }
         activate(intent.getStringExtra("deal"), intent.getStringExtra("dealui"))
-        worker.scheduleWithFixedDelay({
-            try { experience.poll()?.let(::publish) } catch (error: Throwable) { showError(error) }
-        }, 100, 100, TimeUnit.MILLISECONDS)
+
     }
     private fun refreshEvents() {
         permission = checkSelfPermission(Manifest.permission.READ_CALENDAR) == PackageManager.PERMISSION_GRANTED && checkSelfPermission(Manifest.permission.WRITE_CALENDAR) == PackageManager.PERMISSION_GRANTED
@@ -131,15 +128,15 @@ class CalendarActivity : ComponentActivity() {
         worker.execute {
             try {
                 experience.prepare(applicationContext)
-                if (connected) experience.registry.grantAll()
+                if (connected) experience.permissions(true)
                 val remembered = experience.remembered()
                 val source = deal ?: remembered?.deal ?: assets.open("experience/departure.deal").bufferedReader().use { it.readText() }
                 val view = ui ?: remembered?.dealui ?: assets.open("experience/departure.dealui").bufferedReader().use { it.readText() }
-                val snapshot = experience.activate(Source(source, view))
+                val session = experience.activate(Source(source, view))
                 version = -1
                 File(filesDir, "ui-error.txt").delete()
                 runOnUiThread { proposal = null; status = "" }
-                publish(snapshot)
+                observe(session)
             } catch (error: Throwable) { showError(error) }
         }
     }
@@ -161,26 +158,27 @@ class CalendarActivity : ComponentActivity() {
                 check(origin == null || origin == selected) { "Selected event changed; regenerate" }
                 val previous=experience.session;val next=experience.embedding.run(prepared);experience.session=next
                 previous?.let{experience.embedding.close(it)}
-                version=-1;publish(experience.embedding.poll(next).json())
+                version=-1;observe(next)
                 File(filesDir,"generation-status.json").writeText(JSONObject().put("status","activated").put("attempts",prepared.attempts).toString())
                 runOnUiThread{proposal=null;status="";generationStatus="Generated experience activated"}
             } catch (error: Throwable) {
-                File(filesDir, "generation-status.json").writeText(JSONObject().put("status", if (error is java.util.concurrent.CancellationException) "cancelled" else "failed").put("message", error.message?.take(1000)).toString())
-                runOnUiThread { generationStatus = if (error is java.util.concurrent.CancellationException) "Generation cancelled; current experience retained" else "Generation failed; current experience retained" }
+                File(filesDir, "generation-status.json").writeText(JSONObject().put("status", if (error is java.util.concurrent.CancellationException || error is ProtocolFailure && error.code=="CANCELLED") "cancelled" else "failed").put("message", error.message?.take(1000)).toString())
+                runOnUiThread { generationStatus = if (error is java.util.concurrent.CancellationException || error is ProtocolFailure && error.code=="CANCELLED") "Generation cancelled; current experience retained" else "Generation failed; current experience retained" }
             } finally { cancellation = null; runOnUiThread { generating = false } }
         }
     }
     private fun dispatch(slot: Int, payload: String?) {
         proposal = null
-        worker.execute { try { experience.dispatch(slot, payload)?.let(::publish) } catch (error: Throwable) { showError(error) } }
+        worker.execute { try { experience.dispatch(slot, payload) } catch (error: Throwable) { showError(error) } }
     }
+    private fun observe(session:Session){experience.embedding.observe(session,{snapshot->if(experience.session==session)publish(snapshot.json())},{error->if(experience.session==session)showError(error)})}
     private fun publish(snapshot: JSONObject) {
         if (snapshot.getInt("version") == version) return
         version = snapshot.getInt("version")
         val temporary = File(filesDir, "ui-snapshot.tmp").apply { writeText(snapshot.toString()) }
         check(temporary.renameTo(File(filesDir, "ui-snapshot.json"))) { "Cannot publish UI snapshot" }
         val next = snapshot.getJSONObject("tree")
-        runOnUiThread { if (!isDestroyed) { tree = next; if (snapshot.optString("fault").isNotEmpty()) status = snapshot.getString("fault") } }
+        runOnUiThread { if (!isDestroyed) { tree = next;experience.session?.let{experience.embedding.published(it,snapshot.getInt("version"))}; if (snapshot.optString("fault").isNotEmpty()) status = snapshot.getString("fault") } }
     }
     private fun showError(error: Throwable) {
         android.util.Log.e("DealUi", "Experience error", error)

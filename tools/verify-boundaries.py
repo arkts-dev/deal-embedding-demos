@@ -16,9 +16,18 @@ assert (library/'core/generation.deal').exists()
 assert not (library/'backends').exists()
 assert {p.name for p in (library/'core/host').glob('*.d.deal')} == {'checker.d.deal', 'discovery.d.deal', 'model.d.deal', 'chooser.d.deal', 'policy-data.d.deal', 'observer.d.deal', 'embedding.d.deal', 'catalogue-policy.d.deal', 'protocol.d.deal'}
 assert (library/'android/src/compiler/ExperienceCompiler.kt').exists()
-assert {p.name for p in (library/'android/src/bindings').glob('*.kt')} == {'CapabilityBindings.kt', 'DealSessionBindings.kt', 'ExperienceGenerator.kt', 'SandboxProgram.kt', 'EmbeddingLog.kt', 'ChoiceProtocol.kt', 'PublicProtocolBinding.kt', 'ProtocolController.kt'}
+assert {p.name for p in (library/'android/src/bindings').glob('*.kt')} == {'CapabilityBindings.kt', 'DealSessionBindings.kt', 'ExperienceGenerator.kt', 'SandboxProgram.kt', 'EmbeddingLog.kt', 'ChoiceProtocol.kt', 'ApplicationProtocol.kt', 'ProtocolController.kt'}
 assert {p.name for p in (library/'android/src/inference').glob('*.kt')} == {'ModelClient.kt'}
 assert (root/'android/apps/development/GenerationGateway.kt').exists()
+assert not (library/'android/src/bindings/PublicProtocolBinding.kt').exists()
+for app in ('organizer','calendar'):
+    for path in (root/f'android/apps/{app}/src').glob('*.kt'):
+        text=path.read_text()
+        assert '.poll(' not in text and 'scheduleWithFixedDelay' not in text and 'newSingleThreadScheduledExecutor' not in text, path
+        assert '.inSession(' not in text, path
+protocol=(library/'android/assets/embedding/bindings/public-protocol.js').read_text()
+assert "case 'poll'" not in protocol and "control(name,args);result=null;break;" not in protocol
+assert 'private val grants' not in (library/'android/src/capabilities/CapabilityRegistry.kt').read_text()
 assert 'getSharedPreferences' not in (library/'android/src/capabilities/CapabilityService.kt').read_text()
 assert 'configureDealCapabilities' not in (library/'android/assets/embedding/bindings/generation-session.js').read_text()
 assert (library/'android/src/storage/ExperienceStorage.kt').exists()

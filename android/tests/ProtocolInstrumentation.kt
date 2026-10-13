@@ -40,9 +40,9 @@ import * as ui from "./platform.dealui-pack";
 export view Main(state: app.State): View { ui.Column() { ui.Text(value: "Protocol ready") ui.Button(text: "Increment", onClick: action app.Increment {}) } }
 """
   val e=host.load("Protocol",Source(deal,view));check(host.saved().none{it.id==e.id});check(host.source(e).deal==deal)
-  val session=host.run(e);check(host.run(e)==session);val snapshot=host.poll(session);check(snapshot.tree.toString().contains("Protocol ready"));host.published(session,snapshot.version);check(runCatching{host.published(session,snapshot.version+1)}.isFailure)
+  val session=host.run(e);check(host.run(e)==session);val snapshot=host.next(session,"").snapshot;check(snapshot.tree.toString().contains("Protocol ready"));host.published(session,snapshot.version);check(runCatching{host.published(session,snapshot.version+1)}.isFailure)
   check(host.saved().any{it.id==e.id});check(runCatching{host.run(e.copy(id="forged"))}.isFailure)
-  host.close(session);check(runCatching{host.poll(session)}.isFailure)
+  host.close(session);check(runCatching{host.next(session,"")}.isFailure)
   val cold=host.run(e);check(cold!=session);host.close(cold)
   host.forget(e);check(host.saved().none{it.id==e.id})
   val request=host.request("Request","Unsupported",facts);check(host.requestTrace(request).isNotEmpty());host.cancel(request)
@@ -60,6 +60,7 @@ export view Main(state: app.State): View { ui.Column() { ui.Text(value: "Protoco
   // Invoke actual compiled DEAL declarations through the public native linkage.
   ProtocolController(context,host).use { controller ->
    check(controller.call("prepareCapabilities") as Int==1)
+   check(controller.call("defaults")=="defaults");check(controller.call("invalidGrant")=="grant error")
    val cancelled=controller.call("contexts") as String
    check(controller.call("cancelled",JSONArray().put(cancelled))=="cancelled")
    check((controller.call("lifecycle",JSONArray().put(deal).put(view)) as String).contains("cold"))
@@ -69,7 +70,7 @@ export view Main(state: app.State): View { ui.Column() { ui.Text(value: "Protoco
   ProtocolController(context,generatedHost).use { controller ->
    val generated=controller.call("generated") as JSONObject
    val s=controller.call("run",JSONArray().put(generated.getString("id"))) as JSONObject
-   check((controller.call("poll",JSONArray().put(s.getString("id"))) as JSONObject).getJSONObject("tree").toString().contains("Protocol ready"))
+   check(controller.update(Session(s.getString("id"))).snapshot.tree.toString().contains("Protocol ready"))
    controller.call("close",JSONArray().put(s.getString("id")));controller.call("forget",JSONArray().put(generated.getString("id")))
    controller.call("shutdown")
   }
@@ -85,7 +86,7 @@ export view Main(state: app.State): View { ui.Column() { ui.Text(value: "Protoco
    val request=controller.call("waitingRequest") as String
    val operation=controller.start("generateWaiting",JSONArray().put(request))
    val deadline=System.currentTimeMillis()+10000
-   while(entered.count>0){controller.pump();check(System.currentTimeMillis()<deadline);Thread.sleep(5)}
+   while(entered.count>0){check(System.currentTimeMillis()<deadline);Thread.sleep(5)}
    controller.call("cancelWaiting",JSONArray().put(request))
    check(runCatching{controller.await(operation)}.exceptionOrNull().let{it is ProtocolFailure&&it.code=="CANCELLED"})
    check((controller.call("saved") as JSONArray).length()==0)
@@ -95,7 +96,7 @@ export view Main(state: app.State): View { ui.Column() { ui.Text(value: "Protoco
   val slowHost=Embedding(context,CapabilityRegistry(context,CapabilityDiscovery(context){false},listOf(probe)),noncooperative,EmbeddingConfig("experience",emptyList(),"protocol-controller-noncooperative"))
   ProtocolController(context,slowHost).use {c->
    try{val request=c.call("waitingRequest") as String;val operation=c.start("generateWaiting",JSONArray().put(request));val deadline=System.currentTimeMillis()+10000
-    while(slowEntered.count>0){c.pump();check(System.currentTimeMillis()<deadline);Thread.sleep(5)}
+    while(slowEntered.count>0){check(System.currentTimeMillis()<deadline);Thread.sleep(5)}
     c.call("cancelWaiting",JSONArray().put(request));check(runCatching{c.await(operation,2)}.exceptionOrNull().let{it is ProtocolFailure&&it.code=="CANCELLED"});check(slowRelease.count==1L)
    }finally{slowRelease.countDown()}
   }
@@ -121,9 +122,30 @@ export view Main(state:app.State):View {ui.Column(){ui.IntText(value:state.value
   val capabilityHost=Embedding(context,CapabilityRegistry(context,CapabilityDiscovery(context){false},listOf(nativeProbe)),model,EmbeddingConfig("experience",emptyList(),"protocol-controller-capability"))
   ProtocolController(context,capabilityHost).use{c->
    c.call("prepareCapabilities");val e=c.call("load",JSONArray().put("Explicit capability").put(capabilityDeal).put(capabilityView)) as JSONObject;val s=c.call("run",JSONArray().put(e.getString("id"))) as JSONObject
-   check(capabilityCalls==0);c.call("dispatch",JSONArray().put(s.getString("id")).put(0));repeat(5){c.call("poll",JSONArray().put(s.getString("id")))};check(capabilityCalls==1)
-   capabilityHost.revoke("host/probe");c.call("dispatch",JSONArray().put(s.getString("id")).put(0));repeat(5){c.call("poll",JSONArray().put(s.getString("id")))};check(capabilityCalls==1)
-   c.call("close",JSONArray().put(s.getString("id")));c.call("forget",JSONArray().put(e.getString("id")))
+   check(capabilityCalls==0)
+   val admission=capabilityHost.registry.openSession(EmbeddingLog(context))
+   c.synchronous("revoke",JSONArray().put("host/probe"))
+   admission.receive(JSONObject().put("id",1).put("module","host/probe").put("function","ping").put("args",JSONArray()),android.os.SystemClock.elapsedRealtime())
+   check(admission.drain(android.os.SystemClock.elapsedRealtime()).single().getJSONObject("error").getString("code")=="DENIED");check(capabilityCalls==0)
+   c.synchronous("grant",JSONArray().put("host/probe"))
+   admission.receive(JSONObject().put("id",2).put("module","host/probe").put("function","ping").put("args",JSONArray()),android.os.SystemClock.elapsedRealtime())
+   check(admission.drain(android.os.SystemClock.elapsedRealtime()).single().getBoolean("ok"));check(capabilityCalls==1);admission.close();capabilityCalls=0
+   check(c.call("dispatch",JSONArray().put(s.getString("id")).put(0))===JSONObject.NULL)
+   // No next call or application pump: the effect must complete autonomously.
+   val completedDeadline=System.currentTimeMillis()+10000
+   while(capabilityCalls==0){check(System.currentTimeMillis()<completedDeadline);Thread.sleep(10)}
+   Thread.sleep(100);check(capabilityCalls==1)
+   check(c.update(Session(s.getString("id"))).snapshot.tree.toString().contains("\"intValue\":1")){"Effect completion did not progress autonomously"}
+   c.synchronous("revoke",JSONArray().put("host/probe"));c.call("dispatch",JSONArray().put(s.getString("id")).put(0));Thread.sleep(150);check(capabilityCalls==1)
+   val observed=c.update(Session(s.getString("id")))
+   check(c.call("invalidCursor",JSONArray().put(s.getString("id")).put("forged"))=="invalid cursor")
+   val waiting=c.start("next",JSONArray().put(s.getString("id")).put(observed.cursor));Thread.sleep(80)
+   c.call("close",JSONArray().put(s.getString("id")))
+   check(runCatching{c.await(waiting,2)}.exceptionOrNull().let{it is ProtocolFailure&&it.code=="CLOSED"})
+   val reopened=c.call("run",JSONArray().put(e.getString("id"))) as JSONObject
+   val initial=c.update(Session(reopened.getString("id")))
+   val shutdownWait=c.start("next",JSONArray().put(reopened.getString("id")).put(initial.cursor));Thread.sleep(80)
+   c.call("shutdown");check(runCatching{c.await(shutdownWait,2)}.isFailure)
   }
   // Faulted native isolate invalidates handles; explicit run cold-rechecks durable source.
   val faultHost=Embedding(context,CapabilityRegistry(context,CapabilityDiscovery(context){false},listOf(probe)),model,EmbeddingConfig("experience",emptyList(),"protocol-controller-fault"))
@@ -133,11 +155,11 @@ export view Main(state:app.State):View {ui.Column(){ui.IntText(value:state.value
    val ui=runtime.workspace(e.getString("id"))!!.session
    val programField=UiSession::class.java.getDeclaredField("program").apply{isAccessible=true};val sandboxProgram=programField.get(ui) as SandboxProgram
    val isolateField=SandboxProgram::class.java.getDeclaredField("isolate").apply{isAccessible=true};(isolateField.get(sandboxProgram) as androidx.javascriptengine.JavaScriptIsolate).close()
-   check(runCatching{c.call("poll",JSONArray().put(s.getString("id")))}.isFailure)
+   Thread.sleep(100);check(c.update(Session(s.getString("id"))).snapshot.fault.isNotEmpty())
    val next=c.call("run",JSONArray().put(e.getString("id"))) as JSONObject
-   check(next.getString("id")!=s.getString("id"));c.call("poll",JSONArray().put(next.getString("id")));c.call("close",JSONArray().put(next.getString("id")));c.call("forget",JSONArray().put(e.getString("id")))
+   check(next.getString("id")!=s.getString("id"));c.update(Session(next.getString("id")));c.call("close",JSONArray().put(next.getString("id")));c.call("forget",JSONArray().put(e.getString("id")))
   }
-  result.putString("protocolVerification","compiled DEAL consumer, no injected turns: frozen contexts/copies/forged handles, generate/load/run/dispatch/poll/publication/live/cold/forget/release, controls, observation, shutdown; cancellation before/during generation including noncooperative mechanism; fixture inference, no network")
+  result.putString("protocolVerification","compiled DEAL consumer, no injected turns: frozen contexts/copies/forged handles, generate/load/run/dispatch/next/publication/live/cold/forget/release, controls, observation, shutdown; cancellation before/during generation including noncooperative mechanism; fixture inference, no network")
   finish(0,result)
  }catch(e:Throwable){result.putString("failure",android.util.Log.getStackTraceString(e));finish(1,result)}finally{embedding?.shutdown()}
  }
