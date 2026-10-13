@@ -24,7 +24,8 @@ class SurfaceInstrumentation:Instrumentation(){
         try{
             val context=targetContext
             val model=object:ModelClient{override fun complete(input:String,previous:String,diagnostics:String,cancellation:GenerationCancellation,log:EmbeddingLog):String=error("Unexpected inference")}
-            protocol=ApplicationProtocol(context,Embedding(context,CapabilityRegistry(context,CapabilityDiscovery(context){false},emptyList()),model,EmbeddingConfig("experience",emptyList(),"surface-${java.util.UUID.randomUUID()}")))
+            val mechanisms=Embedding(context,CapabilityRegistry(context,CapabilityDiscovery(context){false},emptyList()),model,EmbeddingConfig("experience",emptyList(),"surface-${java.util.UUID.randomUUID()}"))
+            protocol=ApplicationProtocol(context,mechanisms)
             val source=Source("""export class State { value:int=0; }
 export class Increment {}
 export function initialState():State {return {};}
@@ -53,20 +54,43 @@ export view Main(state:app.State):View {ui.Column(){ui.IntText(value:state.value
             until{click(uiAutomation.rootInActiveWindow)}
             until{surface.snapshot?.tree?.toString()?.contains("\"intValue\":1")==true}
             EmbeddingLog.flush(context)
-            until{protocol.events("","",200).events.any{it.optString("outcome")=="published"&&it.optInt("version")==1}}
+            val trace=protocol.sessionTrace(protocol.run(experience))
+            until{EmbeddingLog.flush(context);protocol.retainedEvents(trace).events.any{it.optString("outcome")=="published"&&it.optInt("version")==1}}
             runOnMainSync{activity.attached=false};waitForIdleSync()
             check(protocol.saved().any{it.id==experience.id})
+            val detachedSnapshot=surface.snapshot!!
+            val props=detachedSnapshot.tree.getJSONArray("children").getJSONObject(1).getJSONArray("props")
+            val slot=(0 until props.length()).map{props.getJSONObject(it)}.first{it.optString("name")=="onClick"}.getInt("actionSlot")
+            surface.event(detachedSnapshot,slot,null)
+            val savedSession=protocol.run(experience)
+            until{protocol.next(savedSession,"").snapshot.tree.toString().contains("\"intValue\":2")}
+            check(surface.snapshot===detachedSnapshot){"Detached surface received an update"}
             runOnMainSync{activity.attached=true};waitForIdleSync()
-            until{click(uiAutomation.rootInActiveWindow)}
             until{surface.snapshot?.tree?.toString()?.contains("\"intValue\":2")==true}
+            until{click(uiAutomation.rootInActiveWindow)}
+            until{surface.snapshot?.tree?.toString()?.contains("\"intValue\":3")==true}
             check(errors.isEmpty())
+            val stale=surface.snapshot!!
+            // Kill the actual mounted isolate, then explicitly reactivate the SAME retained owner.
+            val runtime=Embedding::class.java.getDeclaredField("runtime").apply{isAccessible=true}.get(mechanisms) as ExperienceRuntime
+            val ui=runtime.workspace(experience.id)!!.session
+            val program=UiSession::class.java.getDeclaredField("program").apply{isAccessible=true}.get(ui) as SandboxProgram
+            val isolate=SandboxProgram::class.java.getDeclaredField("isolate").apply{isAccessible=true}.get(program) as androidx.javascriptengine.JavaScriptIsolate
+            isolate.close()
+            until{surface.snapshot?.fault?.isNotEmpty()==true}
+            surface.activate{errors.add(it)}
+            until{surface.snapshot?.fault?.isEmpty()==true&&surface.snapshot?.tree?.toString()?.contains("\"intValue\":0")==true}
+            surface.event(stale,slot,null);Thread.sleep(100)
+            check(surface.snapshot!!.tree.toString().contains("\"intValue\":0")){"Stale renderer callback reached new ownership"}
+            until{click(uiAutomation.rootInActiveWindow)}
+            until{surface.snapshot?.tree?.toString()?.contains("\"intValue\":1")==true}
             val forged=ExperienceSurface(protocol,experience.copy(id="forged"))
             check(runCatching{forged.activate{errors.add(it)}}.isFailure);forged.close()
-            check(surface.snapshot!!.tree.toString().contains("\"intValue\":2"))
+            check(surface.snapshot!!.tree.toString().contains("\"intValue\":1"))
             surface.close();check(protocol.saved().any{it.id==experience.id})
             val cold=ExperienceSurface(protocol,experience);cold.activate{errors.add(it)}
             until{cold.snapshot!=null};check(cold.snapshot!!.tree.toString().contains("\"intValue\":0"));cold.close();protocol.forget(experience)
-            result.putString("surface","actual Compose rendering/accessibility widget events, automatic publication, hide/show retains state, failed activation preserves existing surface, explicit close retains source, cold activation resets without inference")
+            result.putString("surface","actual Compose rendering/accessibility widget events, automatic publication, hide/show retains state, actual isolate death/same-owner cold recovery, failed activation preserves existing surface, explicit close retains source, cold activation resets without inference")
             finish(0,result)
         }catch(error:Throwable){result.putString("failure",android.util.Log.getStackTraceString(error));finish(1,result)}finally{activity?.let{runOnMainSync{it.finish()}};surface?.close();protocol?.close()}
     }

@@ -94,7 +94,7 @@ export view Main(state:app.State):View {ui.Column(){ui.Text(value:"Fixture sourc
   var invalidChoices=0;var invalidSources=0
   val invalidModel=object:ModelClient{override fun complete(input:String,previous:String,diagnostics:String,cancellation:GenerationCancellation,log:EmbeddingLog):String {if(input.contains("ISSUED OPTIONS")){invalidChoices++;return "{\"answers\":{\"choose\":\"yes\"}}"};invalidSources++;error("Invalid catalogue source must never reach source inference")}}
   val invalidHost=Embedding(context,CapabilityRegistry(context,CapabilityDiscovery(context){false},emptyList()),invalidModel,EmbeddingConfig("experience",emptyList(),"protocol-invalid-catalogue",policyAssets="protocol-invalid-policy"))
-  ProtocolController(context,invalidHost).use {c->val error=runCatching{c.call("generated")}.exceptionOrNull();check(error is ProtocolFailure&&error.code=="GENERATION_REJECTED");check(invalidChoices==1&&invalidSources==0)}
+  ProtocolController(context,invalidHost).use {c->val error=runCatching{c.call("generated")}.exceptionOrNull();check(error is ProtocolFailure&&error.code=="GENERATION_TEMPLATE_CHECK");check(invalidChoices==1&&invalidSources==0)}
   // Production application consumer, not just the assertion-bearing test entry.
   val productionModel=object:ModelClient{override fun complete(input:String,previous:String,diagnostics:String,cancellation:GenerationCancellation,log:EmbeddingLog):String {
     check(input.contains("ISSUED OPTIONS"));return choices()

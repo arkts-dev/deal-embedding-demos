@@ -101,7 +101,7 @@ class OrganizerActivity : ComponentActivity() {
         }
         fun activate(workspace:Experience):ExperienceSurface {
             val surface=surfaces.getOrPut(workspace.id){ExperienceSurface(host.embedding,workspace)}
-            surface.activate{error->reportFailure(workspace.id,"surface",error)}
+            host.embedding.withPreparation(workspace){surface.activate{error->reportFailure(workspace.id,"surface",error)}}
             return surface
         }
         fun openSaved(id: String) {
@@ -264,7 +264,7 @@ class OrganizerActivity : ComponentActivity() {
                                                 }
                                             } catch (error: Throwable) {
                                                 log.event("host", "failed", code = error.javaClass.simpleName, target = "generation")
-                                                runOnUiThread { if (!isDestroyed && runningGeneration === token.get()) { generating = false; status = ""; problem = generationProblem(error); inspectionError = if (error is GenerationRejected) "${error.reason} · ${error.attempts} attempts\n${error.diagnostics}" else error.javaClass.simpleName + ": " + error.message; runningGeneration = null } }
+                                                runOnUiThread { if (!isDestroyed && runningGeneration === token.get()) { generating = false; status = ""; problem = generationProblem(error); inspectionError = (if(error is ProtocolFailure)error.code else error.javaClass.simpleName) + ": " + error.message; runningGeneration = null } }
                                             }
                                         }
                                     },

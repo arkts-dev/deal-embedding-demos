@@ -12,35 +12,6 @@ internal fun readableLogDetail(detail: String): String = runCatching {
     }
 }.getOrDefault(detail)
 
-internal data class DialogueExchange(val key: String, val stage: String, val events: List<JSONObject>)
-
-/** Newest exchange first; chronological records inside it. Never infer missing replies.
- * Model records have explicit span/parent correlation. Check operations are sequential
- * within a generation trace, so attach only observed checks between adjacent model calls.
- * Limit whole exchanges, not individual records that could drop the matching request.
- */
-internal fun dialogueExchanges(entries: List<JSONObject>, limit: Int = 100): List<DialogueExchange> {
-    val chronological = entries.sortedWith(compareBy<JSONObject> { it.optString("time").toLongOrNull() ?: 0L }.thenBy { it.optLong("sequence") })
-    val groups = linkedMapOf<String, MutableList<JSONObject>>()
-    val stages = mutableMapOf<String, String>()
-    val latest = mutableMapOf<String, String>()
-    for (event in chronological) {
-        val trace = event.optString("trace")
-        val stage = event.optString("stage")
-        val outcome = event.optString("outcome")
-        if (stage in listOf("choice", "source") && outcome in listOf("started", "response", "failed", "cancelled")) {
-            val span = if (outcome == "response") event.optString("parent").ifEmpty { event.optString("span") } else event.optString("span")
-            val key = "$trace:$span"
-            groups.getOrPut(key) { mutableListOf() }.add(event)
-            stages[key] = stage
-            latest[trace] = key
-        } else if (stage == "check" && outcome in listOf("started", "completed", "failed", "rejected")) {
-            latest[trace]?.let { key -> groups.getValue(key).add(event) }
-        }
-    }
-    return groups.entries.reversed().take(limit).map { (key, events) -> DialogueExchange(key, stages.getValue(key), events.toList()) }
-}
-
 internal fun dialogueRole(event: JSONObject): String = if (event.optString("stage") == "check") when (event.optString("outcome")) {
     "started" -> "Checking reply"
     "completed" -> "Check passed"

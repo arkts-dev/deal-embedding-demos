@@ -17,6 +17,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import dev.deal.embedding.Experience
+import dev.deal.embedding.dialogueExchanges
+import dev.deal.embedding.retainedEvents
 import dev.deal.shell.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -49,10 +51,9 @@ class DiagnosticsActivity : ComponentActivity() {
             LaunchedEffect(Unit) {
                 while (true) {
                     val read = withContext(Dispatchers.IO) { runCatching {
-                        val events=mutableListOf<JSONObject>();var cursor=""
-                        do {val page=embedding.events("",cursor,200);events.addAll(page.events);cursor=page.cursor}while(cursor.isNotEmpty())
+                        val page=embedding.retainedEvents()
                         val health=embedding.health()
-                        events.reversed() to if(health.incomplete)JSONObject().put("active",health.active).toString()else ""
+                        page.events.reversed() to if(health.incomplete||page.incomplete)JSONObject().put("active",health.active).toString()else ""
                     } }
                     read.onSuccess { (events, status) -> entries = events; health = status; readError = "" }
                         .onFailure { readError = "Couldn’t read activity: ${it.javaClass.simpleName}. Retained display may be stale." }

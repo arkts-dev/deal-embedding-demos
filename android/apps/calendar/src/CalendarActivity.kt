@@ -137,7 +137,7 @@ class CalendarActivity : ComponentActivity() {
                 val source = deal ?: remembered?.deal ?: assets.open("experience/departure.deal").bufferedReader().use { it.readText() }
                 val view = ui ?: remembered?.dealui ?: assets.open("experience/departure.dealui").bufferedReader().use { it.readText() }
                 val prepared=experience.embedding.load("Departure",Source(source,view))
-                activate(prepared)
+                experience.embedding.withPreparation(prepared){activate(it)}
                 File(filesDir, "ui-error.txt").delete()
                 runOnUiThread { proposal = null; status = "" }
             } catch (error: Throwable) { showError(error) }
@@ -157,9 +157,11 @@ class CalendarActivity : ComponentActivity() {
                 val request=experience.embedding.request("Departure",objective,facts);cancellation=request
                 if(cancelRequested)experience.embedding.cancel(request)
                 val prepared=experience.embedding.generate(request)
-                if(cancelRequested){experience.embedding.release(prepared);throw java.util.concurrent.CancellationException("Cancelled")}
-                check(origin == null || origin == selected) { "Selected event changed; regenerate" }
-                activate(prepared)
+                experience.embedding.withPreparation(prepared){
+                    if(cancelRequested)throw java.util.concurrent.CancellationException("Cancelled")
+                    check(origin == null || origin == selected) { "Selected event changed; regenerate" }
+                    activate(it)
+                }
                 File(filesDir,"generation-status.json").writeText(JSONObject().put("status","activated").put("attempts",prepared.attempts).toString())
                 runOnUiThread{proposal=null;status="";generationStatus="Generated experience activated"}
             } catch (error: Throwable) {
@@ -170,7 +172,7 @@ class CalendarActivity : ComponentActivity() {
     }
     private fun activate(prepared:Experience) {
         val next=ExperienceSurface(experience.embedding,prepared)
-        try{next.activate(::showError)}catch(error:Throwable){next.close();throw error}
+        try{next.activate(::showError)}catch(error:Throwable){runCatching{next.close()}.onFailure{error.addSuppressed(it)};throw error}
         val previous=ownedSurface;ownedSurface=next
         runOnUiThread {if(!isDestroyed&&ownedSurface===next)surface=next}
         // Calendar explicitly replaces/closes its prior experience after successful activation.

@@ -22,7 +22,7 @@ class WorkspaceClarityActivity : ComponentActivity() {
         setContent { AppTheme(Accent.Organizer) {
             var screen by remember { mutableStateOf(intent.getStringExtra("screen") ?: "failure") }
             var received by remember { mutableStateOf("No action received") }
-            var problem by remember { mutableStateOf<GenerationProblem?>(generationProblem(GenerationRejected(3, GenerationRejected.Reason.ATTEMPT_LIMIT, "private compiler diagnostics"))) }
+            var problem by remember { mutableStateOf<GenerationProblem?>(generationProblem(ProtocolFailure("GENERATION_ATTEMPT_LIMIT", "private compiler diagnostics"))) }
             Column(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding().padding(8.dp)) {
                 TextButton(onClick = { screen = "inspection" }) { Text("Inspect") }
                 when (screen) {

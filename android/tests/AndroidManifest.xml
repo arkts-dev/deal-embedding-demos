@@ -9,6 +9,7 @@
  <instrumentation android:name=".CallerInstrumentation" android:targetPackage="dev.deal.apps.todo" />
  <instrumentation android:name=".VehicleCallerInstrumentation" android:targetPackage="dev.deal.apps.vehicle" />
  <instrumentation android:name=".LoggingInstrumentation" android:targetPackage="dev.deal.apps.organizer" />
+ <instrumentation android:name=".HardeningInstrumentation" android:targetPackage="dev.deal.connectors.tests" />
  <instrumentation android:name=".SurfaceInstrumentation" android:targetPackage="dev.deal.connectors.tests" />
  <instrumentation android:name=".ProtocolInstrumentation" android:targetPackage="dev.deal.apps.organizer" />
  <instrumentation android:name=".ProtocolPolicyInstrumentation" android:targetPackage="dev.deal.apps.organizer" />

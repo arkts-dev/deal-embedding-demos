@@ -15,7 +15,7 @@ import java.net.Socket
  * Uses a raw socket: HttpURLConnection buffers a POST body unless the response is read
  * concurrently, which leaves client and server waiting on each other.
  */
-class GenerationGatewayFailure(val code: String, message: String) : java.io.IOException(message)
+class GenerationGatewayFailure(code: String, message: String) : dev.deal.embedding.ProtocolFailure(code,message)
 
 class GenerationGateway(private val endpoint: String) : ModelClient {
     init { require(endpoint == "http://127.0.0.1:8787/generate") { "Development gateway must use loopback forwarding" } }
