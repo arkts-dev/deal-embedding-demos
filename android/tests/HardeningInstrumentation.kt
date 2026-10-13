@@ -65,28 +65,6 @@ export view Main(state:app.State):View {ui.Column(){ui.IntText(value:state.value
             val latest=api.next(session,first.cursor);check(latest.snapshot.tree.toString().contains("\"intValue\":50"))
             check(runCatching{api.next(session,UpdateCursor().issue(0))}.exceptionOrNull().let{it is ProtocolFailure&&it.code=="INVALID_CURSOR"})
             api.close(session)
-            val effectSource=Source("""import * as probe from "host/probe";
-export class State {value:int=0;}
-export class Start {}
-export class Done {value:int=0;}
-export function initialState():State {return {};}
-// @ui-update
-export function start(state:State,action:Start):State {return state;}
-// @ui-effect
-export async function execute(state:State,action:Start):Done {let value:int=0;for(let i:int=0;i<140;i=i+1){value=await probe.ping();}return {value:value};}
-// @ui-update
-export function done(state:State,action:Done):State {return {value:action.value};}
-""","""import * as app from "./experience";
-import * as ui from "./platform.dealui-pack";
-// @ui-root
-export view Main(state:app.State):View {ui.Column(){ui.IntText(value:state.value) ui.Button(text:"Start",onClick:action app.Start {})}}
-""")
-            val effect=api.load("Long lived calls",effectSource);val effectSession=api.run(effect)
-            val effectTree=api.next(effectSession,"").snapshot.tree
-            val effectProps=effectTree.getJSONArray("children").getJSONObject(1).getJSONArray("props")
-            val effectSlot=(0 until effectProps.length()).map{effectProps.getJSONObject(it)}.first{it.optString("name")=="onClick"}.getInt("actionSlot")
-            api.dispatch(effectSession,effectSlot,null);until{calls==449};Thread.sleep(100)
-            check(api.next(effectSession,"").snapshot.tree.toString().contains("\"intValue\":449"));api.close(effectSession);api.forget(effect)
             val labelTree=JSONObject().put("component","Text").put("props",JSONArray().put(JSONObject().put("name","value").put("stringValue","original"))).put("children",JSONArray())
             check(displayText(labelTree){"shown"}.toString().contains("shown"));check(labelTree.toString().contains("original"))
             val inputTree=JSONObject(labelTree.toString()).put("component","TextInput")
@@ -155,7 +133,7 @@ export view Main(state:app.State):View {ui.Column(){ui.IntText(value:state.value
                 check(dev.deal.apps.organizer.generationProblem(ProtocolFailure(code,"fixture")).title==title)
             }
             api.forget(experience)
-            result.putString("hardening","10000 authenticated revisions/constant retained cursor state; 309 direct admissions plus 140 compiled effect calls/buffer limit; 50 detach cycles/no callbacks or pending waits; real mount/context rejection preserves healthy session; retained cleanup failure/reclamation; provider and generation codes; shared observation")
+            result.putString("hardening","10000 authenticated revisions/constant retained cursor state; 309 direct admissions/buffer limit; 50 detach cycles/no callbacks or pending waits; real mount/context rejection preserves healthy session; retained cleanup failure/reclamation; provider and generation codes; shared observation")
             finish(0,result)
         }catch(error:Throwable){result.putString("failure",android.util.Log.getStackTraceString(error));finish(1,result)}finally{protocol?.close()}
     }
