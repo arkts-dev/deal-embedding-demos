@@ -3,6 +3,11 @@ package dev.deal.apps.organizer
 import org.json.JSONArray
 import org.json.JSONObject
 
+/** Older retained events need not contain the derived display summary. */
+internal fun activitySummary(event:JSONObject):String=event.optString("summary").ifBlank{
+    event.optString("stage")+" · "+event.optString("outcome")+" "+event.optString("target")
+}
+
 /** Decode the captured argument-array envelope for reading; raw bytes stay unchanged in storage. */
 internal fun readableLogDetail(detail: String): String = runCatching {
     val args = JSONArray(detail)

@@ -146,7 +146,7 @@ class DiagnosticsActivity : ComponentActivity() {
                                 items(visible, key = { it.getString("time") + it.getString("sequence") + it.getString("span") }) { entry ->
                                     OutlinedCard(onClick = { selected = entry }, modifier = Modifier.fillMaxWidth()) {
                                         Column(Modifier.padding(12.dp)) {
-                                            Text(entry.getString("summary"), style = MaterialTheme.typography.titleSmall)
+                                            Text(activitySummary(entry), style = MaterialTheme.typography.titleSmall)
                                             Text(dateTimeLabel(entry.getString("time").toLong(), java.time.ZoneId.systemDefault()) + " · " + entry.getString("trace").take(8) + " · " + entry.getString("code") + " · " + entry.getLong("durationMs") + "ms · " + entry.getString("content"), style = MaterialTheme.typography.labelMedium)
                                         }
                                     }
@@ -163,7 +163,7 @@ class DiagnosticsActivity : ComponentActivity() {
             if (clearing) AlertDialog(onDismissRequest = { clearing = false }, title = { Text("Clear retained diagnostics?") }, text = { Text("Deletes retained activity, captured artifacts and logger health evidence. Saved workspaces are kept.") },
                 confirmButton = { TextButton(onClick = { embedding.clearObservation(); entries = emptyList(); clearing = false }) { Text("Clear") } },
                 dismissButton = { TextButton(onClick = { clearing = false }) { Text("Keep") } })
-            selected?.let { event -> AlertDialog(onDismissRequest = { selected = null }, title = { Text(event.getString("summary")) },
+            selected?.let { event -> AlertDialog(onDismissRequest = { selected = null }, title = { Text(activitySummary(event)) },
                 text = { Column(Modifier.heightIn(max = 500.dp).verticalScroll(rememberScrollState())) {
                     if (event.optString("stage") in listOf("choice", "source")) {
                         Text("Actual model exchange (untrusted)"); Text(readableLogDetail(detail)); HorizontalDivider(); Text("Exact event metadata"); Text(event.toString(2))
