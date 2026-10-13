@@ -62,7 +62,15 @@ class LoggingInstrumentation : Instrumentation() {
             health = JSONObject(File(directory, "health.json").readText())
             check(!health.getBoolean("active") && health.getBoolean("incomplete") && health.has("recoveredAt"))
             check(events().any { it.optString("operation") == "after-storage-recovery" })
-            result.putString("logging", "DEAL schema; private artifacts; concurrent admission; real storage failure preserves results/errors; recovery retains incomplete history")
+            val truncated=own.first{it.getString("content")=="truncated"}.getString("artifact")
+            val observer=dev.deal.embedding.Observation(context)
+            check(observer.artifact(truncated).status=="truncated")
+            // Evict event evidence while retaining the artifact: status must not become captured.
+            val previous=File(directory,"previous.jsonl");val current=File(directory,"events.jsonl")
+            val originalPrevious=previous.takeIf{it.isFile}?.readBytes();val originalCurrent=current.readBytes()
+            try{previous.delete();current.writeText("not complete JSON\\n");check(observer.events("","",20).incomplete);check(observer.artifact(truncated).status=="truncated")}
+            finally{current.writeBytes(originalCurrent);if(originalPrevious!=null)previous.writeBytes(originalPrevious)}
+            result.putString("logging", "DEAL schema; private artifacts; concurrent admission; real storage failure preserves results/errors; recovery retains incomplete history; artifact truncation survives event eviction; malformed observation is incomplete")
             finish(0, result)
         } catch (error: Throwable) { result.putString("failure", android.util.Log.getStackTraceString(error)); finish(1, result) }
         finally { EmbeddingLog.capture(targetContext, false) }

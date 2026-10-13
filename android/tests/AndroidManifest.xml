@@ -9,4 +9,5 @@
  <instrumentation android:name=".VehicleCallerInstrumentation" android:targetPackage="dev.deal.apps.vehicle" />
  <instrumentation android:name=".LoggingInstrumentation" android:targetPackage="dev.deal.apps.organizer" />
  <instrumentation android:name=".ProtocolInstrumentation" android:targetPackage="dev.deal.apps.organizer" />
+ <instrumentation android:name=".ProtocolPolicyInstrumentation" android:targetPackage="dev.deal.apps.organizer" />
 </manifest>

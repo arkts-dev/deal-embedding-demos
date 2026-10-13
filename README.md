@@ -8,7 +8,7 @@ Organizer's ordinary Kotlin/Compose screens, plan storage and native review host
 
 Embedding's compiled `core/generation.deal` owns orchestration, fallback, bounded full-source repair and repeated-response stop. Organizer's compiled `android/apps/organizer/policy/app-policy.deal` implements offer/lower; equipment eligibility, described choices and source synthesis live in its policy directory, not the library. `tools/build-organizer-policy.py` links that policy against the exact public declarations. The library build has no consuming-app inputs. Generated UI cannot import privileged embedding APIs.
 
-Contexts validate/copy schema and disclosed JSON; handles are instance-issued. Generate/load check without mounting or saving. First run saves and starts one session; live run resumes, close retains, cold run rechecks without inference, forget deletes. Returned metadata cannot mint authority. Optional closed-record fields may be absent. Full wire/lifecycle/observation bounds are in the embedding API README.
+`ProtocolController` runs an ordinary compiled DEAL consumer with local synchronous context/request/handle state and nonblocking async native mechanism lanes; no individual answers are pre-injected. Organizer's native shell remains native, and authors its local capabilities in the shared WireType/Parameter vocabulary. Contexts validate/copy schema and disclosed JSON; handles are instance-issued. Generate/load check without mounting or saving. First run saves and starts one session; live run resumes, close retains, cold run rechecks without inference, forget deletes. Returned metadata cannot mint authority. Optional closed-record fields may be absent. Full wire/lifecycle/observation bounds are in the embedding API README.
 
 ## Build and development services
 
@@ -49,6 +49,7 @@ Enable **Dialogue → Capture content → Enable** before generation to inspect 
 ## Verification
 
 ```sh
+python3 tools/verify-protocol-api.py <authoritative-protocol-document>
 python3 tools/test-jev-chooser.py
 python3 tools/test-generation-gateway.py
 node tools/verify-choice-policy.js
@@ -57,10 +58,11 @@ python3 tools/verify-boundaries.py
 python3 tools/test-build-cache.py
 adb install --user 0 -r build/tests.apk
 adb shell am instrument --user 0 -w dev.deal.connectors.tests/.ProtocolInstrumentation
+adb shell am instrument --user 0 -w dev.deal.connectors.tests/.ProtocolPolicyInstrumentation
 adb shell am instrument --user 0 -w dev.deal.connectors.tests/.LoggingInstrumentation
 ```
 
-Protocol instrumentation checks frozen contexts, forged handles, preparation/save/run/close/cold/forget/cancellation, and a real compiler-emitted DEAL consumer through public native linkage, including typed Deal UI trees. It performs no inference. Policy regressions exercise compiled app policy, exact source parity, invalid envelopes, host error propagation and guidance. Renderer/default and clarity scripts test authored native states, not fresh generation. Full Deal UI session regressions remain in the Deal UI dependency.
+Protocol instrumentation executes an ordinary compiler-emitted DEAL consumer through the reusable executor: every public export, typed Deal UI trees, copies/forgeries, generation, lifecycle/cold reopening across bootstrap, terminated-session recovery, explicit capabilities and cancellation even while noncooperative inference continues. Inference is deterministic fixture inference, with no network—not zero model calls. Protocol-policy instrumentation runs actual Organizer offer/lower and core with catalogue/fallback/provider failure/invalid catalogue-source cases. Policy regressions exercise compiled app policy, exact source parity, invalid envelopes, host error propagation and guidance. Renderer/default and clarity scripts test authored native states, not fresh generation. Full Deal UI session regressions remain in the Deal UI dependency.
 
 `tools/verify-demo-reproduction.py --task comparison|editable` submits once via ordinary controls, with actual inference and no forced route/replay/retry; it records private evidence under ignored `build/`. Stop on failure. Saved replay, compiled fixtures and instrumentation are not fresh inference or independent user acceptance.
 

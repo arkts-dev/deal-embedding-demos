@@ -58,28 +58,86 @@ export view Main(state: app.State): View { ui.Column() { ui.Text(value: "Protoco
   val repeated=Embedding(context,CapabilityRegistry(context,CapabilityDiscovery(context){false},emptyList()),badModel,EmbeddingConfig("experience",emptyList(),"protocol-repeated"))
   try{repeated.refresh();val c=repeated.snapshot(WireType("record"),"{}");val error=runCatching{repeated.generate(repeated.request("Repeated","Fixture invalid response",c))}.exceptionOrNull();check(error is GenerationRejected&&error.reason==GenerationRejected.Reason.REPEATED_RESPONSE)}finally{repeated.shutdown()}
   // Invoke actual compiled DEAL declarations through the public native linkage.
-  val engine=SandboxEngine.acquire(context);val program=SandboxProgram(engine,256*1024)
-  try {
-   val binding=PublicProtocolBinding(host)
-   val bundle=SandboxBundle.build(context,listOf("protocol-contracts.js","protocol-host.js","public-protocol.js"),"","(globalThis.publicFactories=factories,'')",assetRoot="protocol-consumer")
-   program.evaluate(bundle)
-   fun call(name:String,args:JSONArray,turn:JSONObject?=null):Any {
-    program.evaluate("protocolCall(publicFactories,'consumer.js',${JSONObject.quote(name)},$args,${turn?:"null"})")
-    for(step in 0..100){
-     val requests=JSONArray(program.evaluate("dealCapabilities.take()"))
-     for(i in 0 until requests.length()){val r=requests.getJSONObject(i);val value=binding.invoke(r.getString("function"),r.getJSONArray("args"));program.evaluate("dealCapabilities.deliver(${JSONArray().put(JSONObject().put("id",r.getInt("id")).put("ok",true).put("value",value))})")}
-     val result=JSONObject(program.evaluate("JSON.stringify(publicResult)"));if(result.getBoolean("done")){check(!result.has("error")){result.toString()};return result.get("value")};Thread.sleep(10)
-    };error("Public DEAL call did not complete")
-   }
-   val compiled=call("load",JSONArray().put("Public ABI").put(deal).put(view)) as JSONObject
-   val mounted=call("run",JSONArray().put(compiled.getString("id"))) as JSONObject
-   val tree=call("poll",JSONArray().put(mounted.getString("id"))) as JSONObject;check(tree.getJSONObject("tree").toString().contains("Protocol ready"))
-   val saved=binding.invoke("saved",JSONArray())
-   val turn=JSONObject().put("name","saved").put("args",JSONArray()).put("value",saved)
-   check((call("saved",JSONArray(),turn) as JSONArray).length()>0)
-   call("events",JSONArray());call("close",JSONArray().put(mounted.getString("id")));call("forget",JSONArray().put(compiled.getString("id")))
-  }finally{program.close();SandboxEngine.release(engine)}
-  result.putString("protocolVerification","validated contexts, forged handles, preparation/save/run/close/cold/forget, request cancellation and observation exercised; zero inference")
+  ProtocolController(context,host).use { controller ->
+   check(controller.call("prepareCapabilities") as Int==1)
+   val cancelled=controller.call("contexts") as String
+   check(controller.call("cancelled",JSONArray().put(cancelled))=="cancelled")
+   check((controller.call("lifecycle",JSONArray().put(deal).put(view)) as String).contains("cold"))
+   check((controller.call("observation") as String).contains("artifact"))
+  }
+  val generatedHost=Embedding(context,CapabilityRegistry(context,CapabilityDiscovery(context){false},listOf(probe)),fixtureModel,EmbeddingConfig("experience",emptyList(),"protocol-controller-generated"))
+  ProtocolController(context,generatedHost).use { controller ->
+   val generated=controller.call("generated") as JSONObject
+   val s=controller.call("run",JSONArray().put(generated.getString("id"))) as JSONObject
+   check((controller.call("poll",JSONArray().put(s.getString("id"))) as JSONObject).getJSONObject("tree").toString().contains("Protocol ready"))
+   controller.call("close",JSONArray().put(s.getString("id")));controller.call("forget",JSONArray().put(generated.getString("id")))
+   controller.call("shutdown")
+  }
+  val restartConfig=EmbeddingConfig("experience",emptyList(),"protocol-controller-restart")
+  val restartHost=Embedding(context,CapabilityRegistry(context,CapabilityDiscovery(context){false},listOf(probe)),model,restartConfig)
+  ProtocolController(context,restartHost).use{c->c.call("prepareCapabilities");val e=c.call("load",JSONArray().put("Across bootstrap").put(deal).put(view)) as JSONObject;val s=c.call("run",JSONArray().put(e.getString("id"))) as JSONObject;c.call("close",JSONArray().put(s.getString("id")))}
+  val restarted=Embedding(context,CapabilityRegistry(context,CapabilityDiscovery(context){false},listOf(probe)),model,restartConfig)
+  ProtocolController(context,restarted).use{c->c.call("prepareCapabilities");check(c.call("resumeSaved")==1)}
+  val entered=java.util.concurrent.CountDownLatch(1)
+  val waitingModel=object:ModelClient {override fun complete(input:String,previous:String,diagnostics:String,cancellation:GenerationCancellation,log:EmbeddingLog):String {entered.countDown();while(true){cancellation.check();Thread.sleep(5)}}}
+  val waitingHost=Embedding(context,CapabilityRegistry(context,CapabilityDiscovery(context){false},emptyList()),waitingModel,EmbeddingConfig("experience",emptyList(),"protocol-controller-cancel"))
+  ProtocolController(context,waitingHost).use {controller ->
+   val request=controller.call("waitingRequest") as String
+   val operation=controller.start("generateWaiting",JSONArray().put(request))
+   val deadline=System.currentTimeMillis()+10000
+   while(entered.count>0){controller.pump();check(System.currentTimeMillis()<deadline);Thread.sleep(5)}
+   controller.call("cancelWaiting",JSONArray().put(request))
+   check(runCatching{controller.await(operation)}.exceptionOrNull().let{it is ProtocolFailure&&it.code=="CANCELLED"})
+   check((controller.call("saved") as JSONArray).length()==0)
+  }
+  val slowEntered=java.util.concurrent.CountDownLatch(1);val slowRelease=java.util.concurrent.CountDownLatch(1)
+  val noncooperative=object:ModelClient{override fun complete(input:String,previous:String,diagnostics:String,cancellation:GenerationCancellation,log:EmbeddingLog):String{slowEntered.countDown();slowRelease.await(10,java.util.concurrent.TimeUnit.SECONDS);return JSONObject().put("deal",deal).put("dealui",view).toString()}}
+  val slowHost=Embedding(context,CapabilityRegistry(context,CapabilityDiscovery(context){false},listOf(probe)),noncooperative,EmbeddingConfig("experience",emptyList(),"protocol-controller-noncooperative"))
+  ProtocolController(context,slowHost).use {c->
+   try{val request=c.call("waitingRequest") as String;val operation=c.start("generateWaiting",JSONArray().put(request));val deadline=System.currentTimeMillis()+10000
+    while(slowEntered.count>0){c.pump();check(System.currentTimeMillis()<deadline);Thread.sleep(5)}
+    c.call("cancelWaiting",JSONArray().put(request));check(runCatching{c.await(operation,2)}.exceptionOrNull().let{it is ProtocolFailure&&it.code=="CANCELLED"});check(slowRelease.count==1L)
+   }finally{slowRelease.countDown()}
+  }
+  val capabilityDeal="""import * as probe from "host/probe";
+export class State {value:int=0;}
+export class Start {}
+export class Done {value:int=0;}
+export function initialState():State {return {};}
+// @ui-update
+export function start(state:State,action:Start):State {return state;}
+// @ui-effect
+export async function execute(state:State,action:Start):Done {let value:int=await probe.ping();return {value:value};}
+// @ui-update
+export function done(state:State,action:Done):State {return {value:action.value};}
+"""
+  val capabilityView="""import * as app from "./experience";
+import * as ui from "./platform.dealui-pack";
+// @ui-root
+export view Main(state:app.State):View {ui.Column(){ui.IntText(value:state.value) ui.Button(text:"Probe",onClick:action app.Start {})}}
+"""
+  var capabilityCalls=0
+  val nativeProbe=NativeCapabilities(probe.contract,mapOf("ping" to {_:JSONArray->capabilityCalls++;1}))
+  val capabilityHost=Embedding(context,CapabilityRegistry(context,CapabilityDiscovery(context){false},listOf(nativeProbe)),model,EmbeddingConfig("experience",emptyList(),"protocol-controller-capability"))
+  ProtocolController(context,capabilityHost).use{c->
+   c.call("prepareCapabilities");val e=c.call("load",JSONArray().put("Explicit capability").put(capabilityDeal).put(capabilityView)) as JSONObject;val s=c.call("run",JSONArray().put(e.getString("id"))) as JSONObject
+   check(capabilityCalls==0);c.call("dispatch",JSONArray().put(s.getString("id")).put(0));repeat(5){c.call("poll",JSONArray().put(s.getString("id")))};check(capabilityCalls==1)
+   capabilityHost.revoke("host/probe");c.call("dispatch",JSONArray().put(s.getString("id")).put(0));repeat(5){c.call("poll",JSONArray().put(s.getString("id")))};check(capabilityCalls==1)
+   c.call("close",JSONArray().put(s.getString("id")));c.call("forget",JSONArray().put(e.getString("id")))
+  }
+  // Faulted native isolate invalidates handles; explicit run cold-rechecks durable source.
+  val faultHost=Embedding(context,CapabilityRegistry(context,CapabilityDiscovery(context){false},listOf(probe)),model,EmbeddingConfig("experience",emptyList(),"protocol-controller-fault"))
+  ProtocolController(context,faultHost).use{c->
+   c.call("prepareCapabilities");val e=c.call("load",JSONArray().put("Fault recovery").put(deal).put(view)) as JSONObject;val s=c.call("run",JSONArray().put(e.getString("id"))) as JSONObject
+   val runtimeField=Embedding::class.java.getDeclaredField("runtime").apply{isAccessible=true};val runtime=runtimeField.get(faultHost) as ExperienceRuntime
+   val ui=runtime.workspace(e.getString("id"))!!.session
+   val programField=UiSession::class.java.getDeclaredField("program").apply{isAccessible=true};val sandboxProgram=programField.get(ui) as SandboxProgram
+   val isolateField=SandboxProgram::class.java.getDeclaredField("isolate").apply{isAccessible=true};(isolateField.get(sandboxProgram) as androidx.javascriptengine.JavaScriptIsolate).close()
+   check(runCatching{c.call("poll",JSONArray().put(s.getString("id")))}.isFailure)
+   val next=c.call("run",JSONArray().put(e.getString("id"))) as JSONObject
+   check(next.getString("id")!=s.getString("id"));c.call("poll",JSONArray().put(next.getString("id")));c.call("close",JSONArray().put(next.getString("id")));c.call("forget",JSONArray().put(e.getString("id")))
+  }
+  result.putString("protocolVerification","compiled DEAL consumer, no injected turns: frozen contexts/copies/forged handles, generate/load/run/dispatch/poll/publication/live/cold/forget/release, controls, observation, shutdown; cancellation before/during generation including noncooperative mechanism; fixture inference, no network")
   finish(0,result)
  }catch(e:Throwable){result.putString("failure",android.util.Log.getStackTraceString(e));finish(1,result)}finally{embedding?.shutdown()}
  }

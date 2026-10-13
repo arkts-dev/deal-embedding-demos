@@ -1,29 +1,28 @@
 package dev.deal.apps.organizer
 
 import android.content.Context
-import dev.deal.embedding.capabilities.*
+import dev.deal.embedding.WireType
+import dev.deal.embedding.WireField
+import dev.deal.embedding.SharedCapabilityFunction
+import dev.deal.embedding.SharedCapabilityContract
+import dev.deal.embedding.Parameter
+import dev.deal.embedding.capabilities.NativeCapabilities
+import dev.deal.embedding.nativeCapabilities
 import org.json.*
 
-/**
- * The Organizer publishes exactly one capability to generated workspaces: the preparation path.
- * It stages a descriptor for native review and performs no write.
- */
+/** Shared protocol vocabulary is the authoring input; native conversion is transport only. */
 fun organizerCapabilities(context: Context, invokingWorkspace: () -> String?): NativeCapabilities {
-    val contract = CapabilityContract("host/organizer", "Stage a prepared operation for native review; never a write", listOf(
-        CapabilityFunction("stage", "Prepare one operation for the organizer to confirm natively", listOf(
-            CapabilityParameter("kind", CapabilityType("string", maximum = 64)),
-            CapabilityParameter("provider", CapabilityType("string", maximum = 64)),
-            CapabilityParameter("title", CapabilityType("string", maximum = 120)),
-            CapabilityParameter("detail", CapabilityType("string", maximum = 512)),
-            CapabilityParameter("price", CapabilityType("string", maximum = 32)),
-            CapabilityParameter("deadline", CapabilityType("string", maximum = 64)),
-        ), CapabilityType("record", fields = mapOf("staged" to CapabilityType("boolean"), "reference" to CapabilityType("string")))),
-        CapabilityFunction("staged", "Read the operations prepared so far", emptyList(),
-            CapabilityType("array", maximum = 16, element = CapabilityType("record", fields = mapOf(
-                "kind" to CapabilityType("string"), "provider" to CapabilityType("string"), "title" to CapabilityType("string"),
-                "detail" to CapabilityType("string"), "price" to CapabilityType("string"), "deadline" to CapabilityType("string"))))),
+    val text=WireType("string")
+    val contract=SharedCapabilityContract("host/organizer","Stage a prepared operation for native review; never a write",functions=listOf(
+        SharedCapabilityFunction("stage","Prepare one operation for the organizer to confirm natively",parameters=listOf(
+            Parameter("kind",WireType("string",maximum=64)),Parameter("provider",WireType("string",maximum=64)),
+            Parameter("title",WireType("string",maximum=120)),Parameter("detail",WireType("string",maximum=512)),
+            Parameter("price",WireType("string",maximum=32)),Parameter("deadline",WireType("string",maximum=64))
+        ),result=WireType("record",fields=listOf(WireField("staged",WireType("boolean")),WireField("reference",text)))),
+        SharedCapabilityFunction("staged","Read the operations prepared so far",result=WireType("array",maximum=16,element=WireType("record",fields=listOf(
+            WireField("kind",text),WireField("provider",text),WireField("title",text),WireField("detail",text),WireField("price",text),WireField("deadline",text)))))
     ))
-    return NativeCapabilities(contract, mapOf(
+    return nativeCapabilities(contract,mapOf(
         "stage" to { args ->
             val prefs = context.getSharedPreferences("prepared", 0)
             val reference = java.util.UUID.randomUUID().toString()
