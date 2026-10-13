@@ -83,6 +83,33 @@ export view Main(state:app.State):View {ui.Text(value:"Compound failure proof")}
             }finally{StagingReclamation.delete=delete}
             StagingReclamation.retry(context)
 
+            // Surface cleanup failure must stop its executor without vetoing adapter shutdown.
+            val ownedMechanisms=Embedding(context,registry(),model,config())
+            val ownedApi=ApplicationProtocol(context,ownedMechanisms);cleanups.add(ownedApi)
+            val ownedExperience=ownedApi.load("Owned surface",source)
+            val owned=ExperienceSurface(ownedApi,ownedExperience);cleanups.add(owned)
+            owned.activate{}
+            try{
+                StagingReclamation.delete={false}
+                check(runCatching{owned.close()}.exceptionOrNull().let{it is ProtocolFailure&&it.code=="CLEANUP_FAILED"})
+                check((field(owned,"actions") as ExecutorService).awaitTermination(10,TimeUnit.SECONDS)){"Surface executor survived failed close"}
+            }finally{StagingReclamation.delete=delete;runCatching{ownedApi.close()}}
+            StagingReclamation.retry(context)
+
+            // A dead consumer makes subscription detach throw; adapter shutdown still stops resources.
+            val observerMechanisms=Embedding(context,registry(),model,config())
+            val observerApi=ApplicationProtocol(context,observerMechanisms);cleanups.add(observerApi)
+            val observerExperience=observerApi.load("Dead observer",source)
+            val observerSession=observerApi.run(observerExperience)
+            val received=CountDownLatch(1)
+            observerApi.observe(observerSession,{received.countDown()},{})
+            check(received.await(10,TimeUnit.SECONDS))
+            val observerController=field(observerApi,"controller") as ProtocolController
+            (field(observerController,"program") as SandboxProgram).close()
+            check(runCatching{observerApi.close()}.isFailure)
+            check((field(observerApi,"observers") as ExecutorService).awaitTermination(10,TimeUnit.SECONDS)){"Observer executor survived failed detach"}
+            check((field(observerMechanisms,"driver") as ExecutorService).awaitTermination(10,TimeUnit.SECONDS)){"Embedding driver survived failed detach"}
+
             // Deletion stays unsuccessful for the ENTIRE shutdown, including live-session deletion.
             val r=registry();val cfg=config();val mechanisms=Embedding(context,r,model,cfg)
             val api=ApplicationProtocol(context,mechanisms);cleanups.add(api)

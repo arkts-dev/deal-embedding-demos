@@ -38,7 +38,15 @@ class OrganizerActivity : ComponentActivity() {
     private val surfaces=java.util.concurrent.ConcurrentHashMap<String,ExperienceSurface>()
     @Volatile private var cancelRequested=false
     private fun cancelGeneration(){cancelRequested=true;runningGeneration?.let{host.embedding.cancel(it)}}
-    override fun onDestroy() { cancelGeneration(); worker.execute { surfaces.values.forEach{it.close()};surfaces.clear();OrganizerProtocol.shutdown() }; worker.shutdown(); super.onDestroy() }
+    override fun onDestroy() {
+        try{cancelGeneration()}catch(error:Throwable){android.util.Log.e("Organizer","Cancellation failed during destruction",error)}
+        worker.execute {
+            try{teardown(*surfaces.values.map{surface->{surface.close()}}.toTypedArray(),{OrganizerProtocol.shutdown()})}
+            catch(error:Throwable){android.util.Log.e("Organizer","Shutdown failed",error)}
+            finally{surfaces.clear()}
+        }
+        worker.shutdown();super.onDestroy()
+    }
     override fun onCreate(state: Bundle?) {
         super.onCreate(state)
         var show by mutableStateOf(store.load())

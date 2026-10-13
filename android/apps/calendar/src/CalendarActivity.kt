@@ -185,8 +185,12 @@ class CalendarActivity : ComponentActivity() {
         runOnUiThread { if (!isDestroyed) status = error.message ?: "Experience unavailable" }
     }
     override fun onDestroy() {
-        cancelGeneration()
-        worker.execute { ownedSurface?.close();ownedSurface=null;experience.close() }
+        try{cancelGeneration()}catch(error:Throwable){android.util.Log.e("Calendar","Cancellation failed during destruction",error)}
+        worker.execute {
+            try{teardown({ownedSurface?.close()},{experience.close()})}
+            catch(error:Throwable){android.util.Log.e("Calendar","Shutdown failed",error)}
+            finally{ownedSurface=null}
+        }
         worker.shutdown(); super.onDestroy()
     }
 }
