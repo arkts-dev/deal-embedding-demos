@@ -41,19 +41,23 @@ class CalendarActivity : ComponentActivity() {
     private var generationStatus by mutableStateOf("")
     @Volatile private var cancellation: GenerationRequest? = null
     @Volatile private var cancelRequested=false
-    private fun cancelGeneration(){cancelRequested=true;cancellation?.let{experience.embedding.cancel(it)}}
+    private fun cancelGeneration(){cancelRequested=true;if(::experience.isInitialized)cancellation?.let{experience.embedding.cancel(it)}}
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        experience = CalendarEmbedding(applicationContext, {
-            val event = selected ?: error("Choose an event first")
-            observedEvent = event
-            event.startMinute
-        }, { minute ->
-            val origin = observedEvent
-            check(origin != null && origin == selected) { "Event changed. Recalculate before saving." }
-            runOnUiThread { if (origin == selected) { proposalEvent = origin; proposal = minute } }
-        })
+        worker.execute {
+            try{
+                experience = CalendarEmbedding(applicationContext, {
+                    val event = selected ?: error("Choose an event first")
+                    observedEvent = event
+                    event.startMinute
+                }, { minute ->
+                    val origin = observedEvent
+                    check(origin != null && origin == selected) { "Event changed. Recalculate before saving." }
+                    runOnUiThread { if (origin == selected) { proposalEvent = origin; proposal = minute } }
+                })
+            }catch(error:Throwable){showError(error)}
+        }
         refreshEvents()
         setContent {
             AppTheme(Accent.Calendar) {
@@ -186,7 +190,7 @@ class CalendarActivity : ComponentActivity() {
     override fun onDestroy() {
         try{cancelGeneration()}catch(error:Throwable){android.util.Log.e("Calendar","Cancellation failed during destruction",error)}
         worker.execute {
-            try{teardown({ownedSurface?.close()},{experience.close()})}
+            try{teardown({ownedSurface?.close()},{if(::experience.isInitialized)experience.close()})}
             catch(error:Throwable){android.util.Log.e("Calendar","Shutdown failed",error)}
             finally{ownedSurface=null}
         }
