@@ -83,6 +83,23 @@ export view Main(state:app.State):View {ui.Text(value:"Compound failure proof")}
             }finally{StagingReclamation.delete=delete}
             StagingReclamation.retry(context)
 
+            // Public application load AND generation must retain compiler cleanup evidence.
+            val invalidModel=object:ModelClient{
+                override fun complete(input:String,previous:String,diagnostics:String,cancellation:GenerationCancellation,log:EmbeddingLog):String=
+                    org.json.JSONObject().put("deal",source.deal).put("dealui","this is not Deal UI").toString()
+            }
+            val evidenceApi=ApplicationProtocol(context,Embedding(context,registry(),invalidModel,config()));cleanups.add(evidenceApi)
+            try{
+                StagingReclamation.delete={false}
+                val loading=runCatching{evidenceApi.load("Bad UI",Source(source.deal,"this is not Deal UI"))}.exceptionOrNull()?:error("Expected public load rejection")
+                check(hasCleanup(loading)){"Public load lost suppressed cleanup: $loading"}
+                StagingReclamation.delete=delete;StagingReclamation.retry(context);StagingReclamation.delete={false}
+                val request=evidenceApi.request("Bad generated UI","Authored invalid fixture",evidenceApi.snapshot(WireType("record"),"{}"))
+                val generated=runCatching{evidenceApi.generate(request)}.exceptionOrNull()?:error("Expected public generation rejection")
+                check(hasCleanup(generated)){"Public generation lost suppressed cleanup: $generated"}
+            }finally{StagingReclamation.delete=delete;evidenceApi.close()}
+            StagingReclamation.retry(context)
+
             // Surface cleanup failure must stop its executor without vetoing adapter shutdown.
             val ownedMechanisms=Embedding(context,registry(),model,config())
             val ownedApi=ApplicationProtocol(context,ownedMechanisms);cleanups.add(ownedApi)
