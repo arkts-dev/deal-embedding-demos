@@ -9,7 +9,7 @@ class CalendarEmbedding(context:Context,start:()->Int,propose:(Int)->Unit):AutoC
     private val mechanisms=Embedding(context,registry,GenerationGateway("http://127.0.0.1:8787/generate"),EmbeddingConfig("departure",emptyList(),"calendar-protocol",policyAssets="calendar-policy"))
     val embedding=ApplicationProtocol(context,mechanisms)
     fun prepare(context:Context){embedding.refresh()}
-    fun permissions(enabled:Boolean){embedding.refresh().forEach{if(enabled)embedding.grant(it.module)else embedding.revoke(it.module)}}
-    fun remembered():Source?=embedding.saved().lastOrNull()?.let{embedding.source(it)}
+    fun permissions(enabled:Boolean){registry.contracts().forEach{if(enabled)embedding.grant(it.module)else embedding.revoke(it.module)}}
+    fun remembered():Experience?=embedding.saved().lastOrNull()
     override fun close(){embedding.shutdown()}
 }

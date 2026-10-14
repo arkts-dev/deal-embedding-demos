@@ -31,6 +31,7 @@ class CalendarActivity : ComponentActivity() {
     private var dialog by mutableStateOf(false)
     private var permission by mutableStateOf(false)
     private var connected by mutableStateOf(false)
+    private var ready by mutableStateOf(false)
     private var proposal by mutableStateOf<Int?>(null)
     private var proposalEvent: CalendarEvent? = null
     @Volatile private var observedEvent: CalendarEvent? = null
@@ -78,7 +79,7 @@ class CalendarActivity : ComponentActivity() {
                         Row { Checkbox(discloseEvent, { discloseEvent = it }, enabled = !generating); Text("Share selected event with the model") }
                         Text("Development inference uses a remote model. Capability descriptions are shared; provider data is not read during generation.")
                         if (generating) Button(onClick = { cancelGeneration(); generationStatus = "Cancelling generation…" }) { Text("Cancel generation") }
-                        else Button(onClick = { generate() }, enabled = generationIntent.isNotBlank()) { Text("Generate experience") }
+                        else Button(onClick = { generate() }, enabled = ready && generationIntent.isNotBlank()) { Text("Generate experience") }
                         if (generationStatus.isNotEmpty()) Text(generationStatus)
                     }
                     EmbeddedExperience {
@@ -91,9 +92,9 @@ class CalendarActivity : ComponentActivity() {
                         Text("Your connected apps", style = MaterialTheme.typography.titleLarge)
                         Text("Enable discovered capabilities here, then approve access in each provider. Consent stays under native control.")
                         Switch(connected, { enabled ->
-                            connected = enabled
-                            worker.execute{experience.permissions(enabled)}
-                        })
+                            try{experience.permissions(enabled);connected=enabled;proposal=null;dialog=false}
+                            catch(error:Throwable){showError(error)}
+                        },enabled=ready)
                     }
                     proposal?.let { departure ->
                         Panel {
@@ -136,11 +137,15 @@ class CalendarActivity : ComponentActivity() {
             try {
                 experience.prepare(applicationContext)
                 if (connected) experience.permissions(true)
-                val remembered = experience.remembered()
-                val source = deal ?: remembered?.deal ?: assets.open("experience/departure.deal").bufferedReader().use { it.readText() }
-                val view = ui ?: remembered?.dealui ?: assets.open("experience/departure.dealui").bufferedReader().use { it.readText() }
-                val prepared=experience.embedding.load("Departure",Source(source,view))
-                experience.embedding.withPreparation(prepared){activate(it)}
+                require((deal==null)==(ui==null)){"Supply both .deal and .dealui"}
+                val remembered=if(deal==null)experience.remembered()else null
+                if(remembered!=null)activate(remembered)else{
+                    val source=deal ?: assets.open("experience/departure.deal").bufferedReader().use{it.readText()}
+                    val view=ui ?: assets.open("experience/departure.dealui").bufferedReader().use{it.readText()}
+                    val prepared=experience.embedding.load("Departure",Source(source,view))
+                    experience.embedding.withPreparation(prepared){activate(it)}
+                }
+                runOnUiThread{ready=true}
                 File(filesDir, "ui-error.txt").delete()
                 runOnUiThread { proposal = null; status = "" }
             } catch (error: Throwable) { showError(error) }
@@ -179,7 +184,7 @@ class CalendarActivity : ComponentActivity() {
         val previous=ownedSurface;ownedSurface=next
         runOnUiThread {if(!isDestroyed&&ownedSurface===next)surface=next}
         // Calendar explicitly replaces/closes its prior experience after successful activation.
-        previous?.close()
+        try{previous?.close()}catch(error:Throwable){android.util.Log.e("Calendar","Previous experience cleanup failed after replacement",error)}
         if(isDestroyed)next.close()
     }
     private fun showError(error: Throwable) {

@@ -37,10 +37,11 @@ class CalendarInstrumentation:Instrumentation(){
    tap("Add 5 minutes");tap("Add 2 kilometres");tap("Calculate departure");calculated();check(minute==557&&proposals==2)
    start=10;tap("Calculate departure");calculated();check(proposals==2&&update.snapshot.tree.toString().contains("Earlier day required"))
    start=600;api.revoke("host/trip");tap("Calculate departure");calculated();check(proposals==2&&update.snapshot.tree.toString().contains("Let’s reconnect"));api.grant("host/trip")
+   tap("Calculate departure");calculated();check(minute==557&&proposals==3)
    // Saturate existing increment controls, verify they cannot exceed provider bounds.
    repeat(510){tap("Add 2 kilometres")};repeat(300){tap("Add 5 minutes")}
    check(update.snapshot.tree.toString().contains("\"intValue\":1000")&&update.snapshot.tree.toString().contains("\"intValue\":1435"))
-   tap("Calculate departure");calculated();check(proposals==2)
+   tap("Calculate departure");calculated();check(proposals==3)
    api.close(session);api.forget(e)
   }
   val pair=Source(ctx.assets.open("experience/departure.deal").bufferedReader().use{it.readText()},ctx.assets.open("experience/departure.dealui").bufferedReader().use{it.readText()})
