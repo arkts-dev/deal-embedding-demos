@@ -43,6 +43,39 @@ class CalendarInstrumentation:Instrumentation(){
    tap("Calculate departure");calculated();check(proposals==2)
    api.close(session);api.forget(e)
   }
+  val pair=Source(ctx.assets.open("experience/departure.deal").bufferedReader().use{it.readText()},ctx.assets.open("experience/departure.dealui").bufferedReader().use{it.readText()})
+  fun route(answer:String,providers:List<NativeCapabilities>,expectedChoice:Int,expectedSource:Int){
+   reads=0;proposals=0;var choices=0;var sources=0
+   val fixture=object:ModelClient{override fun complete(input:String,previous:String,diagnostics:String,cancellation:GenerationCancellation,log:EmbeddingLog):String{
+    if(input.contains("ISSUED OPTIONS")){choices++;return "{\"answers\":{\"workflow\":\"$answer\"}}"}
+    sources++;return JSONObject().put("deal",pair.deal).put("dealui",pair.dealui).toString()
+   }}
+   ApplicationProtocol(ctx,Embedding(ctx,CapabilityRegistry(ctx,CapabilityDiscovery(ctx){false},providers),fixture,EmbeddingConfig("departure",emptyList(),"calendar-policy-${UUID.randomUUID()}",policyAssets="calendar-policy"))).use{api->
+    val e=api.generate(api.request("Departure","Plan departure",api.snapshot(WireType("record"),"{}")))
+    check(choices==expectedChoice&&sources==expectedSource);check(reads==0&&proposals==0)
+    check(e.origin==if(expectedSource==0)"catalogue" else "generated")
+    check(api.source(e)==pair)
+    val session=api.run(e);api.next(session,"");check(reads==0&&proposals==0)
+    api.close(session);api.forget(e)
+   }
+  }
+  route("departure",listOf(calendar,trip),1,0)
+  route("unsupported",listOf(calendar,trip),1,1)
+  route("forged",listOf(calendar,trip),1,1)
+  // Incompatible result bounds suppress the offer. Fallback fixture does not import providers.
+  val incompatible=NativeCapabilities(CapabilityContract("host/trip","Wrong shape",listOf(CapabilityFunction("estimate","Wrong",listOf(CapabilityParameter("distanceKm",CapabilityType.IntType)),CapabilityType.IntType))),mapOf("estimate" to {_:JSONArray->error("Unexpected read")}))
+  // Missing/incompatible provider declaration still permits source fallback using a provider-free fixture.
+  fun absent(providers:List<NativeCapabilities>){
+   var choices=0;var sources=0
+   val fixture=object:ModelClient{override fun complete(input:String,previous:String,diagnostics:String,cancellation:GenerationCancellation,log:EmbeddingLog):String{
+    if(input.contains("ISSUED OPTIONS")){choices++;error("Unexpected offer")};sources++
+    return JSONObject().put("deal","export class State {} export function initialState():State {return {};}").put("dealui","import * as app from \"./departure\"; import * as ui from \"./platform.dealui-pack\"; // @ui-root\nexport view Main(state:app.State):View {ui.Text(value:\"Fallback\")}").toString()
+   }}
+   ApplicationProtocol(ctx,Embedding(ctx,CapabilityRegistry(ctx,CapabilityDiscovery(ctx){false},providers),fixture,EmbeddingConfig("departure",emptyList(),"calendar-absent-${UUID.randomUUID()}",policyAssets="calendar-policy"))).use{api->
+    val e=api.generate(api.request("Fallback","Fixture fallback",api.snapshot(WireType("record"),"{}")));check(choices==0&&sources==1);api.release(e);api.flushReclamation()
+   }
+  }
+  absent(listOf(calendar));absent(listOf(calendar,incompatible))
   result.putString("calendar","checked template; no preparation reads; exact calculation, edits, bounds, earlier-day rejection and revoke recovery");finish(0,result)
  }catch(error:Throwable){result.putString("failure",android.util.Log.getStackTraceString(error));finish(1,result)}
  }

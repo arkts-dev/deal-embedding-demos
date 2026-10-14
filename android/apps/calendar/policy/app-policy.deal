@@ -1,0 +1,33 @@
+import * as embedding from "embedding";
+import * as types from "catalogue-policy";
+import * as source from "./departure-source";
+
+// The one existing authored workflow. Inspect contracts only, never call providers.
+export async function offer(intent: string, context: embedding.GenerationContext, capabilities: embedding.CapabilityContract[]): types.CatalogueOffer {
+    let start: boolean = false; let propose: boolean = false; let travel: boolean = false;
+    for (let capability: embedding.CapabilityContract of capabilities) {
+        for (let fn: embedding.CapabilityFunction of capability.functions) {
+            if (capability.module === "host/calendar" && fn.name === "start" && fn.parameters.length === 0 && fn.result.kind === "int" && fn.result.minimumInt >= 0 && fn.result.maximumInt <= 1439) { start = true; }
+            if (capability.module === "host/calendar" && fn.name === "propose" && fn.parameters.length === 1 && fn.result.kind === "null") {
+                let parameter: embedding.WireType = fn.parameters[0].type;
+                if (parameter.kind === "int" && parameter.minimumInt <= 0 && parameter.maximumInt >= 1439) { propose = true; }
+            }
+            if (capability.module === "host/trip" && fn.name === "estimate" && fn.parameters.length === 1 && fn.result.kind === "int" && fn.result.minimumInt >= 0 && fn.result.maximumInt <= 2005) {
+                let parameter: embedding.WireType = fn.parameters[0].type;
+                if (parameter.kind === "int" && parameter.minimumInt <= 1 && parameter.maximumInt >= 1000) { travel = true; }
+            }
+        }
+    }
+    if (!start || !propose || !travel) { return { available: false }; }
+    let supported: types.ChoiceOption = { name: "departure", description: "Selected event start minus simulated travel and user-controlled buffer; native reminder review." };
+    let unsupported: types.ChoiceOption = { name: "unsupported", description: "The request requires functionality not in that departure template." };
+    let options: types.ChoiceOption[] = [supported, unsupported];
+    let question: types.ChoiceQuestion = { name: "workflow", instructions: "Choose departure only if the request is satisfied by the existing selected-event departure planner. It uses simulated travel for editable distance and an editable buffer, stages a reminder for native review, and does not include Todo task durations or other workflows.", options: options };
+    let questions: types.ChoiceQuestion[] = [question];
+    return { available: true, stateJson: "departure-v1", questions: questions };
+}
+export async function lower(stateJson: string, answers: types.ChoiceAnswer[]): types.CatalogueLowering {
+    if (stateJson !== "departure-v1" || answers.length !== 1 || answers[0].question !== "workflow" || answers[0].choice !== "departure") { return { reason: "Unsupported departure selection" }; }
+    return { source: source.departure() };
+}
+export function main(): null { return null; }
