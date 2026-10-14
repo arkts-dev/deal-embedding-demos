@@ -20,8 +20,10 @@ class PreparationDiscovery(private val context: Context) : AutoCloseable {
     @Volatile private var state = prefs.getString("state", null) ?: "{\"input\":\"\",\"attempted\":[],\"dismissed\":[]}"
     private val facts = NativeCapabilities(CapabilityContract("host/preparation-facts", "Host-controlled disclosed input freshness", listOf(
         CapabilityFunction("current", "Re-read the opted-in foreground facts", emptyList(), CapabilityType("string", maximum = 8192)),
+        CapabilityFunction("currentFor", "Re-read permitted facts for an exact local date", listOf(CapabilityParameter("day", CapabilityType("string", maximum = 10))), CapabilityType("string", maximum = 8192)),
+        CapabilityFunction("previous", "Read persisted policy state for a disclosed-input digest", listOf(CapabilityParameter("digest", CapabilityType("string", maximum = 64))), CapabilityType("string", maximum = 8192)),
         CapabilityFunction("remember", "Persist policy-owned admission state before inference", listOf(CapabilityParameter("state", CapabilityType("string", maximum = 8192))), CapabilityType.NullType)
-    )), mapOf("current" to { _ -> input(date) }, "remember" to { args -> check(prefs.edit().putString("state", args.getString(0)).commit()); state = args.getString(0); saveInput(state); JSONObject.NULL }))
+    )), mapOf("current" to { _ -> input(date) }, "currentFor" to { args -> input(LocalDate.parse(args.getString(0))) }, "previous" to { args -> context.getSharedPreferences("preparation-inputs", 0).getString(args.getString(0), null) ?: JSONObject(state).put("attempted", JSONArray()).toString() }, "remember" to { args -> check(prefs.edit().putString("state", args.getString(0)).commit()); state = args.getString(0); saveInput(state); JSONObject.NULL }))
     private val policy = TrustedProgram(context, "calendar-discovery", "preparation.js", listOf(facts), GenerationGateway("http://127.0.0.1:8787/generate"))
     fun enabled() = prefs.getBoolean("disclose", false)
     fun allow(value: Boolean) { prefs.edit().putBoolean("disclose", value).commit(); if (!value) protocol.revoke("host/todo") }
@@ -41,13 +43,13 @@ class PreparationDiscovery(private val context: Context) : AutoCloseable {
         protocol.refresh(); protocol.grant("host/todo")
         val current = input(day)
         val history = context.getSharedPreferences("preparation-inputs", 0)
-        val prior = history.getString(PreparationRecords.key(current), null) ?: JSONObject(state).put("attempted", JSONArray()).toString()
+        fun prior(value: String) = history.getString(PreparationRecords.key(value), null) ?: JSONObject(state).put("attempted", JSONArray()).toString()
         val started = android.os.SystemClock.elapsedRealtime()
-        val result = try { JSONObject(policy.call("discover", current, prior).get(90, java.util.concurrent.TimeUnit.SECONDS)) } catch (error: Throwable) {
-            PreparationRecords.record(context, "discovery", JSONObject().put("model", "Jev").put("status", "unavailable").put("elapsedMs", android.os.SystemClock.elapsedRealtime() - started).put("reason", error.message?.take(1000)))
+        val result = try { JSONObject(policy.call("discoverAhead", current, prior(current), day.plusDays(1).toString(), state).get(150, java.util.concurrent.TimeUnit.SECONDS)) } catch (error: Throwable) {
+            PreparationRecords.record(context, "discovery", JSONObject().put("model", "Jev").put("trace", policy.trace).put("status", "unavailable").put("elapsedMs", android.os.SystemClock.elapsedRealtime() - started).put("reason", error.message?.take(1000)))
             throw error
         }
-        PreparationRecords.record(context, "discovery", JSONObject().put("model", "Jev").put("status", result.getString("status")).put("elapsedMs", android.os.SystemClock.elapsedRealtime() - started).put("facts", JSONObject(current)).put("decision", result.optJSONObject("suggestion")))
+        PreparationRecords.record(context, "discovery", JSONObject().put("model", "Jev").put("trace", policy.trace).put("status", result.getString("status")).put("elapsedMs", android.os.SystemClock.elapsedRealtime() - started).put("selectedDay", day.toString()).put("facts", JSONObject(result.optJSONObject("suggestion")?.optString("input")?.takeIf { it.isNotEmpty() } ?: current)).put("decision", result.optJSONObject("suggestion")))
         state = result.getJSONObject("state").toString()
         check(prefs.edit().putString("state", state).commit())
         saveInput(state)

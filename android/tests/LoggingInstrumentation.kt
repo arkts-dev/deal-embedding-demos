@@ -13,6 +13,9 @@ class LoggingInstrumentation : Instrumentation() {
         val result = Bundle()
         try {
             val context = targetContext
+            check(dev.deal.embedding.activitySummary(JSONObject().put("stage", "source").put("outcome", "rejected")).contains("rejected"))
+            check(dev.deal.embedding.dialogueRole(JSONObject().put("stage", "check").put("outcome", "rejected")) == "Check feedback")
+            check(dev.deal.embedding.readableLogDetail("[\"request\",\"reply\",\"diagnostic\"]").contains("Check feedback\ndiagnostic"))
             val log = EmbeddingLog(context)
             EmbeddingLog.capture(context, false)
             log.event("host", "started", detail = "PRIVATE_SENTINEL")

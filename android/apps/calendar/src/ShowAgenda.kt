@@ -110,9 +110,11 @@ class ShowAgenda(private val context: Context) {
     }
 
     /** Explicit demo setup; never edits existing personal events. */
-    fun preparationDemo(title: String, note: String) {
-        val day = LocalDate.now(AGENDA_ZONE).plusDays(1)
-        events(day).filter { it.notes.startsWith("Preparation demo ·") }.forEach { delete(it.id) }
+    fun preparationDemo(title: String, note: String, day: LocalDate = LocalDate.now(AGENDA_ZONE).plusDays(1)) {
+        // Tooling replaces only explicitly labelled preparation fixtures, including
+        // the prior scenario's date. Other show and personal records remain untouched.
+        (-7L..14L).flatMap { events(LocalDate.now(AGENDA_ZONE).plusDays(it)) }
+            .filter { it.notes.startsWith("Preparation demo ·") }.distinctBy { it.id }.forEach { delete(it.id) }
         val start = day.atTime(15, 0).atZone(AGENDA_ZONE).toInstant().toEpochMilli()
         add(title, start, start + 3600_000, "Demo location", "", "Preparation demo · $note", null)
     }
@@ -136,27 +138,34 @@ class AgendaActivity : ComponentActivity() {
     private var discoveryMessage by mutableStateOf("")
     private var checking by mutableStateOf(false)
     private var accepting by mutableStateOf(false)
-    private var showingAgenda = true
-    private var visible = true
+    @Volatile private var showingAgenda = true
+    @Volatile private var visible = true
     private var resumeVersion by mutableStateOf(0)
-    override fun onPause() { visible = false; discovery?.foreground = false; suggestion = null; super.onPause() }
+    @Volatile private var discoveryRevision = 0L
+    private var pendingDay: LocalDate? = null
+    override fun onPause() { visible = false; discoveryRevision++; pendingDay = null; discovery?.foreground = false; suggestion = null; super.onPause() }
     override fun onResume() { super.onResume(); visible = true; discovery?.foreground = showingAgenda; resumeVersion++ }
     private fun checkPreparation(day: LocalDate) {
-        if (checking || !visible || !showingAgenda || day != LocalDate.now(AGENDA_ZONE).plusDays(1)) return
+        pendingDay = day
+        val revision = ++discoveryRevision
         suggestion = null
+        discovery?.foreground = false
+        if (checking || !visible || !showingAgenda) return
+        pendingDay = null
         checking = true
-        discoveryMessage = "Checking tomorrow’s preparation…"
+        discoveryMessage = "Checking preparation…"
         worker.execute {
             try {
+                if (revision != discoveryRevision || !visible || !showingAgenda) return@execute
                 val service = discovery ?: PreparationDiscovery(applicationContext).also { discovery = it }
-                service.foreground = visible && showingAgenda
+                service.foreground = revision == discoveryRevision && visible && showingAgenda
                 val result = service.discover(day)
                 runOnUiThread {
-                    if (visible && showingAgenda && service.enabled()) {
+                    if (revision == discoveryRevision && visible && showingAgenda && service.enabled()) {
                         suggestion = result.optJSONObject("suggestion")?.takeIf { it.length() > 0 }
                         discoveryMessage = when (result.getString("status")) {
                             "unavailable" -> "AI is unavailable. No suggestion was made; unchanged facts won’t be sent again."
-                            "stale" -> "Facts changed during the check. Open tomorrow’s agenda again."
+                            "stale" -> "Facts changed during the check. Open the agenda again."
                             "rejected" -> "AI returned an unsupported suggestion. Nothing was added."
                             "already_checked", "dismissed" -> ""
                             "no_relationship" -> "No preparation suggestion for these facts."
@@ -164,15 +173,18 @@ class AgendaActivity : ComponentActivity() {
                         }
                     }
                 }
-            } catch (error: Throwable) { android.util.Log.e("Preparation", "Discovery failed", error); runOnUiThread { discoveryMessage = "Couldn’t check preparation. Ensure Todo sharing is enabled; no changes were made." } }
-            finally { runOnUiThread { checking = false } }
+            } catch (error: Throwable) { android.util.Log.e("Preparation", "Discovery failed", error); runOnUiThread { if (revision == discoveryRevision) discoveryMessage = "Couldn’t check preparation. Ensure Todo sharing is enabled; no changes were made." } }
+            finally { runOnUiThread {
+                checking = false
+                pendingDay?.let { next -> if (visible && showingAgenda) checkPreparation(next) }
+            } }
         }
     }
     override fun onDestroy() { worker.execute { discovery?.close() }; worker.shutdown(); super.onDestroy() }
     override fun onCreate(state: Bundle?) {
         super.onCreate(state)
         if (intent.hasExtra("demoEvent") && checkSelfPermission(android.Manifest.permission.WRITE_CALENDAR) == android.content.pm.PackageManager.PERMISSION_GRANTED) {
-            agenda.preparationDemo(intent.getStringExtra("demoEvent")!!, intent.getStringExtra("demoNote") ?: "")
+            agenda.preparationDemo(intent.getStringExtra("demoEvent")!!, intent.getStringExtra("demoNote") ?: "", intent.getStringExtra("demoDate")?.let(LocalDate::parse) ?: LocalDate.now(AGENDA_ZONE).plusDays(1))
         }
         setContent {
             AppTheme(Accent.Calendar) {
@@ -196,22 +208,27 @@ class AgendaActivity : ComponentActivity() {
                 LaunchedEffect(date, granted, resumeVersion) {
                     if (granted) { runCatching { agenda.seedSchedule(showDate()) }; refresh() }
                 }
-                LaunchedEffect(granted, disclose, resumeVersion, adding, selected, access) {
+                LaunchedEffect(date, granted, disclose, resumeVersion, adding, selected, access) {
                     showingAgenda = !adding && selected == null && !access
-                    discovery?.foreground = visible && showingAgenda
-                    if (granted && disclose && showingAgenda) checkPreparation(LocalDate.now(AGENDA_ZONE).plusDays(1))
+                    discovery?.foreground = visible && showingAgenda && !checking
+                    if (granted && disclose && showingAgenda) checkPreparation(date)
+                    else { discoveryRevision++; pendingDay = null; suggestion = null; discovery?.foreground = false }
                 }
                 BackHandler(enabled = adding || selected != null || access) { adding = false; selected = null; access = false }
                 Scaffold(topBar = {
                     TopAppBar(title = {
                         Column {
                             Text(if (access) "Extensions" else "Calendar", style = MaterialTheme.typography.titleLarge)
-                            Text(date.format(DateTimeFormatter.ofPattern("MMMM yyyy", Locale.getDefault())), style = MaterialTheme.typography.bodyMedium)
+                            if (!access) Text(date.format(DateTimeFormatter.ofPattern("MMMM yyyy", Locale.getDefault())), style = MaterialTheme.typography.bodyMedium)
                         }
+                    }, navigationIcon = {
+                        if (access) IconButton(onClick = { access = false }) { Icon(Icons.Outlined.ArrowBack, "Back") }
                     }, actions = {
-                        TextButton(onClick = { access = !access; suggestion = null }) { Text(if (access) "Done" else "Extensions") }
-                        TextButton(onClick = { date = LocalDate.now(AGENDA_ZONE); selected = null; adding = false; access = false }) { Text("Today") }
-                        IconButton(onClick = { access = false; adding = true }, enabled = granted) { Icon(Icons.Outlined.Add, "Add event") }
+                        if (!access) {
+                            TextButton(onClick = { date = LocalDate.now(AGENDA_ZONE); selected = null; adding = false }) { Text("Today") }
+                            IconButton(onClick = { adding = true }, enabled = granted) { Icon(Icons.Outlined.Add, "Add event") }
+                            IconButton(onClick = { access = true; suggestion = null }) { Icon(Icons.Outlined.Settings, "Extensions") }
+                        }
                     })
                 }) { padding ->
                     Column(Modifier.padding(padding).fillMaxSize()) {
@@ -219,9 +236,10 @@ class AgendaActivity : ComponentActivity() {
                         when {
                             access -> Column(Modifier.padding(20.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(16.dp)) {
                                 Text("Preparation help", style = MaterialTheme.typography.titleLarge)
-                                Text("Jev can discover useful preparation from tomorrow’s event notes and unfinished task titles. When you open a plan, Cortex can use those accepted facts to tailor it.")
+                                Text("Optional AI assistance. No appointment or task is changed.", style = MaterialTheme.typography.bodyMedium)
+                                Text("AI permissions", style = MaterialTheme.typography.titleMedium)
                                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                                    Text("AI discovery", modifier = Modifier.weight(1f))
+                                    Column(Modifier.weight(1f)) { Text("AI discovery"); Text("Jev uses selected and next-day event notes and task titles.", style = MaterialTheme.typography.bodySmall) }
                                     Switch(disclose, { enabled ->
                                         if (enabled) disclosureDialog = true else {
                                             getSharedPreferences("preparation", 0).edit().putBoolean("disclose", false).commit()
@@ -232,13 +250,14 @@ class AgendaActivity : ComponentActivity() {
                                 }
                                 var generationAllowed by remember { mutableStateOf(getSharedPreferences("preparation", 0).getBoolean("generation", false)) }
                                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                                    Text("Tailored plans", modifier = Modifier.weight(1f))
+                                    Column(Modifier.weight(1f)) { Text("Tailored plans"); Text("Cortex uses accepted facts when you open help.", style = MaterialTheme.typography.bodySmall) }
                                     Switch(generationAllowed, { value -> getSharedPreferences("preparation", 0).edit().putBoolean("generation", value).commit(); generationAllowed = value })
                                 }
                                 Text("Task sharing is controlled separately in Todo → Extensions.", style = MaterialTheme.typography.bodyMedium)
                                 HorizontalDivider()
-                                TextButton(onClick = { startActivity(Intent(this@AgendaActivity, PreparationInspectActivity::class.java)) }) { Text("Inspect") }
-                                Button(enabled = !clearing, onClick = { clearConfirm = true }) { Text("Clear saved assistance") }
+                                Text("Saved assistance", style = MaterialTheme.typography.titleMedium)
+                                ListItem(headlineContent = { Text("Inspect") }, supportingContent = { Text("Activity, model exchanges and checked source") }, trailingContent = { Icon(Icons.Outlined.ChevronRight, null) }, modifier = Modifier.clickable { startActivity(Intent(this@AgendaActivity, PreparationInspectActivity::class.java)) })
+                                ListItem(headlineContent = { Text("Clear saved assistance", color = MaterialTheme.colorScheme.error) }, supportingContent = { Text("Keep permissions, appointments and tasks") }, trailingContent = { Icon(Icons.Outlined.DeleteOutline, null, tint = MaterialTheme.colorScheme.error) }, modifier = Modifier.clickable(enabled = !clearing) { clearConfirm = true })
                             }
                             !granted -> Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                                 Text("Connect Calendar to view and manage events.")
@@ -253,9 +272,9 @@ class AgendaActivity : ComponentActivity() {
                                     Text("Looking ahead…", style = MaterialTheme.typography.bodySmall)
                                 }
                                 suggestion?.let { tip ->
-                                    val tomorrow = LocalDate.now(AGENDA_ZONE).plusDays(1)
+                                    val eventDay = LocalDate.parse(org.json.JSONObject(tip.getString("input")).getString("day"))
                                     HorizontalDivider(Modifier.padding(vertical = 8.dp))
-                                    if (date != tomorrow) Text("Tomorrow · ${tip.getString("eventTitle")}", style = MaterialTheme.typography.labelLarge)
+                                    if (date != eventDay) Text("${if (date == LocalDate.now(AGENDA_ZONE)) "Tomorrow" else eventDay.format(DateTimeFormatter.ofPattern("EEE d MMM", Locale.getDefault()))} · ${tip.getString("eventTitle")}", style = MaterialTheme.typography.labelLarge)
                                     Row(verticalAlignment = Alignment.CenterVertically) {
                                         TextButton(modifier = Modifier.weight(1f), enabled = !accepting, onClick = {
                                             accepting = true
@@ -275,7 +294,7 @@ class AgendaActivity : ComponentActivity() {
                 if (clearConfirm) AlertDialog(onDismissRequest = { clearConfirm = false }, title = { Text("Clear saved assistance?") }, text = { Text("Remove saved plans and discovery history. Permissions, appointments and tasks stay unchanged.") }, confirmButton = { TextButton(onClick = {
                     clearConfirm = false; clearing = true; suggestion = null
                     worker.execute { try { discovery?.close(); discovery = null; PreparationRecords.clear(applicationContext) } finally { runOnUiThread { clearing = false } } }
-                }) { Text("Clear") } }, dismissButton = { TextButton(onClick = { clearConfirm = false }) { Text("Cancel") } })
+                }) { Text("Clear", color = MaterialTheme.colorScheme.error) } }, dismissButton = { TextButton(onClick = { clearConfirm = false }) { Text("Cancel") } })
                 if (disclosureDialog) AlertDialog(onDismissRequest = { disclosureDialog = false }, title = { Text("Find preparation help?") }, text = { Text("While Calendar is open, send up to four event titles/notes and eight unfinished task titles to Jev for relevance discovery. After you open help, accepted facts also go to Cortex to generate a tailored plan. Enable sharing in Todo separately. No task or appointment is changed. You can stop sharing here.") },
                     confirmButton = { TextButton(onClick = { disclosureDialog = false; getSharedPreferences("preparation", 0).edit().putBoolean("disclose", true).putBoolean("generation", true).commit(); disclose = true }) { Text("Allow") } },
                     dismissButton = { TextButton(onClick = { disclosureDialog = false }) { Text("Not now") } })

@@ -7,7 +7,8 @@ p=argparse.ArgumentParser(description=__doc__)
 p.add_argument('--live',action='store_true',required=True)
 p.add_argument('--generated',action='store_true',help='Verify an already checked generated viewing or budget plan, no forced model result')
 p.add_argument('--prepared',action='store_true',help='Use existing fixtures without recreating IDs or consuming extra admission')
-p.add_argument('--scenario',choices=['Viewing','Budget review','Held-out','Ambiguous','Unrelated'],default='Viewing')
+p.add_argument('--navigate',action='store_true',help='Check event-date placement, unrelated-date exclusion and draft reuse')
+p.add_argument('--scenario',choices=['Viewing','Budget review','Held-out','Ambiguous','Unrelated','Friday'],default='Viewing')
 a=p.parse_args()
 out=pathlib.Path('build/preparation-e2e');out.mkdir(parents=True,exist_ok=True)
 def adb(*args):return subprocess.check_output(['adb',*args],text=True,timeout=20)
@@ -41,14 +42,21 @@ task,event,expected={'Viewing':('Viewing','Apartment viewing','Download last thr
     'Budget review':('Budget review','Project budget review','Check revised vendor quotation'),
     'Held-out':('Held-out','Client onboarding','Fetch company incorporation certificate'),
     'Ambiguous':('Ambiguous','Review meeting','Download the report'),
-    'Unrelated':('Budget review','Swimming lesson',None)}[a.scenario]
+    'Unrelated':('Budget review','Swimming lesson',None),
+    'Friday':('Friday','Soundcheck preparation','Export the revised input-to-channel list')}[a.scenario]
 assert any(n.attrib.get('name')=='allowed' and n.attrib.get('value')=='true' for n in ET.fromstring(prefs('todo','provider'))),'Enable Todo → Extensions first'
 assert any(n.attrib.get('name')=='disclose' and n.attrib.get('value')=='true' for n in ET.fromstring(prefs('calendar','preparation'))),'Enable Calendar → Extensions first'
 # Setup is explicitly outside the acceptance path.
 if not a.prepared:
-    subprocess.run(['python3','tools/setup-preparation-demo.py',{'Viewing':'viewing','Budget review':'budget','Held-out':'held-out','Ambiguous':'ambiguous','Unrelated':'unrelated'}[a.scenario]],check=True)
+    subprocess.run(['python3','tools/setup-preparation-demo.py',{'Viewing':'viewing','Budget review':'budget','Held-out':'held-out','Ambiguous':'ambiguous','Unrelated':'unrelated','Friday':'friday'}[a.scenario]],check=True)
 # Actual acceptance starts at the launcher, viewing today, not tomorrow or Development.
-launch('calendar');t=settled();record(a.scenario+'-ordinary')
+launch('calendar');t=settled()
+from datetime import date,timedelta
+current=date.fromisoformat(adb('shell','TZ=Europe/Berlin date +%Y-%m-%d').strip())
+event_day=current+timedelta(days=((4-current.weekday())%7 or 7) if a.scenario=='Friday' else 1)
+def day_label(day):return f'{day.day} {day.strftime("%b")}'
+if a.scenario=='Friday':tap(day_label(event_day-timedelta(days=1)),True);t=settled()
+record(a.scenario+'-ordinary')
 assert 'Sample tasks added' not in t and 'Development' not in t and 'Find preparation help' not in t,t
 links=[v for v in t if 'might help you prepare' in v or v.startswith('Could “')]
 if expected is None:
@@ -82,9 +90,25 @@ else:
             adb('shell','input','swipe','550','900','550','1950','400');t=texts()
         assert '14:14' in t and '14:30' in t,t
     assert before==prefs('todo','provider'),'Plan changed tasks'
-    record(a.scenario+'-populated-plan');tap('Back');settled();tap('Dismiss suggestion',True)
+    record(a.scenario+'-populated-plan');tap('Back');settled()
+    if a.navigate:
+        tap(day_label(event_day+timedelta(days=1)),True);t=settled()
+        assert not any('might help you prepare' in v or v.startswith('Could “') for v in t),t
+        tap(day_label(event_day),True);t=settled()
+        links=[v for v in t if 'might help you prepare' in v or v.startswith('Could “')]
+        assert any(expected in v for v in links),t
+        assert not any(v.startswith('Tomorrow ·') for v in t),t
+        tap(links[0]);deadline=time.monotonic()+25
+        while time.monotonic()<deadline:
+            t=texts()
+            if 'Opening plan…' not in t:break
+            time.sleep(1)
+        if not a.generated:assert '14:14' in t and '14:30' in t,t
+        record(a.scenario+'-reopened');tap('Back');settled()
+    tap('Dismiss suggestion',True);time.sleep(1)
     before=prefs('calendar','preparation');launch('calendar');t=settled()
+    if a.scenario=='Friday':tap(day_label(event_day),True);t=settled()
     assert not any('might help you prepare' in v or v.startswith('Could “') for v in t),t
-    assert before==prefs('calendar','preparation'),'Reopening retried unchanged facts'
+    if not a.navigate and a.scenario!='Friday':assert before==prefs('calendar','preparation'),'Reopening retried unchanged facts'
     record(a.scenario+'-dismissed')
 print('PASS ordinary launcher → quiet discovery → populated plan → adjust/dismiss:',a.scenario)
