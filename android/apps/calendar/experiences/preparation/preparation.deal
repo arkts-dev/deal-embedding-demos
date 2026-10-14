@@ -1,31 +1,16 @@
-import * as host from "host/preparation-plan";
 import * as strings from "std/string";
+// Filled with accepted immutable facts before checked load. No model or write authority.
+function acceptedState(): State { return {}; }
 function label(value: int): string { let text: string = ""; if (value === 0) { return "0 min"; } while (value > 0) { let digit: int = value % 10; text = strings.substring("0123456789", digit, digit + 1) + text; value = value / 10; } return text + " min"; }
 export class Task { id: string = ""; title: string = ""; chosen: boolean = false; minutes: int = 15; editing: boolean = false; durationLabel: string = "15 min"; }
-export class State { focusId: string = ""; focusTitle: string = ""; focusMinutes: int = 15; tasks: Task[] = []; start: int = 0; travel: int = 25; buffer: int = 5; leave: int = -1; prepare: int = -1; message: string = "Choose tasks and estimate their time. Travel is an editable estimate, not live routing."; loaded: boolean = false; loading: boolean = false; }
-export class Load {}
-export class Loaded { tasks: Task[] = []; start: int = 0; message: string = ""; }
+export class State { focusId: string = ""; focusTitle: string = ""; focusMinutes: int = 15; tasks: Task[] = []; start: int = 0; travel: int = 25; buffer: int = 5; leave: int = -1; prepare: int = -1; message: string = "Travel is an estimate. Nothing is changed in Calendar or Tasks."; loaded: boolean = false; loading: boolean = false; }
 export class Toggle { id: string = ""; }
 export class Focus { id: string = ""; }
 export class Duration { value: int = 15; }
 export class Travel { value: int = 25; }
 export class Buffer { value: int = 5; }
 export class Calculate {}
-export function initialState(): State { return {}; }
-// @ui-update
-export function begin(state: State, action: Load): State { return {tasks:state.tasks,start:state.start,travel:state.travel,buffer:state.buffer,loaded:state.loaded,message:state.message,loading:true}; }
-// @ui-effect
-export async function load(state: State, action: Load): Loaded {
-    try {
-        let facts: table = await host.snapshot(); let tasks: table[] = facts.tasks;
-        let result: Task[] = []; let suggested: string = facts.suggested;
-        for (let task: table of tasks) { let id: string = task.id; let title: string = task.title; let item: Task = {id:id,title:title,chosen:id === suggested}; result[result.length] = item; }
-        let start: int = facts.start;
-        return {tasks:result,start:start};
-    } catch (error) { return {message:"Facts changed or sharing ended. Return to Calendar before planning."}; }
-}
-// @ui-update
-export function loaded(state: State, action: Loaded): State { let message: string = state.message; if (action.message !== "") { message = action.message; } return {tasks:action.tasks,start:action.start,loaded:action.message === "",message:message}; }
+export function initialState(): State { return calculate(acceptedState(), {}); }
 // @ui-update
 export function toggle(state: State, action: Toggle): State {
     let tasks: Task[] = [];
@@ -56,6 +41,6 @@ export function calculate(state: State, action: Calculate): State {
     let leave: int = state.start - state.travel - state.buffer;
     let prepare: int = leave - total;
     if (prepare < 0 || leave < 0) { return {tasks:state.tasks,start:state.start,travel:state.travel,buffer:state.buffer,loaded:true,message:"Preparation starts on the previous day. Reduce the estimates or plan earlier; no changes were made."}; }
-    return {tasks:state.tasks,start:state.start,travel:state.travel,buffer:state.buffer,loaded:true,leave:leave,prepare:prepare,message:"Your estimates only. Tasks remain unfinished and the appointment is unchanged."};
+    return {tasks:state.tasks,start:state.start,travel:state.travel,buffer:state.buffer,loaded:true,leave:leave,prepare:prepare,message:"Travel is an estimate. Nothing is changed in Calendar or Tasks."};
 }
 export function main(): null { return null; }

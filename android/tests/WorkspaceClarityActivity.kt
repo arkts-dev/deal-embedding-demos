@@ -4,6 +4,8 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
@@ -26,6 +28,12 @@ class WorkspaceClarityActivity : ComponentActivity() {
             Column(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding().padding(8.dp)) {
                 TextButton(onClick = { screen = "inspection" }) { Text("Inspect") }
                 when (screen) {
+                    "preparation" -> {
+                        Text("Compiled planner fixture · visual review only")
+                        Column(Modifier.weight(1f).verticalScroll(rememberScrollState())) {
+                            DealRenderer(JSONObject(intent.getStringExtra("tree") ?: java.io.File(filesDir, "preparation-visual-tree.json").readText())) { _, _ -> }
+                        }
+                    }
                     "inspection" -> Text("Test-only engineering surface · frozen presentation facts")
                     "renderer-omitted", "renderer-enabled", "renderer-disabled" -> {
                         Text(received)

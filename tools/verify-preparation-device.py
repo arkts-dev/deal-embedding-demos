@@ -1,9 +1,13 @@
 #!/usr/bin/env python3
-"""Opt-in real-device demo acceptance. Uses ordinary controls; live calls only on changed facts.
-Creates/replaces labelled demo records, never forces AI answers. Stores private UI receipts in build/.
+"""Opt-in device check of the ordinary launcher path after separate development setup.
+Uses existing grants; never silently grants access, resets admission or retries inference.
 """
 import argparse, pathlib, re, subprocess, time, xml.etree.ElementTree as ET
-p=argparse.ArgumentParser(description=__doc__);p.add_argument('--live',action='store_true',required=True);args=p.parse_args()
+p=argparse.ArgumentParser(description=__doc__)
+p.add_argument('--live',action='store_true',required=True)
+p.add_argument('--prepared',action='store_true',help='Use existing fixtures without recreating IDs or consuming extra admission')
+p.add_argument('--scenario',choices=['Viewing','Budget review','Held-out','Ambiguous','Unrelated'],default='Viewing')
+a=p.parse_args()
 out=pathlib.Path('build/preparation-e2e');out.mkdir(parents=True,exist_ok=True)
 def adb(*args):return subprocess.check_output(['adb',*args],text=True,timeout=20)
 def nodes():
@@ -11,46 +15,56 @@ def nodes():
     return list(ET.fromstring(adb('shell','cat','/sdcard/preparation.xml')).iter('node'))
 def texts():return [n.get('text') for n in nodes() if n.get('text')]
 def tap(label,description=False):
-    for _ in range(12):
-        ns=nodes();match=next((n for n in ns if n.get('content-desc' if description else 'text')==label),None)
+    for _ in range(8):
+        match=next((n for n in nodes() if n.get('content-desc' if description else 'text')==label),None)
         if match is not None:
-            x,y,a,b=map(int,re.findall(r'\d+',match.get('bounds')));adb('shell','input','tap',str((x+a)//2),str((y+b)//2));time.sleep(.5);return
+            x,y,w,h=map(int,re.findall(r'\d+',match.get('bounds')))
+            adb('shell','input','tap',str((x+w)//2),str((y+h)//2));time.sleep(.4);return
         adb('shell','input','swipe','550','1950','550','900','400')
     raise AssertionError('Missing '+label)
 def record(name):
     nodes();adb('pull','/sdcard/preparation.xml',str(out/(name+'.xml')))
-    with (out/(name+'.png')).open('wb') as f:subprocess.run(['adb','exec-out','screencap','-p'],stdout=f,check=True)
-def wait():
+    with (out/(name+'.png')).open('wb') as f:subprocess.run(['adb','exec-out','screencap','-p'],stdout=f,check=True,timeout=20)
+def prefs(app,file):return adb('shell','run-as','dev.deal.apps.'+app,'cat','shared_prefs/'+file+'.xml')
+def launch(app):
+    adb('shell','am','force-stop','dev.deal.apps.'+app)
+    adb('shell','monkey','-p','dev.deal.apps.'+app,'-c','android.intent.category.LAUNCHER','1');time.sleep(1)
+def settled():
     deadline=time.monotonic()+75
     while time.monotonic()<deadline:
         t=texts()
-        if 'You may need to prepare for tomorrow' in t or any('No preparation suggestion' in v for v in t):return t
+        if 'Looking ahead…' not in t:return t
         time.sleep(1)
-    raise AssertionError('Preparation never settled: '+str(texts()))
-def setup(task,event):
-    adb('shell','am','start','-n','dev.deal.apps.todo/.TodoActivity');time.sleep(3);tap('Demo');tap(task)
-    # Existing provider sharing is not silently enabled by fixture setup.
-    assert any(n.attrib.get('name')=='allowed' and n.attrib.get('value')=='true' for n in ET.fromstring(adb('shell','run-as','dev.deal.apps.todo','cat','shared_prefs/provider.xml'))), 'Enable Todo sharing first'
-    adb('shell','am','start','-n','dev.deal.apps.calendar/.AgendaActivity');time.sleep(3);tap('Demo');tap(event)
-    if 'Find preparation help' in texts():tap('Find preparation help');tap('Allow')
-    return wait()
-for task,event,expected,uncertain in [('Viewing','Apartment viewing','Download last three payslips',False),('Budget review','Project budget review','Check revised vendor quotation',False),('Held-out','Client onboarding','Fetch company incorporation certificate',False),('Ambiguous','Review meeting','Download the report',True)]:
-    t=setup(task,event);assert any(expected in v for v in t),t
-    assert any(('Could “' if uncertain else 'may help') in v for v in t),t
-    record(task)
-    before=adb('shell','run-as','dev.deal.apps.todo','cat','shared_prefs/provider.xml')
-    tap('Yes, add to plan' if uncertain else 'Add to plan');time.sleep(3);tap('Load preparation tasks');time.sleep(2)
+    raise AssertionError('Discovery did not settle')
+task,event,expected={'Viewing':('Viewing','Apartment viewing','Download last three payslips'),
+    'Budget review':('Budget review','Project budget review','Check revised vendor quotation'),
+    'Held-out':('Held-out','Client onboarding','Fetch company incorporation certificate'),
+    'Ambiguous':('Ambiguous','Review meeting','Download the report'),
+    'Unrelated':('Budget review','Swimming lesson',None)}[a.scenario]
+assert any(n.attrib.get('name')=='allowed' and n.attrib.get('value')=='true' for n in ET.fromstring(prefs('todo','provider'))),'Enable Todo → Access first'
+assert any(n.attrib.get('name')=='disclose' and n.attrib.get('value')=='true' for n in ET.fromstring(prefs('calendar','preparation'))),'Enable Calendar → Access first'
+# Setup is explicitly outside the acceptance path.
+if not a.prepared:
+    launch('todo');tap('Access');tap('Development');tap(task)
+    launch('calendar');tap('Access');tap('Development');tap(event)
+# Actual acceptance starts at the launcher, viewing today, not tomorrow or Development.
+launch('calendar');t=settled();record(a.scenario+'-ordinary')
+assert 'Sample tasks added' not in t and 'Development' not in t and 'Find preparation help' not in t,t
+links=[v for v in t if 'might help you prepare' in v or v.startswith('Could “')]
+if expected is None:
+    assert not links,t
+else:
+    assert any(expected in v for v in links),t
+    assert ('Could “' in links[0]) == (a.scenario=='Ambiguous'),t
+    before=prefs('todo','provider');tap(links[0]);time.sleep(3);t=texts()
+    assert expected in t and 'Load preparation tasks' not in t,t
     tap('Edit time for '+expected,True);tap('Minutes: '+expected+' increase',True)
-    tap('Calculate preparation and departure');time.sleep(.5);adb('shell','input','swipe','550','1950','550','800','400')
-    t=texts();assert '14:14' in t and '14:30' in t,t;record(task+'-plan')
-    assert before==adb('shell','run-as','dev.deal.apps.todo','cat','shared_prefs/provider.xml'), 'Planner changed Todo'
-    tap('Back')
-t=setup('Budget review','Swimming lesson');assert 'You may need to prepare for tomorrow' not in t,t;record('unrelated')
-t=setup('Viewing','Apartment viewing');tap('Dismiss');tap('Today')
-# Reopen the same facts: dismissal is persisted; no model retry.
-adb('shell','am','force-stop','dev.deal.apps.calendar');adb('shell','am','start','-n','dev.deal.apps.calendar/.AgendaActivity');time.sleep(1)
-# Tomorrow's accessible date label is locale-dependent; use the demo event's existing day.
-from datetime import date,timedelta
-tomorrow=date.today()+timedelta(days=1);tap(tomorrow.strftime('%-d %b'),True);time.sleep(2)
-assert 'You may need to prepare for tomorrow' not in texts();record('dismissed-reopen')
-print('PASS real-device live Calendar discovery → acceptance → checked planner; viewing/budget/held-out/ambiguity/unrelated/dismissal')
+    tap('Update times');adb('shell','input','swipe','550','1950','550','800','400');t=texts()
+    assert '14:14' in t and '14:30' in t,t
+    assert before==prefs('todo','provider'),'Plan changed tasks'
+    record(a.scenario+'-populated-plan');tap('Back');settled();tap('Dismiss suggestion',True)
+    before=prefs('calendar','preparation');launch('calendar');t=settled()
+    assert not any('might help you prepare' in v or v.startswith('Could “') for v in t),t
+    assert before==prefs('calendar','preparation'),'Reopening retried unchanged facts'
+    record(a.scenario+'-dismissed')
+print('PASS ordinary launcher → quiet discovery → populated plan → adjust/dismiss:',a.scenario)

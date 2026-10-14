@@ -34,19 +34,20 @@ class PreparationActivity : ComponentActivity() {
         val events = context.getJSONArray("events")
         val event = (0 until events.length()).map { events.getJSONObject(it) }.single { it.getString("id") == eventId }
         val tasks = context.getJSONArray("tasks")
-        val snapshot = JSONObject().put("tasks", JSONArray((0 until tasks.length()).map { tasks.getJSONObject(it).let { t -> JSONObject().put("id", t.getString("id")).put("title", t.getString("title")) } }))
-            .put("start", event.getInt("startMinute")).put("suggested", taskId)
         worker.execute {
             try {
-                val taskType = CapabilityType("record", fields = mapOf("id" to CapabilityType("string", maximum = 64), "title" to CapabilityType("string", maximum = 120)))
-                val local = NativeCapabilities(CapabilityContract("host/preparation-plan", "Accepted immutable preparation facts; read only", listOf(
-                    CapabilityFunction("snapshot", "Read the accepted plan facts", emptyList(), CapabilityType("record", fields = mapOf("tasks" to CapabilityType("array", element = taskType, maximum = 8), "start" to CapabilityType("int", minimumInt = 0, maximumInt = 1439), "suggested" to CapabilityType("string", maximum = 64))))
-                )), mapOf("snapshot" to { _ -> snapshot }))
-                val registry = CapabilityRegistry(this, CapabilityDiscovery(this) { false }, listOf(local))
+                val registry = CapabilityRegistry(this, CapabilityDiscovery(this) { false }, emptyList())
                 val api = ApplicationProtocol(this, Embedding(this, registry, GenerationGateway("http://127.0.0.1:8787/generate"), EmbeddingConfig("preparation", emptyList(), "preparation-plan")))
                 protocol = api
-                api.grant("host/preparation-plan")
-                val source = Source(assets.open("preparation/preparation.deal").bufferedReader().use { it.readText() }, assets.open("preparation/preparation.dealui").bufferedReader().use { it.readText() })
+                fun quote(value: String) = "\"" + value.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n").replace("\r", "\\r").replace("\t", "\\t") + "\""
+                val initialTasks = (0 until tasks.length()).joinToString(" ") { i ->
+                    val t = tasks.getJSONObject(i)
+                    "let task$i: Task = {id:${quote(t.getString("id"))},title:${quote(t.getString("title"))},chosen:${t.getString("id") == taskId}}; tasks[tasks.length] = task$i;"
+                }
+                val initial = "let tasks: Task[] = []; $initialTasks return {tasks:tasks,start:${event.getInt("startMinute")},loaded:true};"
+                val deal = assets.open("preparation/preparation.deal").bufferedReader().use { it.readText() }
+                    .replace("function acceptedState(): State { return {}; }", "function acceptedState(): State { $initial }")
+                val source = Source(deal, assets.open("preparation/preparation.dealui").bufferedReader().use { it.readText() })
                 val prepared = api.load("Preparation plan", source)
                 api.withPreparation(prepared) {
                     val next = ExperienceSurface(api, it)
@@ -63,7 +64,6 @@ class PreparationActivity : ComponentActivity() {
                     Column(Modifier.padding(padding).fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
                         Text(event.getString("title"), style = MaterialTheme.typography.titleLarge)
                         Text("Note: ${event.getString("notes")}", style = MaterialTheme.typography.bodyMedium)
-                        Text("This is a plan, not a booking or reminder. Nothing is changed in Calendar or Todo.", style = MaterialTheme.typography.bodySmall)
                         surface?.let { ExperienceSurface(it, onSnapshot = { snapshot -> if (snapshot.fault.isNotEmpty()) message = "Plan unavailable. Return to Calendar." }) } ?: Text(message)
                     }
                 }

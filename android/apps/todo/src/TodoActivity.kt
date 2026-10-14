@@ -3,6 +3,7 @@ package dev.deal.apps.todo
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.*
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
@@ -30,39 +31,50 @@ class TodoActivity : ComponentActivity() {
         var adding by mutableStateOf(false)
         var consent by mutableStateOf(store.consent())
         var demo by mutableStateOf(false)
+        var access by mutableStateOf(false)
         fun commit(value: List<Task>) { store.save(value); tasks = value }
         setContent {
+            BackHandler(enabled = access || open != null || adding) { access = false; open = null; adding = false }
             AppTheme(Accent.Todo) {
                 Surface(Modifier.fillMaxSize()) {
                     Scaffold(topBar = {
                         TopAppBar(title = {
-                            Column { Text("Tasks", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold); Text("Your tasks", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant) }
-                        }, actions = { TextButton(onClick = { demo = true }) { Text("Demo") }; IconButton(onClick = { adding = true }) { Icon(Icons.Outlined.Add, "Add task") } })
+                            Column { Text(if (access) "Access" else "Tasks", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold); Text(if (access) "Connected apps" else "Your tasks", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                        }, actions = { if (access) TextButton(onClick = { demo = true }) { Text("Development") }; IconButton(onClick = { access = false; adding = true }) { Icon(Icons.Outlined.Add, "Add task") } })
                     }, bottomBar = {
                         NavigationBar(containerColor = MaterialTheme.colorScheme.surface) {
-                            NavigationBarItem(selected = open == null && !adding, onClick = { open = null; adding = false }, icon = { Icon(Icons.Outlined.Checklist, null) }, label = { Text("Tasks") })
-                            NavigationBarItem(selected = false, onClick = { consent = !consent; store.setConsent(consent) }, icon = { Icon(Icons.Outlined.Shield, null) }, label = { Text("Access") })
+                            NavigationBarItem(selected = !access && open == null && !adding, onClick = { open = null; adding = false; access = false }, icon = { Icon(Icons.Outlined.Checklist, null) }, label = { Text("Tasks") })
+                            NavigationBarItem(selected = access, onClick = { access = true; open = null; adding = false }, icon = { Icon(Icons.Outlined.Shield, null) }, label = { Text("Access") })
                         }
                     }) { padding ->
                         Box(Modifier.padding(padding)) {
                             when {
+                                access -> Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                                    Text("Task sharing", style = MaterialTheme.typography.titleLarge)
+                                    Text("Calendar can read unfinished task titles for preparation help. Organizer can read task status and propose tasks for your review.")
+                                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                                        Text("Allow connected apps", modifier = Modifier.weight(1f))
+                                        Switch(consent, { consent = it; store.setConsent(it) })
+                                    }
+                                }
                                 adding -> TaskEditor(null) { created -> commit(tasks + created); adding = false }
                                 open != null -> TaskDetail(open!!) { updated ->
                                     val next = if (updated == null) tasks.filterNot { it.id == open!!.id } else tasks.map { if (it.id == updated.id) updated else it }
                                     commit(next); open = updated
                                 }
-                                else -> TaskList(tasks, filter, { filter = it }, consent, { consent = it; store.setConsent(it) }) { open = it }
+                                else -> TaskList(tasks, filter, { filter = it }) { open = it }
                             }
                         }
                     }
                 }
                 if (demo) AlertDialog(onDismissRequest = { demo = false }, title = { Text("Preparation demo tasks") }, text = {
                     Column {
-                        Text("Adds labelled tasks without replacing your other tasks. No task is completed. Sharing stays under your control.")
+                        Text("Replace labelled demo tasks only. Sharing is unchanged.")
                         listOf("Viewing" to "Download last three payslips", "Budget review" to "Check revised vendor quotation", "Ambiguous" to "Download the report", "Held-out" to "Fetch company incorporation certificate").forEach { (label, title) ->
                             TextButton(onClick = {
                                 val day = LocalDate.now(TASK_ZONE).plusDays(1)
                                 commit(tasks.filter { it.show != "Preparation demo" } + listOf(Task(store.newId(), title, "Me", TaskStore.at(day, 12), show = "Preparation demo"), Task(store.newId(), "Water balcony plants", "Me", TaskStore.at(day, 18), show = "Preparation demo")))
+                                filter = "Open"; open = null; adding = false
                                 demo = false
                             }) { Text(label) }
                         }
@@ -73,7 +85,7 @@ class TodoActivity : ComponentActivity() {
     }
 }
 
-@Composable private fun TaskList(tasks: List<Task>, filter: String, onFilter: (String) -> Unit, consent: Boolean, onConsent: (Boolean) -> Unit, onOpen: (Task) -> Unit) {
+@Composable private fun TaskList(tasks: List<Task>, filter: String, onFilter: (String) -> Unit, onOpen: (Task) -> Unit) {
     val visible = tasks.filter { when (filter) { "Open" -> !it.complete; "Completed" -> it.complete; else -> true } }
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         item {
@@ -87,7 +99,6 @@ class TodoActivity : ComponentActivity() {
             item { Text(show, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold) }
             items(list.sortedBy { it.due }) { task -> TaskCard(task) { onOpen(task) } }
         }
-        item { Panel { Text("Shared access", style = MaterialTheme.typography.titleLarge); Text("Calendar can read unfinished task titles for opted-in preparation help. Organizer can read task status and propose tasks for confirmation. You decide here.", color = MaterialTheme.colorScheme.onSurfaceVariant); Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) { Text(if (consent) "Sharing enabled" else "Private by default"); Switch(consent, onConsent) } } }
     }
 }
 
