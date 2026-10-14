@@ -23,25 +23,31 @@ class GatewayTest(unittest.TestCase):
         tree=ast.parse(pathlib.Path('tools/generation-gateway.py').read_text())
         definitions=[n for n in tree.body if isinstance(n,ast.ClassDef) and n.name in ('GatewayFailure','Handler')]
         namespace={'json':json,'http':types.SimpleNamespace(server=http.server),'urllib':types.SimpleNamespace(error=urllib.error),
-                   'concurrent':types.SimpleNamespace(futures=concurrent.futures),'options':types.SimpleNamespace(audit=False,chooser='llm'),'KEY':'private-key'}
+                   'concurrent':types.SimpleNamespace(futures=concurrent.futures),'options':types.SimpleNamespace(audit=False,chooser='llm',backend='cortex'),'BACKENDS':{'cortex':{'key':'private-key','model':'cortex'}}}
         exec(compile(ast.Module(body=definitions,type_ignores=[]),'safe-handler','exec'),namespace)
         class Failed:
             def result(self,**kwargs):raise namespace['GatewayFailure']('AUDIT_LIMIT','Explicit audit ceiling exhausted')
-        namespace.update(POOL=types.SimpleNamespace(submit=lambda *a:Failed()),infer=lambda body:None)
+        routed=[]
+        namespace.update(POOL=types.SimpleNamespace(submit=lambda fn,body:routed.append(body) or Failed()),infer=lambda body:None)
         server=http.server.ThreadingHTTPServer(('127.0.0.1',0),namespace['Handler']);thread=threading.Thread(target=server.serve_forever,daemon=True);thread.start()
         try:
             base='http://127.0.0.1:'+str(server.server_port)
             with urllib.request.urlopen(base+'/health') as response:
-                health=json.load(response);self.assertEqual(health,{'mode':'demo','configured':True,'automaticRetries':False,'chooser':'llm'});self.assertNotIn('private-key',json.dumps(health))
+                health=json.load(response);self.assertEqual(health,{'mode':'demo','configured':True,'automaticRetries':False,'chooser':'llm','defaultBackend':'cortex','sourceModels':{'cortex':'cortex'}});self.assertNotIn('private-key',json.dumps(health))
             request=urllib.request.Request(base+'/generate',data=json.dumps({'input':'x','previous':'','diagnostics':'','capture':False}).encode())
             with self.assertRaises(urllib.error.HTTPError) as caught:urllib.request.urlopen(request)
             self.assertEqual(caught.exception.code,503);self.assertEqual(json.load(caught.exception)['error']['code'],'AUDIT_LIMIT')
+            self.assertEqual(routed[-1]['backend'],'cortex')
+            request.add_header('X-Deal-Generation-Backend','cerebras')
+            with self.assertRaises(urllib.error.HTTPError) as caught:urllib.request.urlopen(request)
+            self.assertEqual(json.load(caught.exception)['error']['code'],'BACKEND_UNAVAILABLE')
+            self.assertEqual(len(routed),1,'unavailable backend must not fall back')
         finally:server.shutdown();server.server_close();thread.join()
     def test_jev_routing(self):
         tree=ast.parse(pathlib.Path('tools/generation-gateway.py').read_text())
         infer=next(n for n in tree.body if isinstance(n,ast.FunctionDef) and n.name=='infer')
         calls=[]
-        namespace={'options':types.SimpleNamespace(chooser='jev',jev_model='jev-test'),'JEV_KEY':'private-key',
+        namespace={'options':types.SimpleNamespace(chooser='jev',jev_model='jev-test',backend='cortex'),'BACKENDS':{'cortex':{}},'JEV_KEY':'private-key',
                    'admit':lambda body:calls.append('admit'),'infer_jev':lambda *args:calls.append(args) or b'jev'}
         exec(compile(ast.Module(body=[infer],type_ignores=[]),'routing','exec'),namespace)
         body={'input':'state\n\nISSUED OPTIONS\n{}'}
@@ -62,7 +68,7 @@ class GatewayTest(unittest.TestCase):
             def read(self,limit):return json.dumps(response).encode()
         def request(url,data,headers):
             seen.append(json.loads(data));headers_seen.append(headers);return object()
-        namespace={'options':types.SimpleNamespace(chooser='jev'),'admit': lambda body: None, 'json':json,'MODEL':'fixture','ENDPOINT':'unused','KEY':'private-key','urllib':types.SimpleNamespace(request=types.SimpleNamespace(Request=request,urlopen=lambda *a,**k:Reply()))}
+        namespace={'options':types.SimpleNamespace(chooser='jev',backend='cortex'),'GatewayFailure':ValueError,'BACKENDS':{'cortex':{'model':'fixture','endpoint':'unused','key':'private-key'},'cerebras':{'model':'qwen-3.8-27b','endpoint':'cerebras','key':'private-key'}},'admit': lambda body: None, 'json':json,'urllib':types.SimpleNamespace(request=types.SimpleNamespace(Request=request,urlopen=lambda *a,**k:Reply()))}
         exec(compile(ast.Module(body=[infer],type_ignores=[]),'gateway','exec'),namespace)
         body={'input':'prompt','previous':'prior','diagnostics':'E3003','capture':True}
         result=json.loads(namespace['infer'](body))
@@ -74,6 +80,17 @@ class GatewayTest(unittest.TestCase):
         self.assertNotIn('request',omitted);self.assertNotIn('response',omitted)
         self.assertNotIn('prompt',json.dumps(omitted));self.assertEqual(omitted['metadata']['in'],10)
         self.assertEqual(omitted['metadata']['finish'],'stop')
+        body['backend']='cerebras'
+        cerebras=json.loads(namespace['infer'](body))
+        self.assertEqual(cerebras['model'],'qwen-3.8-27b')
+        self.assertEqual(seen[-1]['max_tokens'],32768)
+        self.assertEqual(seen[-1]['reasoning_effort'],'low')
+        self.assertEqual(seen[-1]['response_format'],{'type':'json_object'})
+        self.assertEqual(headers_seen[-1]['User-Agent'],'deal-embed-development/1.0')
+        self.assertEqual(seen[-1]['messages'],seen[0]['messages'])
+        body['backend']='unknown'
+        with self.assertRaises(ValueError):namespace['infer'](body)
+        body['backend']='cortex'
         body['capture']=True
         response['extra']='x'*(2*1024*1024)
         bounded=json.loads(namespace['infer'](body))

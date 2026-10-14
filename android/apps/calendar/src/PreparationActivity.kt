@@ -54,7 +54,7 @@ class PreparationActivity : ComponentActivity() {
         next.activate { runOnUiThread { message = "Plan unavailable. Return to Calendar." } }
         val previous = owner; owner = next
         synchronized(recordLock) { record.put("active", experience.id); remember() }
-        PreparationRecords.record(this, "execution", JSONObject().put("origin", if (generated) "Cortex generated, checked" else "Authored fallback").put("experience", experience.id))
+        PreparationRecords.record(this, "execution", JSONObject().put("origin", if (generated) record.optString("generatedModel", "Unknown model") + " generated, checked" else "Authored fallback").put("experience", experience.id))
         runOnUiThread { if (!isDestroyed && foreground) surface = next }
         previous?.close()
     }
@@ -140,17 +140,17 @@ class PreparationActivity : ComponentActivity() {
             // Foreground safeguard, not a call quota; Inspect records actual latency.
             timer = Runnable { cancelled = true; worker.execute { runCatching { protocol.cancel(current) } }; tailoring = false }
             deadline.postDelayed(timer, 180000)
-            PreparationRecords.record(this, "generation", JSONObject().put("model", "Cortex").put("status", "started").put("trace", protocol.requestTrace(current)))
+            PreparationRecords.record(this, "generation", JSONObject().put("model", dev.deal.apps.development.GenerationBuild.label).put("status", "started").put("trace", protocol.requestTrace(current)))
             protocol.withPreparation(protocol.generate(current)) { experience ->
                 check(foreground && !cancelled && valid()) { "Left plan or facts changed" }
                 // Persist checked source without mounting it over the user's current plan.
                 ExperienceSurface(protocol, experience).use { checked -> checked.activate { error -> throw error } }
-                synchronized(recordLock) { record.put("generated", experience.id); remember() }
-                PreparationRecords.record(this, "generation", JSONObject().put("model", "Cortex").put("status", "checked").put("attempts", experience.attempts).put("elapsedMs", android.os.SystemClock.elapsedRealtime() - started).put("trace", protocol.requestTrace(current)))
+                synchronized(recordLock) { record.put("generated", experience.id).put("generatedModel", dev.deal.apps.development.GenerationBuild.label); remember() }
+                PreparationRecords.record(this, "generation", JSONObject().put("model", dev.deal.apps.development.GenerationBuild.label).put("status", "checked").put("attempts", experience.attempts).put("elapsedMs", android.os.SystemClock.elapsedRealtime() - started).put("trace", protocol.requestTrace(current)))
                 runOnUiThread { if (foreground) tailored = experience }
             }
         } catch (error: Throwable) {
-            PreparationRecords.record(this, "generation", JSONObject().put("model", "Cortex").put("status", if (cancelled) "interrupted or timed out" else "failed").put("elapsedMs", android.os.SystemClock.elapsedRealtime() - started).put("reason", error.message?.take(2000)))
+            PreparationRecords.record(this, "generation", JSONObject().put("model", dev.deal.apps.development.GenerationBuild.label).put("status", if (cancelled) "interrupted or timed out" else "failed").put("elapsedMs", android.os.SystemClock.elapsedRealtime() - started).put("reason", error.message?.take(2000)))
         } finally { timer?.let(deadline::removeCallbacks); request = null; runOnUiThread { tailoring = false } }
     }
     override fun onDestroy() {

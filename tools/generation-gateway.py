@@ -3,14 +3,8 @@
 import argparse, concurrent.futures, http.server, json, os, pathlib, subprocess, time, urllib.request, urllib.error
 from jev_chooser import infer as infer_jev
 ROOT = pathlib.Path(__file__).resolve().parents[1]
-CONFIG = json.loads((pathlib.Path.home()/'.pi/agent/models.json').read_text())['providers']['devagent']
-KEY = CONFIG['apiKey']
-if KEY.startswith('!'):
-    KEY = subprocess.check_output(KEY[1:], shell=True, text=True).strip()
-else:
-    KEY = os.environ.get(KEY, KEY)
-MODEL = next(m['id'] for m in CONFIG['models'] if m['id']=='cortex')
-ENDPOINT = CONFIG['baseUrl'].rstrip('/')+'/chat/completions'
+# Credentials are loaded only for enabled backends, never packaged in an APK.
+BACKENDS = {}
 # Guidance is composed by the trusted core and travels in the request. This gateway only
 # calls the model, so what runs here matches what would run on device.
 # One inference at a time protects the development endpoint; no request bodies are logged.
@@ -25,7 +19,20 @@ parser.add_argument('--choice-limit', type=int)
 parser.add_argument('--chooser', choices=('llm', 'jev'), default='llm', help='Choice transport; source generation remains on the configured generative model')
 parser.add_argument('--jev-key-file', type=pathlib.Path, default=pathlib.Path.home()/'jev.key', help='Read the Jev credential in memory; never packaged or logged')
 parser.add_argument('--jev-model', default='jev-latest')
+parser.add_argument('--backend', choices=('cortex', 'cerebras'), default='cortex', help='Default backend for tooling without an app build-selection header')
+parser.add_argument('--enable-cortex', action='store_true', help='Also serve Cortex when Cerebras is the default')
+parser.add_argument('--enable-cerebras', action='store_true', help='Also serve Cerebras when Cortex is the default')
+parser.add_argument('--cerebras-key-file', type=pathlib.Path, default=pathlib.Path.home()/'cerebras.key')
 options = parser.parse_args()
+if options.backend == 'cortex' or options.enable_cortex:
+    config = json.loads((pathlib.Path.home()/'.pi/agent/models.json').read_text())['providers']['devagent']
+    key = config['apiKey']
+    key = subprocess.check_output(key[1:], shell=True, text=True).strip() if key.startswith('!') else os.environ.get(key, key)
+    BACKENDS['cortex'] = {'key': key, 'model': 'cortex', 'endpoint': config['baseUrl'].rstrip('/')+'/chat/completions'}
+if options.backend == 'cerebras' or options.enable_cerebras:
+    key = options.cerebras_key_file.read_text().strip()
+    if not key or any(c.isspace() for c in key): parser.error('Cerebras credential must be a nonempty single token')
+    BACKENDS['cerebras'] = {'key': key, 'model': 'qwen-3.8-27b', 'endpoint': 'https://api.cerebras.ai/v1/chat/completions'}
 JEV_KEY = options.jev_key_file.read_text().strip() if options.chooser == 'jev' else ''
 if options.chooser == 'jev' and (not JEV_KEY or any(c.isspace() for c in JEV_KEY)):
     parser.error('Jev credential must be a nonempty single token')
@@ -54,6 +61,9 @@ def admit(body):
     temporary.write_text(json.dumps(counts)); temporary.replace(path)
 # Return provider request/response to the caller's unified private logger; no parallel logs.
 def infer(body):
+    backend = body.get('backend', options.backend)
+    if backend not in BACKENDS:
+        raise GatewayFailure('BACKEND_UNAVAILABLE', 'Requested build-time backend is not enabled in this gateway')
     admit(body)
     if options.chooser == 'jev' and '\n\nISSUED OPTIONS\n' in body['input']:
         return infer_jev(body, JEV_KEY, options.jev_model)
@@ -63,8 +73,12 @@ def infer(body):
     if body.get('diagnostics') or body.get('previous'):
         instruction = 'Return only the exact-source-patch-v1 edits requested in the input; preserve unaffected source.' if 'REPAIR PROTOCOL exact-source-patch-v1' in body['input'] else 'Generate or repair both source files using these diagnostics. Preserve the requested behavior. Return the complete JSON envelope.'
         messages.append({'role':'user','content':instruction+'\n'+body['diagnostics']})
-    payload={'model':MODEL,'messages':messages,'max_tokens':8192,'temperature':0.2,'stream':False}
-    request=urllib.request.Request(ENDPOINT,data=json.dumps(payload).encode(),headers={'Content-Type':'application/json','Authorization':'Bearer '+KEY})
+    provider = BACKENDS[backend]
+    payload={'model':provider['model'],'messages':messages,'max_tokens':8192,'temperature':0.2,'stream':False}
+    if backend == 'cerebras':
+        payload.update(max_tokens=32768, temperature=1, top_p=0.95, reasoning_effort='low', response_format={'type':'json_object'})
+    # Cerebras rejects urllib's default User-Agent; explicit identity is required.
+    request=urllib.request.Request(provider['endpoint'],data=json.dumps(payload).encode(),headers={'Content-Type':'application/json','Authorization':'Bearer '+provider['key'],'User-Agent':'deal-embed-development/1.0'})
     with urllib.request.urlopen(request,timeout=420) as response:
         data=json.loads(response.read(2*1024*1024))
     content=data['choices'][0]['message']['content']
@@ -76,8 +90,9 @@ def infer(body):
     metadata={'in':count(usage.get('prompt_tokens')), 'out':count(usage.get('completion_tokens')),
               'cached':count((usage.get('prompt_tokens_details') or {}).get('cached_tokens')),
               'finish':finish if finish in ('stop','length','content_filter','tool_calls') else 'unknown',
-              'temperature':0.2, 'max_tokens':8192}
-    result={'content':content, 'model':MODEL, 'metadata':metadata}
+              'temperature':payload['temperature'], 'max_tokens':payload['max_tokens']}
+    if backend == 'cerebras': metadata['reasoning_effort'] = 'low'
+    result={'content':content, 'model':provider['model'], 'metadata':metadata}
     if body['capture']: result.update(request=payload, response=data)
     encoded=json.dumps(result).encode()
     if len(encoded)>2*1024*1024 and body['capture']:
@@ -93,7 +108,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
     def do_GET(self):
         if self.path != '/health': self.send_error(404); return
         # Readiness of this transport/configuration only, NOT a provider success claim.
-        self.reply(200, {'mode':'audit' if options.audit else 'demo', 'configured':bool(KEY) and (options.chooser != 'jev' or bool(JEV_KEY)), 'automaticRetries':False, 'chooser':options.chooser})
+        self.reply(200, {'mode':'audit' if options.audit else 'demo', 'configured':all(bool(p['key']) for p in BACKENDS.values()) and (options.chooser != 'jev' or bool(JEV_KEY)), 'automaticRetries':False, 'chooser':options.chooser, 'defaultBackend':options.backend, 'sourceModels':{name:p['model'] for name,p in BACKENDS.items()}})
     def do_POST(self):
         if self.path!='/generate': self.send_error(404); return
         try:
@@ -101,6 +116,9 @@ class Handler(http.server.BaseHTTPRequestHandler):
             if not 0<length<=256*1024: raise ValueError('Request limit')
             body=json.loads(self.rfile.read(length))
             if set(body)!={'input','previous','diagnostics','capture'} or not all(isinstance(body[v],str) for v in ('input','previous','diagnostics')) or type(body['capture']) is not bool: raise ValueError('Invalid request')
+            backend = self.headers.get('X-Deal-Generation-Backend', options.backend)
+            if backend not in BACKENDS: raise GatewayFailure('BACKEND_UNAVAILABLE', 'Requested build-time backend is not enabled in this gateway')
+            body['backend'] = backend
             output=POOL.submit(infer,body).result(timeout=450)
             if len(output)>2*1024*1024: raise ValueError('Output limit')
             self.send_response(200); self.send_header('Content-Type','application/json'); self.send_header('Content-Length',str(len(output))); self.end_headers(); self.wfile.write(output)
@@ -117,5 +135,5 @@ class Handler(http.server.BaseHTTPRequestHandler):
         except Exception:
             self.reply(502, {'error':{'code':'GATEWAY_FAILURE', 'message':'Development gateway could not complete the request'}})
 if __name__=='__main__':
-    print('Development generation gateway listening on loopback:8787 · '+('AUDIT limits enabled' if options.audit else 'DEMO · no audit ceiling')+' · chooser '+options.chooser+' · no automatic retries',flush=True)
+    print('Development generation gateway listening on loopback:8787 · '+('AUDIT limits enabled' if options.audit else 'DEMO · no audit ceiling')+' · chooser '+options.chooser+' · source backends '+','.join(BACKENDS)+' · no automatic retries',flush=True)
     http.server.ThreadingHTTPServer(('127.0.0.1',8787),Handler).serve_forever()

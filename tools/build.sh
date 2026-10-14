@@ -3,6 +3,8 @@
 # Runtime dex is built once per profile and reused, because dexing Compose dominates build time.
 set -euo pipefail
 cd "$(dirname "$0")/.."
+GENERATION_BACKEND="${DEAL_GENERATION_BACKEND:-cortex}"
+case "$GENERATION_BACKEND" in cortex|cerebras) ;; *) echo 'DEAL_GENERATION_BACKEND must be cortex or cerebras' >&2; exit 1 ;; esac
 TARGETS=("$@")
 [[ ${#TARGETS[@]} -eq 0 ]] && TARGETS=(calendar vehicle todo organizer rental pizza tests)
 SDK="${ANDROID_SDK_ROOT:-$HOME/Android/Sdk}"
@@ -94,7 +96,8 @@ library_key=$(python3 tools/build-cache.py \
     dependencies/deal-embedding/tools dependencies/deal-embedding/core/generation.deal dependencies/deal-embedding/api \
     dependencies/deal-embedding/core/host dependencies/deal-embedding/core/source-literals.deal \
     dependencies/deal-embedding/core/candidate-check.deal dependencies/deal-embedding/core/source-repair.deal dependencies/deal-embedding/core/logging.deal dependencies/deal-embedding/core/generation-guidance.deal \
-    dependencies/deal-embedding/core/generation-guidance.md dependencies/deal-embedding/core/host \
+    dependencies/deal-embedding/core/generation-guidance.md dependencies/deal-embedding/core/repair-guidance.deal \
+    dependencies/deal-embedding/core/generation-example.deal dependencies/deal-embedding/core/generation-example.dealui dependencies/deal-embedding/core/host \
     dependencies/deal/deal dependencies/deal/std dependencies/deal/skills/write-deal/references \
     dependencies/deal-ui/ui dependencies/deal-ui/runtime-js "${ui_sources[@]}" "$ANDROID" \
     "$KOTLIN_HOME/lib/kotlin-compiler.jar" "$KOTLIN_HOME/lib/compose-compiler-plugin.jar" \
@@ -189,9 +192,17 @@ for app in "${TARGETS[@]}"; do
     app_started=$SECONDS
     rm -rf "build/$app"; mkdir -p "build/$app/classes" "build/$app/dex"
     if [[ "$profile" == "host" ]]; then
+        # App transport selection only; credentials and provider calls stay gateway-side.
+        printf 'package dev.deal.apps.development\nobject GenerationBuild { const val backend = "%s"; const val label = "%s" }\n' "$GENERATION_BACKEND" "$( [[ "$GENERATION_BACKEND" == cerebras ]] && echo 'Cerebras · qwen-3.8-27b' || echo 'Cortex' )" > "build/$app/GenerationBuild.kt"
+        sources+=("build/$app/GenerationBuild.kt")
+        printf 'Generation backend (%s): %s\n' "$app" "$GENERATION_BACKEND"
         rm -rf "build/assets/$app"; mkdir -p "build/assets/$app"
         cp -r build/embedding-consumer/assets/* "build/assets/$app/"
         if [[ "$app" == organizer || "$app" == tests ]]; then python3 tools/build-organizer-policy.py; fi
+        if [[ "$app" == tests ]]; then
+            mkdir -p "build/assets/$app/guidance-example"
+            cp dependencies/deal-embedding/core/generation-example.{deal,dealui} "build/assets/$app/guidance-example/"
+        fi
         if [[ "$app" == calendar || "$app" == tests ]]; then
             python3 tools/build-calendar-policy.py
             mkdir -p "build/assets/$app/experience"

@@ -250,7 +250,7 @@ class AgendaActivity : ComponentActivity() {
                                 }
                                 var generationAllowed by remember { mutableStateOf(getSharedPreferences("preparation", 0).getBoolean("generation", false)) }
                                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                                    Column(Modifier.weight(1f)) { Text("Tailored plans"); Text("Cortex uses accepted facts when you open help.", style = MaterialTheme.typography.bodySmall) }
+                                    Column(Modifier.weight(1f)) { Text("Tailored plans"); Text("${dev.deal.apps.development.GenerationBuild.label} uses accepted facts when you open help.", style = MaterialTheme.typography.bodySmall) }
                                     Switch(generationAllowed, { value -> getSharedPreferences("preparation", 0).edit().putBoolean("generation", value).commit(); generationAllowed = value })
                                 }
                                 Text("Task sharing is controlled separately in Todo → Extensions.", style = MaterialTheme.typography.bodyMedium)
@@ -295,7 +295,7 @@ class AgendaActivity : ComponentActivity() {
                     clearConfirm = false; clearing = true; suggestion = null
                     worker.execute { try { discovery?.close(); discovery = null; PreparationRecords.clear(applicationContext) } finally { runOnUiThread { clearing = false } } }
                 }) { Text("Clear", color = MaterialTheme.colorScheme.error) } }, dismissButton = { TextButton(onClick = { clearConfirm = false }) { Text("Cancel") } })
-                if (disclosureDialog) AlertDialog(onDismissRequest = { disclosureDialog = false }, title = { Text("Find preparation help?") }, text = { Text("While Calendar is open, send up to four event titles/notes and eight unfinished task titles to Jev for relevance discovery. After you open help, accepted facts also go to Cortex to generate a tailored plan. Enable sharing in Todo separately. No task or appointment is changed. You can stop sharing here.") },
+                if (disclosureDialog) AlertDialog(onDismissRequest = { disclosureDialog = false }, title = { Text("Find preparation help?") }, text = { Text("While Calendar is open, send up to four event titles/notes and eight unfinished task titles to Jev for relevance discovery. After you open help, accepted facts also go to ${dev.deal.apps.development.GenerationBuild.label} to generate a tailored plan. Enable sharing in Todo separately. No task or appointment is changed. You can stop sharing here.") },
                     confirmButton = { TextButton(onClick = { disclosureDialog = false; getSharedPreferences("preparation", 0).edit().putBoolean("disclose", true).putBoolean("generation", true).commit(); disclose = true }) { Text("Allow") } },
                     dismissButton = { TextButton(onClick = { disclosureDialog = false }) { Text("Not now") } })
             }

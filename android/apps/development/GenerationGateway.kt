@@ -33,6 +33,7 @@ class GenerationGateway(private val endpoint: String) : ModelClient {
                 append("POST /generate HTTP/1.1\r\n")
                 append("Host: 127.0.0.1:8787\r\n")
                 append("Content-Type: application/json\r\n")
+                append("X-Deal-Generation-Backend: ").append(GenerationBuild.backend).append("\r\n")
                 append("Content-Length: ").append(body.size).append("\r\n")
                 append("Connection: close\r\n\r\n")
             }.toByteArray()
@@ -53,7 +54,7 @@ class GenerationGateway(private val endpoint: String) : ModelClient {
             cancellation.check()
             if (status != 200) {
                 val error = runCatching { JSONObject(payload.toString(Charsets.UTF_8)).getJSONObject("error") }.getOrNull()
-                val code = error?.optString("code")?.takeIf { it in setOf("AUDIT_LIMIT", "PROVIDER_HTTP", "MODEL_TIMEOUT", "PROVIDER_UNREACHABLE", "GATEWAY_FAILURE") } ?: "HTTP_$status"
+                val code = error?.optString("code")?.takeIf { it in setOf("AUDIT_LIMIT", "BACKEND_UNAVAILABLE", "PROVIDER_HTTP", "MODEL_TIMEOUT", "PROVIDER_UNREACHABLE", "GATEWAY_FAILURE") } ?: "HTTP_$status"
                 log.event("model-provider", "failed", code = code, target = "development gateway")
                 throw GenerationGatewayFailure(code, "Generation gateway HTTP $status · $code · ${error?.optString("message").orEmpty()}" + (error?.optInt("providerStatus", 0)?.takeIf { it > 0 }?.let { " · provider HTTP $it" } ?: ""))
             }
