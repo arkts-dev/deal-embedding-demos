@@ -192,7 +192,7 @@ for app in "${TARGETS[@]}"; do
         rm -rf "build/assets/$app"; mkdir -p "build/assets/$app"
         cp -r build/embedding-consumer/assets/* "build/assets/$app/"
         if [[ "$app" == organizer || "$app" == tests ]]; then python3 tools/build-organizer-policy.py; fi
-        if [[ "$app" == calendar ]]; then
+        if [[ "$app" == calendar || "$app" == tests ]]; then
             mkdir -p "build/assets/$app/experience"
             cp android/apps/calendar/experiences/departure/*.deal "build/assets/$app/experience/" 2>/dev/null || true
             cp android/apps/calendar/experiences/departure/*.dealui "build/assets/$app/experience/" 2>/dev/null || true
