@@ -11,6 +11,7 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+        <activity android:name=".PreparationActivity" android:exported="false" />
         <activity android:name=".CalendarActivity" android:exported="true" android:launchMode="singleTop" android:label="Departure plan">
             <intent-filter>
                 <action android:name="android.intent.action.SEND" />

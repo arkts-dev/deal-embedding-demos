@@ -8,6 +8,8 @@ import org.json.*
 fun todoCapabilities(context: Context): NativeCapabilities {
     val store = TaskStore(context)
     val contract = CapabilityContract("host/todo", "Show tasks: assigned work, deadlines, checklists and proposal outcomes", listOf(
+        CapabilityFunction("unfinished", "Read opted-in unfinished task titles for foreground preparation discovery; no task writes", emptyList(),
+            CapabilityType("array", element = CapabilityType("record", fields = mapOf("id" to CapabilityType("string", maximum = 64), "title" to CapabilityType("string", maximum = 120), "complete" to CapabilityType("boolean"))), maximum = 8)),
         CapabilityFunction("tasks", "Read tasks shared for a show", listOf(CapabilityParameter("show", CapabilityType("string", maximum = 120))),
             CapabilityType("array", element = CapabilityType("record", fields = mapOf(
                 "id" to CapabilityType("string"), "title" to CapabilityType("string"), "assignee" to CapabilityType("string"),
@@ -26,6 +28,7 @@ fun todoCapabilities(context: Context): NativeCapabilities {
             CapabilityType("record", fields = mapOf("state" to CapabilityType("string"), "taskId" to CapabilityType("string"), "detail" to CapabilityType("string")))),
     ))
     return NativeCapabilities(contract, mapOf(
+        "unfinished" to { _ -> JSONArray(store.tasks().filter { !it.complete }.take(8).map { task -> JSONObject().put("id", task.id).put("title", task.title.take(120)).put("complete", false) }) },
         "tasks" to { args ->
             val show = args.getString(0)
             JSONArray(store.tasks().filter { it.show == show }.map { task -> JSONObject().put("id", task.id).put("title", task.title)

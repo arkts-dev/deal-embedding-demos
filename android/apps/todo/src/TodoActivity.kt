@@ -14,7 +14,6 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import dev.deal.shell.*
@@ -30,14 +29,15 @@ class TodoActivity : ComponentActivity() {
         var open by mutableStateOf<Task?>(null)
         var adding by mutableStateOf(false)
         var consent by mutableStateOf(store.consent())
+        var demo by mutableStateOf(false)
         fun commit(value: List<Task>) { store.save(value); tasks = value }
         setContent {
             AppTheme(Accent.Todo) {
-                AuroraBackdrop(Modifier.fillMaxSize()) {
-                    Scaffold(containerColor = Color.Transparent, topBar = {
-                        TopAppBar(colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent), title = {
-                            Column { Text("Tasks", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold); Text("Work assigned for the show", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant) }
-                        }, actions = { IconButton(onClick = { adding = true }) { Icon(Icons.Outlined.Add, "Add task") } })
+                Surface(Modifier.fillMaxSize()) {
+                    Scaffold(topBar = {
+                        TopAppBar(title = {
+                            Column { Text("Tasks", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold); Text("Your tasks", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                        }, actions = { TextButton(onClick = { demo = true }) { Text("Demo") }; IconButton(onClick = { adding = true }) { Icon(Icons.Outlined.Add, "Add task") } })
                     }, bottomBar = {
                         NavigationBar(containerColor = MaterialTheme.colorScheme.surface) {
                             NavigationBarItem(selected = open == null && !adding, onClick = { open = null; adding = false }, icon = { Icon(Icons.Outlined.Checklist, null) }, label = { Text("Tasks") })
@@ -56,6 +56,18 @@ class TodoActivity : ComponentActivity() {
                         }
                     }
                 }
+                if (demo) AlertDialog(onDismissRequest = { demo = false }, title = { Text("Preparation demo tasks") }, text = {
+                    Column {
+                        Text("Adds labelled tasks without replacing your other tasks. No task is completed. Sharing stays under your control.")
+                        listOf("Viewing" to "Download last three payslips", "Budget review" to "Check revised vendor quotation", "Ambiguous" to "Download the report", "Held-out" to "Fetch company incorporation certificate").forEach { (label, title) ->
+                            TextButton(onClick = {
+                                val day = LocalDate.now(TASK_ZONE).plusDays(1)
+                                commit(tasks.filter { it.show != "Preparation demo" } + listOf(Task(store.newId(), title, "Me", TaskStore.at(day, 12), show = "Preparation demo"), Task(store.newId(), "Water balcony plants", "Me", TaskStore.at(day, 18), show = "Preparation demo")))
+                                demo = false
+                            }) { Text(label) }
+                        }
+                    }
+                }, confirmButton = { TextButton(onClick = { demo = false }) { Text("Close") } })
             }
         }
     }
@@ -64,19 +76,18 @@ class TodoActivity : ComponentActivity() {
 @Composable private fun TaskList(tasks: List<Task>, filter: String, onFilter: (String) -> Unit, consent: Boolean, onConsent: (Boolean) -> Unit, onOpen: (Task) -> Unit) {
     val visible = tasks.filter { when (filter) { "Open" -> !it.complete; "Completed" -> it.complete; else -> true } }
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-        item { Hero("MAKE SPACE", "Small steps.\nClear head.", "Every bit of work between the rider and a ready stage.", illustration = { Art.Microphone(110.dp) }) }
         item {
             Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 listOf("Open", "Completed", "All").forEach { Chip(it, filter == it) { onFilter(it) } }
             }
         }
-        if (tasks.isEmpty()) item { Panel { Text("No tasks yet.", style = MaterialTheme.typography.titleMedium); Text("The organizer proposes work here during fulfilment.", color = MaterialTheme.colorScheme.onSurfaceVariant) } }
+        if (visible.isEmpty()) item { Text(if (tasks.isEmpty()) "No tasks yet. Add a task to get started." else "No ${filter.lowercase()} tasks.", color = MaterialTheme.colorScheme.onSurfaceVariant) }
         val grouped = visible.groupBy { it.show.ifEmpty { "Other tasks" } }
         grouped.forEach { (show, list) ->
             item { Text(show, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold) }
             items(list.sortedBy { it.due }) { task -> TaskCard(task) { onOpen(task) } }
         }
-        item { Panel { Text("Shared access", style = MaterialTheme.typography.titleLarge); Text("The organizer can read task status and propose tasks for your confirmation. You decide here.", color = MaterialTheme.colorScheme.onSurfaceVariant); Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) { Text(if (consent) "Sharing enabled" else "Private by default"); Switch(consent, onConsent) } } }
+        item { Panel { Text("Shared access", style = MaterialTheme.typography.titleLarge); Text("Calendar can read unfinished task titles for opted-in preparation help. Organizer can read task status and propose tasks for confirmation. You decide here.", color = MaterialTheme.colorScheme.onSurfaceVariant); Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) { Text(if (consent) "Sharing enabled" else "Private by default"); Switch(consent, onConsent) } } }
     }
 }
 

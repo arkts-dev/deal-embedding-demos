@@ -1,0 +1,30 @@
+import * as app from "./preparation";
+import * as ui from "./platform.dealui-pack";
+// @ui-root
+export view Preparation(state: app.State): View {
+  ui.Column() {
+    ui.Text(value: state.message)
+    When(!state.loaded) {
+      ui.Button(text: "Load preparation tasks", enabled: !state.loading, onClick: action app.Load {})
+      When(state.loading) { ui.Spinner() }
+    } Else {
+      ForEach(state.tasks, task: app.Task, key: task.id) {
+        ui.Column() {
+          ui.Toggle(text: task.title, value: task.id, checked: task.chosen, accessibilityLabel: "Include " + task.title, onChange: action app.Toggle { id: payload })
+          When(task.chosen) { ui.Text(value: task.durationLabel) }
+          ui.Toggle(text: "Edit time for " + task.title, value: task.id, checked: task.editing, accessibilityLabel: "Edit time for " + task.title, onChange: action app.Focus { id: payload })
+        }
+      }
+      When(state.focusId !== "") { ui.IntField(value: state.focusMinutes, label: "Minutes: " + state.focusTitle, minimum: 1, maximum: 240, onChange: action app.Duration { value: payload }) }
+      ui.IntField(value: state.travel, label: "Travel minutes (estimate)", minimum: 0, maximum: 240, onChange: action app.Travel { value: payload })
+      ui.IntField(value: state.buffer, label: "Arrival buffer minutes", minimum: 0, maximum: 120, onChange: action app.Buffer { value: payload })
+      ui.Button(text: "Calculate preparation and departure", onClick: action app.Calculate {})
+      When(state.leave >= 0) {
+        ui.Text(value: "Start preparation")
+        ui.Time(value: state.prepare)
+        ui.Text(value: "Leave at")
+        ui.Time(value: state.leave)
+      }
+    }
+  }
+}

@@ -20,6 +20,18 @@ python3 tools/generation-gateway.py --chooser jev --counts build/demo-model-coun
 adb reverse tcp:8787 tcp:8787
 ```
 
+### Calendar preparation demo
+
+Calendar → **Demo** adds one labelled event tomorrow; Todo → **Demo** adds matching labelled tasks plus an unrelated task without replacing other records. Enable **Shared access** in Todo. Open tomorrow’s Calendar agenda and choose **Find preparation help → Allow**. Event titles/notes and unfinished task titles go to the configured remote chooser only while this agenda is foreground. A single evidence-linked card offers **Add to plan** or **Dismiss**; uncertain relationships are phrased as questions.
+
+Jev classifies each disclosed event/task pair as related, uncertain or unrelated. Compiled trusted `policy/preparation.deal` issues the questions, validates answers/references, checks current facts, bounds admissions and remembers dismissal. Generic trusted execution and capability transport live in embedding. The accepted `.deal/.dealui` plan runs locally: choose tasks, edit durations/travel/buffer, calculate preparation and departure. It has only a read-only snapshot capability—no task completion, appointment writes or model access. This source is authored, not freshly generated UI; live semantic discovery is the demonstrated AI contribution.
+
+Only changed facts may trigger another call: no automatic retry, at most 32 admitted inputs per agenda day, 60-second inference deadline, four events/eight tasks. Provider sharing and Calendar’s remote disclosure opt-in are independent; **Stop preparation sharing** disables disclosure. This is foreground demo assistance, not a background agent or live route estimator.
+
+Evidence scope: development initially exposed false semantic associations and compiler limitations; these attempts are not reliability successes. The conservative pair classifier was then evaluated separately on the frozen eight-case set. A passing set is bounded demo evidence, not a general accuracy guarantee. The accepted planner is deliberately authored; no fresh UI-generation success is claimed.
+
+Small checks: `node tools/verify-preparation.js` verifies the compiled lifecycle policy without network. `node tools/verify-preparation.js --live` makes eight live chooser calls including held-out wording and negative cases. `python3 tools/verify-preparation-device.py --live` exercises ordinary demo/consent/card/planner controls and retains private device receipts in ignored `build/preparation-e2e/`. The device check requires the gateway/ADB reverse above and explicit Todo sharing. `PreparationInstrumentation` checks real compiled planner actions with read-only fixture facts.
+
 Requires JDK 25, Kotlin/Compose plugin, Android SDK API 37/build tools 36; apps target API 36. Runtime dependencies are pinned. `EMBEDDING_AAR` can select a prebuilt library. Each independent dependency checkout is committed separately.
 
 The gateway binds loopback and reads credentials in memory, never packages them. Jev choice uses `~/jev.key`, `/v1/systemone` and `jev-latest`; `--jev-key-file`/`--jev-model` override these. Cortex remains the source/repair provider. Choice probabilities/confidence are metadata—not correctness, grants or domain authority. Provider failures stop without retries or switching providers.

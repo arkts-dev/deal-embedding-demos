@@ -16,7 +16,7 @@ assert (library/'core/generation.deal').exists()
 assert not (library/'backends').exists()
 assert {p.name for p in (library/'core/host').glob('*.d.deal')} == {'checker.d.deal', 'discovery.d.deal', 'model.d.deal', 'chooser.d.deal', 'policy-data.d.deal', 'observer.d.deal', 'embedding.d.deal', 'catalogue-policy.d.deal', 'protocol.d.deal'}
 assert (library/'android/src/compiler/ExperienceCompiler.kt').exists()
-assert {p.name for p in (library/'android/src/bindings').glob('*.kt')} == {'CapabilityBindings.kt', 'DealSessionBindings.kt', 'ExperienceGenerator.kt', 'SandboxProgram.kt', 'EmbeddingLog.kt', 'ChoiceProtocol.kt', 'ApplicationProtocol.kt', 'ProtocolController.kt','ObservationPresentation.kt','DiagnosticFiles.kt','FailureEvidence.kt'}
+assert {p.name for p in (library/'android/src/bindings').glob('*.kt')} == {'CapabilityBindings.kt', 'DealSessionBindings.kt', 'ExperienceGenerator.kt', 'SandboxProgram.kt', 'EmbeddingLog.kt', 'ChoiceProtocol.kt', 'ApplicationProtocol.kt', 'ProtocolController.kt','ObservationPresentation.kt','DiagnosticFiles.kt','FailureEvidence.kt','TrustedProgram.kt'}
 assert {p.name for p in (library/'android/src/inference').glob('*.kt')} == {'ModelClient.kt'}
 assert (root/'android/apps/development/GenerationGateway.kt').exists()
 assert not (library/'android/src/bindings/PublicProtocolBinding.kt').exists()
@@ -44,7 +44,11 @@ for path in (library / 'android').rglob('*'):
         assert 'dev.deal.apps' not in text and 'host/todo' not in text and 'host/trip' not in text and 'host/calendar' not in text, path
 for path in (root/'android/apps/calendar/src').glob('*.kt'):
     text=path.read_text()
-    assert 'dev.deal.apps.todo' not in text and 'dev.deal.apps.vehicle' not in text and 'host/todo' not in text and 'host/trip' not in text, path
+    assert 'dev.deal.apps.todo' not in text and 'dev.deal.apps.vehicle' not in text and 'host/trip' not in text, path
+    if path.name != 'PreparationDiscovery.kt': assert 'host/todo' not in text, path
+    else:
+        assert '"unfinished"' in text and 'registry.read(' in text
+        assert 'proposeTask' not in text and 'DealRenderer(' not in text
     assert 'distanceKm' not in text and 'makeTable' not in text, path
 for provider, other in [('todo', 'vehicle'), ('vehicle', 'todo')]:
     for path in (root / f'android/apps/{provider}').rglob('*'):

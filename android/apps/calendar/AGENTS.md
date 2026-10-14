@@ -2,4 +2,6 @@
 
 Keep the ordinary entrance date-led: week selection, daily agenda and event details. Departure assistance opens for the selected event; generation/development controls belong behind Inspect. Use native Material presentation without decorative heroes or animated backgrounds.
 
+Foreground preparation discovery uses opted-in event notes and read-only Todo facts. Keep semantic choice, reference validation, freshness and dismissal in compiled trusted DEAL; generic trusted execution/transport belongs in embedding. Accepted plan arithmetic and interaction belong in the checked experience. Never branch on scenario names or turn uncertain suggestions into obligations.
+
 Calendar Provider remains authoritative. Preserve explicit consent, existing reminders and revision checks before writes. Keep the dedicated demo calendar isolated from personal-calendar edits. Embedding owns compilation, execution, observation and embedded rendering; do not add application pumping or direct renderer wiring.

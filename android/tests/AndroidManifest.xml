@@ -7,6 +7,7 @@
   <service android:name=".RemoteProbeService" android:exported="true" android:process=":provider"><intent-filter><action android:name="dev.deal.embedding.CAPABILITIES_V1" /></intent-filter></service>
  </application>
  <instrumentation android:name=".CalendarReminderInstrumentation" android:targetPackage="dev.deal.connectors.tests" />
+ <instrumentation android:name=".PreparationInstrumentation" android:targetPackage="dev.deal.connectors.tests" />
  <instrumentation android:name=".CalendarInstrumentation" android:targetPackage="dev.deal.connectors.tests" />
  <instrumentation android:name=".DiagnosticInstrumentation" android:targetPackage="dev.deal.connectors.tests" />
  <instrumentation android:name=".RemoteCapabilityInstrumentation" android:targetPackage="dev.deal.connectors.tests" />
