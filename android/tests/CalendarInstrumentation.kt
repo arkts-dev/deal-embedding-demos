@@ -31,7 +31,7 @@ class CalendarInstrumentation:Instrumentation(){
     val children=node.getJSONArray("children");for(i in 0 until children.length())action(children.getJSONObject(i),label)?.let{return it};return null
    }
    fun tap(label:String){api.dispatch(session,action(update.snapshot.tree,label)?:error("Missing $label"),null);update=api.next(session,"")}
-   fun calculated(){val end=System.currentTimeMillis()+10000;while(!update.snapshot.tree.toString().contains("Review before saving.")&&!update.snapshot.tree.toString().contains("no reminder prepared.")&&!update.snapshot.tree.toString().contains("Let’s reconnect")){check(System.currentTimeMillis()<end){update.snapshot.json().toString()};Thread.sleep(10);update=api.next(session,"")}}
+   fun calculated(){val end=System.currentTimeMillis()+10000;while(update.snapshot.tree.toString().contains("ui.Spinner") || update.snapshot.tree.toString().contains("Checking your connected apps")){check(System.currentTimeMillis()<end){update.snapshot.json().toString()};Thread.sleep(10);update=api.next(session,"")}}
    api.grant("host/calendar");api.grant("host/trip")
    tap("Calculate departure");calculated();check(minute==566&&proposals==1&&reads==2)
    tap("Add 5 minutes");tap("Add 2 kilometres");tap("Calculate departure");calculated();check(minute==557&&proposals==2)
