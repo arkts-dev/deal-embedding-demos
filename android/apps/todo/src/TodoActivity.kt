@@ -25,12 +25,17 @@ class TodoActivity : ComponentActivity() {
     private val store by lazy { TaskStore(this) }
     override fun onCreate(state: Bundle?) {
         super.onCreate(state)
+        if (intent.hasExtra("demoTask")) {
+            val day = LocalDate.now(TASK_ZONE).plusDays(1)
+            store.save(store.tasks().filter { it.show != "Preparation demo" } + listOf(
+                Task(store.newId(), intent.getStringExtra("demoTask")!!, "Me", TaskStore.at(day, 12), show = "Preparation demo"),
+                Task(store.newId(), "Water balcony plants", "Me", TaskStore.at(day, 18), show = "Preparation demo")))
+        }
         var tasks by mutableStateOf(store.tasks())
         var filter by mutableStateOf("Open")
         var open by mutableStateOf<Task?>(null)
         var adding by mutableStateOf(false)
         var consent by mutableStateOf(store.consent())
-        var demo by mutableStateOf(false)
         var access by mutableStateOf(false)
         fun commit(value: List<Task>) { store.save(value); tasks = value }
         setContent {
@@ -39,12 +44,12 @@ class TodoActivity : ComponentActivity() {
                 Surface(Modifier.fillMaxSize()) {
                     Scaffold(topBar = {
                         TopAppBar(title = {
-                            Column { Text(if (access) "Access" else "Tasks", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold); Text(if (access) "Connected apps" else "Your tasks", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant) }
-                        }, actions = { if (access) TextButton(onClick = { demo = true }) { Text("Development") }; IconButton(onClick = { access = false; adding = true }) { Icon(Icons.Outlined.Add, "Add task") } })
+                            Column { Text(if (access) "Extensions" else "Tasks", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold); Text(if (access) "Connected apps" else "Your tasks", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                        }, actions = { IconButton(onClick = { access = false; adding = true }) { Icon(Icons.Outlined.Add, "Add task") } })
                     }, bottomBar = {
                         NavigationBar(containerColor = MaterialTheme.colorScheme.surface) {
                             NavigationBarItem(selected = !access && open == null && !adding, onClick = { open = null; adding = false; access = false }, icon = { Icon(Icons.Outlined.Checklist, null) }, label = { Text("Tasks") })
-                            NavigationBarItem(selected = access, onClick = { access = true; open = null; adding = false }, icon = { Icon(Icons.Outlined.Shield, null) }, label = { Text("Access") })
+                            NavigationBarItem(selected = access, onClick = { access = true; open = null; adding = false }, icon = { Icon(Icons.Outlined.Shield, null) }, label = { Text("Extensions") })
                         }
                     }) { padding ->
                         Box(Modifier.padding(padding)) {
@@ -67,19 +72,7 @@ class TodoActivity : ComponentActivity() {
                         }
                     }
                 }
-                if (demo) AlertDialog(onDismissRequest = { demo = false }, title = { Text("Preparation demo tasks") }, text = {
-                    Column {
-                        Text("Replace labelled demo tasks only. Sharing is unchanged.")
-                        listOf("Viewing" to "Download last three payslips", "Budget review" to "Check revised vendor quotation", "Ambiguous" to "Download the report", "Held-out" to "Fetch company incorporation certificate").forEach { (label, title) ->
-                            TextButton(onClick = {
-                                val day = LocalDate.now(TASK_ZONE).plusDays(1)
-                                commit(tasks.filter { it.show != "Preparation demo" } + listOf(Task(store.newId(), title, "Me", TaskStore.at(day, 12), show = "Preparation demo"), Task(store.newId(), "Water balcony plants", "Me", TaskStore.at(day, 18), show = "Preparation demo")))
-                                filter = "Open"; open = null; adding = false
-                                demo = false
-                            }) { Text(label) }
-                        }
-                    }
-                }, confirmButton = { TextButton(onClick = { demo = false }) { Text("Close") } })
+
             }
         }
     }

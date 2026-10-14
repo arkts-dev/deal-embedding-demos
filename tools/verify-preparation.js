@@ -63,5 +63,7 @@ async function invoke(name,...args){
  result=await invoke('discover',input(),JSON.stringify({input:'',attempted:[],dismissed:[]}));assert.equal(result.status,'stale');
  fail=true;current=input();result=await invoke('discover',current,JSON.stringify({input:'',attempted:[],dismissed:[]}));assert.equal(result.status,'unavailable');const count=calls;
  await invoke('discover',current,JSON.stringify(result.state));assert.equal(calls,count);
- console.log('PASS compiled preparation policy: references, duplicate admission, dismissals, none, ambiguity, stale acceptance/results, unavailable/no retry');
+ fail=false;selected='related';let many={input:'',attempted:[],dismissed:[]};
+ for(let i=0;i<35;i++){current=input('Changed '+i);const next=await invoke('discover',current,JSON.stringify(many));assert.equal(next.status,'suggestion');many=next.state;}
+ console.log('PASS compiled preparation policy: no daily quota; references, duplicate admission, dismissals, none, ambiguity, stale acceptance/results, unavailable/no retry');
 })().catch(e=>{console.error(e);process.exitCode=1});

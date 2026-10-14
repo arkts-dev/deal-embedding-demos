@@ -30,8 +30,8 @@ export async function discover(input: string, previous: string): string {
             return encode({state:state,status:"suggestion",suggestion:cached});
         }
     }
-    if (attempted.length >= 32) { return empty(state,"limit"); }
-    attempted[attempted.length] = digest;
+    // Admission history is stored per disclosed input by the host, not a daily quota.
+    attempted = [digest];
     let dismissedBefore: string[] = state.dismissed;
     state = {day:day,input:digest,attempted:attempted,dismissed:dismissedBefore};
     await facts.remember(encode(state));
@@ -93,7 +93,7 @@ export async function discover(input: string, previous: string): string {
 export async function dismiss(previous: string, suggestion: string): string {
     let state: table = await data.parse(previous); let tip: table = await data.parse(suggestion);
     let dismissed: string[] = state.dismissed; let key: string = tip.key;
-    if (dismissed.length < 32) { dismissed[dismissed.length] = key; }
+    dismissed[dismissed.length] = key;
     return encode({day:state.day,input:state.input,attempted:state.attempted,dismissed:dismissed});
 }
 

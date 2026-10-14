@@ -16,7 +16,7 @@ class PreparationInstrumentation : Instrumentation() {
         try {
             val ctx = targetContext
             val model = object : ModelClient { override fun complete(input: String, previous: String, diagnostics: String, cancellation: GenerationCancellation, log: EmbeddingLog): String = error("Unexpected inference") }
-            ApplicationProtocol(ctx, Embedding(ctx, CapabilityRegistry(ctx, CapabilityDiscovery(ctx) { false }, emptyList()), model, EmbeddingConfig("preparation", emptyList(), "prep-test-${UUID.randomUUID()}"))).use { api ->
+            ApplicationProtocol(ctx, Embedding(ctx, CapabilityRegistry(ctx, CapabilityDiscovery(ctx) { false }, emptyList()), model, EmbeddingConfig("preparation", emptyList(), "prep-test-${UUID.randomUUID()}", retainState = true))).use { api ->
                 val initial = "let tasks: Task[] = []; let one: Task = {id:\"one\",title:\"Get supporting evidence\",chosen:true}; let two: Task = {id:\"two\",title:\"Water plants\"}; tasks[0] = one; tasks[1] = two; return {tasks:tasks,start:900,loaded:true};"
                 val deal = ctx.assets.open("preparation/preparation.deal").bufferedReader().use { it.readText() }.replace("function acceptedState(): State { return {}; }", "function acceptedState(): State { $initial }")
                 val e = api.load("Preparation", Source(deal, ctx.assets.open("preparation/preparation.dealui").bufferedReader().use { it.readText() }))
@@ -51,7 +51,11 @@ class PreparationInstrumentation : Instrumentation() {
                 check(tree().toString().contains("\"intValue\":825"))
                 tap("Travel minutes (estimate)", "-1")
                 check(tree().toString().contains("\"intValue\":25"))
-                api.close(session); api.forget(e)
+                api.close(session)
+                val reopened = api.run(e)
+                val retained = api.next(reopened, "").snapshot.tree.toString()
+                check(retained.contains("\"intValue\":825")) { "Draft lost on cold reopen" }
+                api.close(reopened); api.forget(e)
             }
             receipt.putString("preparation", "compiled populated initial plan/select/durations/estimates/departure; no capabilities, inference or writes"); finish(0, receipt)
         } catch (error: Throwable) { receipt.putString("failure", android.util.Log.getStackTraceString(error)); finish(1, receipt) }

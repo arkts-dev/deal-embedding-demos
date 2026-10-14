@@ -5,6 +5,7 @@ Uses existing grants; never silently grants access, resets admission or retries 
 import argparse, pathlib, re, subprocess, time, xml.etree.ElementTree as ET
 p=argparse.ArgumentParser(description=__doc__)
 p.add_argument('--live',action='store_true',required=True)
+p.add_argument('--generated',action='store_true',help='Verify an already checked generated viewing or budget plan, no forced model result')
 p.add_argument('--prepared',action='store_true',help='Use existing fixtures without recreating IDs or consuming extra admission')
 p.add_argument('--scenario',choices=['Viewing','Budget review','Held-out','Ambiguous','Unrelated'],default='Viewing')
 a=p.parse_args()
@@ -41,12 +42,11 @@ task,event,expected={'Viewing':('Viewing','Apartment viewing','Download last thr
     'Held-out':('Held-out','Client onboarding','Fetch company incorporation certificate'),
     'Ambiguous':('Ambiguous','Review meeting','Download the report'),
     'Unrelated':('Budget review','Swimming lesson',None)}[a.scenario]
-assert any(n.attrib.get('name')=='allowed' and n.attrib.get('value')=='true' for n in ET.fromstring(prefs('todo','provider'))),'Enable Todo → Access first'
-assert any(n.attrib.get('name')=='disclose' and n.attrib.get('value')=='true' for n in ET.fromstring(prefs('calendar','preparation'))),'Enable Calendar → Access first'
+assert any(n.attrib.get('name')=='allowed' and n.attrib.get('value')=='true' for n in ET.fromstring(prefs('todo','provider'))),'Enable Todo → Extensions first'
+assert any(n.attrib.get('name')=='disclose' and n.attrib.get('value')=='true' for n in ET.fromstring(prefs('calendar','preparation'))),'Enable Calendar → Extensions first'
 # Setup is explicitly outside the acceptance path.
 if not a.prepared:
-    launch('todo');tap('Access');tap('Development');tap(task)
-    launch('calendar');tap('Access');tap('Development');tap(event)
+    subprocess.run(['python3','tools/setup-preparation-demo.py',{'Viewing':'viewing','Budget review':'budget','Held-out':'held-out','Ambiguous':'ambiguous','Unrelated':'unrelated'}[a.scenario]],check=True)
 # Actual acceptance starts at the launcher, viewing today, not tomorrow or Development.
 launch('calendar');t=settled();record(a.scenario+'-ordinary')
 assert 'Sample tasks added' not in t and 'Development' not in t and 'Find preparation help' not in t,t
@@ -56,11 +56,31 @@ if expected is None:
 else:
     assert any(expected in v for v in links),t
     assert ('Could “' in links[0]) == (a.scenario=='Ambiguous'),t
-    before=prefs('todo','provider');tap(links[0]);time.sleep(3);t=texts()
-    assert expected in t and 'Load preparation tasks' not in t,t
-    tap('Edit time for '+expected,True);tap('Minutes: '+expected+' increase',True)
-    tap('Update times');adb('shell','input','swipe','550','1950','550','800','400');t=texts()
-    assert '14:14' in t and '14:30' in t,t
+    before=prefs('todo','provider');tap(links[0])
+    deadline=time.monotonic()+20
+    while time.monotonic()<deadline:
+        t=texts()
+        if 'Opening plan…' not in t:break
+        time.sleep(1)
+    assert 'Load preparation tasks' not in t,t
+    if a.generated:
+        assert a.scenario in ('Viewing','Budget review'), 'Generated interaction check supports these two fixtures'
+        if a.scenario=='Viewing':
+            assert 'Payslip checklist' in t,t
+            tap('Print the three payslips',True)
+            tap('Preparation estimate in minutes increase',True)
+        else:
+            assert 'Budget comparison' in t,t
+            tap('Enter the approved budget in euros increase',True)
+            tap('Enter the revised vendor quotation in euros increase',True)
+        record(a.scenario+'-generated')
+    else:
+        assert expected in t,t
+        tap('Edit time for '+expected,True);tap('Minutes: '+expected+' increase',True)
+        tap('Update times');t=texts()
+        if '14:14' not in t:
+            adb('shell','input','swipe','550','900','550','1950','400');t=texts()
+        assert '14:14' in t and '14:30' in t,t
     assert before==prefs('todo','provider'),'Plan changed tasks'
     record(a.scenario+'-populated-plan');tap('Back');settled();tap('Dismiss suggestion',True)
     before=prefs('calendar','preparation');launch('calendar');t=settled()

@@ -21,7 +21,7 @@ class PreparationDiscovery(private val context: Context) : AutoCloseable {
     private val facts = NativeCapabilities(CapabilityContract("host/preparation-facts", "Host-controlled disclosed input freshness", listOf(
         CapabilityFunction("current", "Re-read the opted-in foreground facts", emptyList(), CapabilityType("string", maximum = 8192)),
         CapabilityFunction("remember", "Persist policy-owned admission state before inference", listOf(CapabilityParameter("state", CapabilityType("string", maximum = 8192))), CapabilityType.NullType)
-    )), mapOf("current" to { _ -> input(date) }, "remember" to { args -> check(prefs.edit().putString("state", args.getString(0)).commit()); state = args.getString(0); JSONObject.NULL }))
+    )), mapOf("current" to { _ -> input(date) }, "remember" to { args -> check(prefs.edit().putString("state", args.getString(0)).commit()); state = args.getString(0); saveInput(state); JSONObject.NULL }))
     private val policy = TrustedProgram(context, "calendar-discovery", "preparation.js", listOf(facts), GenerationGateway("http://127.0.0.1:8787/generate"))
     fun enabled() = prefs.getBoolean("disclose", false)
     fun allow(value: Boolean) { prefs.edit().putBoolean("disclose", value).commit(); if (!value) protocol.revoke("host/todo") }
@@ -40,14 +40,33 @@ class PreparationDiscovery(private val context: Context) : AutoCloseable {
         date = day
         protocol.refresh(); protocol.grant("host/todo")
         val current = input(day)
-        val result = JSONObject(policy.call("discover", current, state).get(90, java.util.concurrent.TimeUnit.SECONDS))
+        val history = context.getSharedPreferences("preparation-inputs", 0)
+        val prior = history.getString(PreparationRecords.key(current), null) ?: JSONObject(state).put("attempted", JSONArray()).toString()
+        val started = android.os.SystemClock.elapsedRealtime()
+        val result = try { JSONObject(policy.call("discover", current, prior).get(90, java.util.concurrent.TimeUnit.SECONDS)) } catch (error: Throwable) {
+            PreparationRecords.record(context, "discovery", JSONObject().put("model", "Jev").put("status", "unavailable").put("elapsedMs", android.os.SystemClock.elapsedRealtime() - started).put("reason", error.message?.take(1000)))
+            throw error
+        }
+        PreparationRecords.record(context, "discovery", JSONObject().put("model", "Jev").put("status", result.getString("status")).put("elapsedMs", android.os.SystemClock.elapsedRealtime() - started).put("facts", JSONObject(current)).put("decision", result.optJSONObject("suggestion")))
         state = result.getJSONObject("state").toString()
         check(prefs.edit().putString("state", state).commit())
+        saveInput(state)
         return result
+    }
+    private fun saveInput(value: String) {
+        val digest = JSONObject(value).optString("input")
+        if (digest.isNotEmpty()) check(context.getSharedPreferences("preparation-inputs", 0).edit().putString(digest, value).commit())
     }
     fun dismiss(tip: JSONObject) {
         state = policy.call("dismiss", state, tip.toString()).get(10, java.util.concurrent.TimeUnit.SECONDS)
         check(prefs.edit().putString("state", state).commit())
+        saveInput(state)
+    }
+    fun validate(accepted: String): Boolean {
+        val value = JSONObject(accepted)
+        date = LocalDate.parse(value.getJSONObject("context").getString("day"))
+        protocol.refresh(); protocol.grant("host/todo")
+        return input(date) == value.getJSONObject("context").toString()
     }
     fun accept(tip: JSONObject): String = policy.call("accept", tip.toString()).get(15, java.util.concurrent.TimeUnit.SECONDS)
     override fun close() { foreground = false; teardown({ policy.close() }, { protocol.close() }) }

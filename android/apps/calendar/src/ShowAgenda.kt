@@ -160,8 +160,7 @@ class AgendaActivity : ComponentActivity() {
                             "rejected" -> "AI returned an unsupported suggestion. Nothing was added."
                             "already_checked", "dismissed" -> ""
                             "no_relationship" -> "No preparation suggestion for these facts."
-                            "limit" -> "Today’s preparation checks are used up. No more facts will be sent today."
-                            else -> ""
+                                                        else -> ""
                         }
                     }
                 }
@@ -172,6 +171,9 @@ class AgendaActivity : ComponentActivity() {
     override fun onDestroy() { worker.execute { discovery?.close() }; worker.shutdown(); super.onDestroy() }
     override fun onCreate(state: Bundle?) {
         super.onCreate(state)
+        if (intent.hasExtra("demoEvent") && checkSelfPermission(android.Manifest.permission.WRITE_CALENDAR) == android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            agenda.preparationDemo(intent.getStringExtra("demoEvent")!!, intent.getStringExtra("demoNote") ?: "")
+        }
         setContent {
             AppTheme(Accent.Calendar) {
                 var date by remember { mutableStateOf(LocalDate.now(AGENDA_ZONE)) }
@@ -183,7 +185,8 @@ class AgendaActivity : ComponentActivity() {
                 var disclose by remember { mutableStateOf(getSharedPreferences("preparation", 0).getBoolean("disclose", false)) }
                 var access by remember { mutableStateOf(false) }
                 var disclosureDialog by remember { mutableStateOf(false) }
-                var demoDialog by remember { mutableStateOf(false) }
+                var clearing by remember { mutableStateOf(false) }
+                var clearConfirm by remember { mutableStateOf(false) }
                 val permissionRequest = androidx.activity.compose.rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
                     granted = checkSelfPermission(android.Manifest.permission.READ_CALENDAR) == android.content.pm.PackageManager.PERMISSION_GRANTED && checkSelfPermission(android.Manifest.permission.WRITE_CALENDAR) == android.content.pm.PackageManager.PERMISSION_GRANTED
                 }
@@ -202,11 +205,11 @@ class AgendaActivity : ComponentActivity() {
                 Scaffold(topBar = {
                     TopAppBar(title = {
                         Column {
-                            Text(if (access) "Access" else "Calendar", style = MaterialTheme.typography.titleLarge)
+                            Text(if (access) "Extensions" else "Calendar", style = MaterialTheme.typography.titleLarge)
                             Text(date.format(DateTimeFormatter.ofPattern("MMMM yyyy", Locale.getDefault())), style = MaterialTheme.typography.bodyMedium)
                         }
                     }, actions = {
-                        TextButton(onClick = { access = !access; suggestion = null }) { Text(if (access) "Done" else "Access") }
+                        TextButton(onClick = { access = !access; suggestion = null }) { Text(if (access) "Done" else "Extensions") }
                         TextButton(onClick = { date = LocalDate.now(AGENDA_ZONE); selected = null; adding = false; access = false }) { Text("Today") }
                         IconButton(onClick = { access = false; adding = true }, enabled = granted) { Icon(Icons.Outlined.Add, "Add event") }
                     })
@@ -216,7 +219,7 @@ class AgendaActivity : ComponentActivity() {
                         when {
                             access -> Column(Modifier.padding(20.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(16.dp)) {
                                 Text("Preparation help", style = MaterialTheme.typography.titleLarge)
-                                Text("Allow remote AI to read up to four event titles and notes for tomorrow and eight unfinished task titles while Calendar is open.")
+                                Text("Jev can discover useful preparation from tomorrow’s event notes and unfinished task titles. When you open a plan, Cortex can use those accepted facts to tailor it.")
                                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                                     Text("AI discovery", modifier = Modifier.weight(1f))
                                     Switch(disclose, { enabled ->
@@ -227,10 +230,15 @@ class AgendaActivity : ComponentActivity() {
                                         }
                                     })
                                 }
-                                Text("Task sharing is controlled separately in Todo → Access.", style = MaterialTheme.typography.bodyMedium)
+                                var generationAllowed by remember { mutableStateOf(getSharedPreferences("preparation", 0).getBoolean("generation", false)) }
+                                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                                    Text("Tailored plans", modifier = Modifier.weight(1f))
+                                    Switch(generationAllowed, { value -> getSharedPreferences("preparation", 0).edit().putBoolean("generation", value).commit(); generationAllowed = value })
+                                }
+                                Text("Task sharing is controlled separately in Todo → Extensions.", style = MaterialTheme.typography.bodyMedium)
                                 HorizontalDivider()
-                                TextButton(onClick = { demoDialog = true }) { Text("Development") }
-                                if (discoveryMessage.isNotEmpty()) Text(discoveryMessage, style = MaterialTheme.typography.bodySmall)
+                                TextButton(onClick = { startActivity(Intent(this@AgendaActivity, PreparationInspectActivity::class.java)) }) { Text("Inspect") }
+                                Button(enabled = !clearing, onClick = { clearConfirm = true }) { Text("Clear saved assistance") }
                             }
                             !granted -> Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                                 Text("Connect Calendar to view and manage events.")
@@ -264,16 +272,12 @@ class AgendaActivity : ComponentActivity() {
                         }
                     }
                 }
-                if (demoDialog) AlertDialog(onDismissRequest = { demoDialog = false }, title = { Text("Preparation demo") }, text = {
-                    Column {
-                        Text("Replace labelled demo events only. Add the matching tasks in Todo → Access → Development.")
-                        listOf("Apartment viewing" to "Bring proof of income.", "Project budget review" to "Discuss supplier costs.", "Review meeting" to "Bring the documents, if relevant.", "Swimming lesson" to "Bring a towel.", "Client onboarding" to "Verify business registration.").forEach { (title, note) ->
-                            TextButton(onClick = { agenda.preparationDemo(title, note); demoDialog = false; refresh() }) { Text(title) }
-                        }
-                    }
-                }, confirmButton = { TextButton(onClick = { demoDialog = false }) { Text("Close") } })
-                if (disclosureDialog) AlertDialog(onDismissRequest = { disclosureDialog = false }, title = { Text("Find preparation help?") }, text = { Text("While Calendar is open, send up to four event titles/notes and eight unfinished task titles to the configured remote AI. Enable sharing in Todo separately. No task or appointment is changed. You can stop sharing here.") },
-                    confirmButton = { TextButton(onClick = { disclosureDialog = false; getSharedPreferences("preparation", 0).edit().putBoolean("disclose", true).commit(); disclose = true }) { Text("Allow") } },
+                if (clearConfirm) AlertDialog(onDismissRequest = { clearConfirm = false }, title = { Text("Clear saved assistance?") }, text = { Text("Remove saved plans and discovery history. Permissions, appointments and tasks stay unchanged.") }, confirmButton = { TextButton(onClick = {
+                    clearConfirm = false; clearing = true; suggestion = null
+                    worker.execute { try { discovery?.close(); discovery = null; PreparationRecords.clear(applicationContext) } finally { runOnUiThread { clearing = false } } }
+                }) { Text("Clear") } }, dismissButton = { TextButton(onClick = { clearConfirm = false }) { Text("Cancel") } })
+                if (disclosureDialog) AlertDialog(onDismissRequest = { disclosureDialog = false }, title = { Text("Find preparation help?") }, text = { Text("While Calendar is open, send up to four event titles/notes and eight unfinished task titles to Jev for relevance discovery. After you open help, accepted facts also go to Cortex to generate a tailored plan. Enable sharing in Todo separately. No task or appointment is changed. You can stop sharing here.") },
+                    confirmButton = { TextButton(onClick = { disclosureDialog = false; getSharedPreferences("preparation", 0).edit().putBoolean("disclose", true).putBoolean("generation", true).commit(); disclose = true }) { Text("Allow") } },
                     dismissButton = { TextButton(onClick = { disclosureDialog = false }) { Text("Not now") } })
             }
         }
@@ -307,7 +311,6 @@ class AgendaActivity : ComponentActivity() {
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         item {
             Text(date.format(DateTimeFormatter.ofPattern("EEEE, d MMMM", Locale.getDefault())), style = MaterialTheme.typography.titleMedium)
-            Text("Calendar: $SHOW_CALENDAR", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Spacer(Modifier.height(8.dp))
         }
         if (events.none { "${it.id}:${it.from}" == target }) item { assistance() }

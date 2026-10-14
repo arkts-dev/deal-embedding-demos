@@ -1,3 +1,3 @@
 # Todo
 
-TaskStore owns task facts and provider consent. Keep unfinished preparation discovery read-only and bounded. Task creation/completion stays native; a Calendar suggestion is not authorization to mutate tasks. Preserve provider identity checks and explicit sharing. Keep demo fixtures clearly labelled and separate from unrelated records. Keep fixtures under Access → Development; sharing is configured only on Access, never toggled by fixture setup.
+TaskStore owns task facts and provider consent. Keep unfinished preparation discovery read-only and bounded. Task creation/completion stays native; a Calendar suggestion is not authorization to mutate tasks. Preserve provider identity checks and explicit sharing. Keep demo fixtures clearly labelled and separate from unrelated records. Keep fixtures in tooling; sharing is configured only on Extensions, never toggled by fixture setup.
