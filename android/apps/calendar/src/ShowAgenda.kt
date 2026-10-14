@@ -6,7 +6,8 @@ import android.content.Intent
 import android.provider.CalendarContract
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.compose.animation.*
+import androidx.activity.compose.BackHandler
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.*
@@ -17,9 +18,13 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
+import java.time.format.DateTimeFormatter
+import java.util.Locale
 import dev.deal.shell.*
 import android.os.Bundle
 import java.time.*
@@ -55,7 +60,7 @@ class ShowAgenda(private val context: Context) {
     fun events(date: LocalDate): List<ShowEvent> {
         val id = calendarId() ?: return emptyList()
         val from = date.atStartOfDay(AGENDA_ZONE).toInstant().toEpochMilli()
-        val until = from + 48 * 3600_000L
+        val until = date.plusDays(1).atStartOfDay(AGENDA_ZONE).toInstant().toEpochMilli()
         val uri = CalendarContract.Instances.CONTENT_URI.buildUpon().also {
             android.content.ContentUris.appendId(it, from); android.content.ContentUris.appendId(it, until)
         }.build()
@@ -95,7 +100,7 @@ class ShowAgenda(private val context: Context) {
 
     /** The show schedule is seeded once, so every re-run starts from the same agenda. */
     fun seedSchedule(date: LocalDate) {
-        if (events(date).any { it.title.contains("Soundcheck") }) return
+        if (events(date).any { it.title.contains("soundcheck", ignoreCase = true) }) return
         fun at(hour: Int, minute: Int = 0) = date.atTime(hour, minute).atZone(AGENDA_ZONE).toInstant().toEpochMilli()
         add("Glass Harbour soundcheck", at(16), at(16, 45), "Stage", "Glass Harbour", "Show schedule", 30)
         add("Static Bloom soundcheck", at(17), at(17, 45), "Stage", "Static Bloom", "Show schedule", 30)
@@ -121,29 +126,44 @@ class AgendaActivity : ComponentActivity() {
         super.onCreate(state)
         setContent {
             AppTheme(Accent.Calendar) {
-                var date by mutableStateOf(showDate())
-                var events by mutableStateOf(emptyList<ShowEvent>())
-                var adding by mutableStateOf(false)
-                var selected by mutableStateOf<ShowEvent?>(null)
-                var consent by mutableStateOf(getSharedPreferences("provider", 0).getBoolean("allowed", false))
-                fun refresh() { events = agenda.events(date) }
-                LaunchedEffect(date, adding) { runCatching { agenda.seedSchedule(date) }; refresh() }
-                AuroraBackdrop(Modifier.fillMaxSize()) {
-                    Scaffold(containerColor = Color.Transparent, topBar = {
-                        TopAppBar(colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent), title = {
-                            Column { Text(SHOW_CALENDAR, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold); Text(dev.deal.shell.dateLabel(date), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant) }
-                        }, actions = {
-                            IconButton(onClick = { date = date.minusDays(1) }) { Icon(Icons.Outlined.ChevronLeft, "Previous day") }
-                            IconButton(onClick = { date = date.plusDays(1) }) { Icon(Icons.Outlined.ChevronRight, "Next day") }
-                            IconButton(onClick = { adding = true }) { Icon(Icons.Outlined.Add, "Add event") }
-                        })
-                    }) { padding ->
-                        Box(Modifier.padding(padding)) {
-                            when {
-                                adding -> EventEditor(agenda, date) { adding = false; refresh() }
-                                selected != null -> EventDetail(selected!!, agenda) { selected = null; refresh() }
-                                else -> Agenda(events, date) { selected = it }
+                var date by remember { mutableStateOf(LocalDate.now(AGENDA_ZONE)) }
+                var events by remember { mutableStateOf(emptyList<ShowEvent>()) }
+                var adding by remember { mutableStateOf(false) }
+                var selected by remember { mutableStateOf<ShowEvent?>(null) }
+                var granted by remember { mutableStateOf(checkSelfPermission(android.Manifest.permission.READ_CALENDAR) == android.content.pm.PackageManager.PERMISSION_GRANTED && checkSelfPermission(android.Manifest.permission.WRITE_CALENDAR) == android.content.pm.PackageManager.PERMISSION_GRANTED) }
+                var error by remember { mutableStateOf("") }
+                val permissionRequest = androidx.activity.compose.rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
+                    granted = checkSelfPermission(android.Manifest.permission.READ_CALENDAR) == android.content.pm.PackageManager.PERMISSION_GRANTED && checkSelfPermission(android.Manifest.permission.WRITE_CALENDAR) == android.content.pm.PackageManager.PERMISSION_GRANTED
+                }
+                fun refresh() {
+                    runCatching { agenda.events(date) }.onSuccess { events = it; error = "" }.onFailure { error = "Couldn’t load your calendar." }
+                }
+                LaunchedEffect(date, granted) {
+                    if (granted) { runCatching { agenda.seedSchedule(showDate()) }; refresh() }
+                }
+                BackHandler(enabled = adding || selected != null) { adding = false; selected = null }
+                Scaffold(topBar = {
+                    TopAppBar(title = {
+                        Column {
+                            Text("Calendar", style = MaterialTheme.typography.titleLarge)
+                            Text(date.format(DateTimeFormatter.ofPattern("MMMM yyyy", Locale.getDefault())), style = MaterialTheme.typography.bodyMedium)
+                        }
+                    }, actions = {
+                        TextButton(onClick = { date = LocalDate.now(AGENDA_ZONE); selected = null; adding = false }) { Text("Today") }
+                        IconButton(onClick = { adding = true }, enabled = granted) { Icon(Icons.Outlined.Add, "Add event") }
+                    })
+                }) { padding ->
+                    Column(Modifier.padding(padding).fillMaxSize()) {
+                        if (!adding && selected == null) WeekStrip(date) { date = it }
+                        when {
+                            !granted -> Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                                Text("Connect Calendar to view and manage events.")
+                                Button(onClick = { permissionRequest.launch(arrayOf(android.Manifest.permission.READ_CALENDAR, android.Manifest.permission.WRITE_CALENDAR)) }) { Text("Connect calendar") }
                             }
+                            adding -> EventEditor(agenda, date) { adding = false; refresh() }
+                            selected != null -> EventDetail(selected!!, agenda) { selected = null; refresh() }
+                            error.isNotEmpty() -> Column(Modifier.padding(20.dp)) { Text(error); TextButton(onClick = { refresh() }) { Text("Retry") } }
+                            else -> Agenda(events, date) { selected = it }
                         }
                     }
                 }
@@ -152,23 +172,49 @@ class AgendaActivity : ComponentActivity() {
     }
 }
 
+@Composable private fun WeekStrip(date: LocalDate, onSelect: (LocalDate) -> Unit) {
+    val monday = date.minusDays((date.dayOfWeek.value - 1).toLong())
+    Column(Modifier.fillMaxWidth()) {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            IconButton(onClick = { onSelect(date.minusWeeks(1)) }) { Icon(Icons.Outlined.ChevronLeft, "Previous week") }
+            IconButton(onClick = { onSelect(date.plusWeeks(1)) }) { Icon(Icons.Outlined.ChevronRight, "Next week") }
+        }
+        Row(Modifier.fillMaxWidth()) {
+            repeat(7) { index ->
+                val day = monday.plusDays(index.toLong())
+                val chosen = day == date
+                Surface(onClick = { onSelect(day) }, modifier = Modifier.weight(1f).heightIn(min = 64.dp).semantics { selected = chosen; contentDescription = dev.deal.shell.dateLabel(day) },
+                    shape = RoundedCornerShape(8.dp), color = if (chosen) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface) {
+                    Column(Modifier.padding(vertical = 8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text(day.format(DateTimeFormatter.ofPattern("EEEEE", Locale.getDefault())), style = MaterialTheme.typography.labelMedium)
+                        Text(day.dayOfMonth.toString(), style = MaterialTheme.typography.titleMedium, fontWeight = if (chosen) FontWeight.Bold else FontWeight.Normal)
+                    }
+                }
+            }
+        }
+    }
+}
+
 @Composable private fun Agenda(events: List<ShowEvent>, date: LocalDate, onOpen: (ShowEvent) -> Unit) {
-    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(20.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-        item { Hero("GIG DEMO CALENDAR", "Show agenda", "Soundchecks, doors, performances and the logistics around them.", illustration = { Art.Stage(130.dp) }) }
-        if (events.isEmpty()) item { Panel { Text("Nothing scheduled on ${dev.deal.shell.dateLabel(date)}.", style = MaterialTheme.typography.titleMedium); Text("Add an event, or move to the show date.", color = MaterialTheme.colorScheme.onSurfaceVariant) } }
-        items(events) { event ->
-            Card(onClick = { onOpen(event) }, shape = RoundedCornerShape(24.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
-                Row(Modifier.fillMaxWidth().padding(20.dp), horizontalArrangement = Arrangement.spacedBy(16.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.width(64.dp)) {
-                        Text(time(event.from), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                        Text(time(event.until), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        item {
+            Text(date.format(DateTimeFormatter.ofPattern("EEEE, d MMMM", Locale.getDefault())), style = MaterialTheme.typography.titleMedium)
+            Text(SHOW_CALENDAR, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Spacer(Modifier.height(8.dp))
+        }
+        if (events.isEmpty()) item { Text("No events this day.", modifier = Modifier.padding(vertical = 24.dp), color = MaterialTheme.colorScheme.onSurfaceVariant) }
+        items(events, key = { "${it.id}:${it.from}" }) { event ->
+            Surface(onClick = { onOpen(event) }, shape = RoundedCornerShape(8.dp), color = MaterialTheme.colorScheme.surface) {
+                Row(Modifier.fillMaxWidth().padding(12.dp), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.Top) {
+                    Column(Modifier.width(56.dp)) {
+                        Text(time(event.from), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+                        Text(time(event.until), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
-                    Column(Modifier.weight(1f)) {
-                        Text(event.title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                        if (event.location.isNotEmpty()) Text(event.location, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        if (event.notes.isNotEmpty()) Text(event.notes.lineSequence().first(), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text(event.title, style = MaterialTheme.typography.titleMedium)
+                        if (event.location.isNotEmpty()) Text(event.location, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text("${Duration.between(Instant.ofEpochMilli(event.from), Instant.ofEpochMilli(event.until)).toMinutes()} min", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
-                    Icon(Icons.Outlined.NotificationsActive, null, tint = MaterialTheme.colorScheme.primary)
                 }
             }
         }
@@ -181,14 +227,14 @@ class AgendaActivity : ComponentActivity() {
             IconButton(onClick = onBack) { Icon(Icons.Outlined.ArrowBack, "Back") }
             Text(event.title, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
         }
-        Panel {
-            KeyValue("Start", time(event.from))
-            KeyValue("End", time(event.until))
-            KeyValue("Time zone", AGENDA_ZONE.id)
-            if (event.location.isNotEmpty()) KeyValue("Location", event.location)
-            if (event.notes.isNotEmpty()) Text(event.notes, style = MaterialTheme.typography.bodyMedium)
-        }
-        Text("Editing an event changes this calendar only. The organizer reflects the new time on refresh and flags any violated requirement deadline.", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(Instant.ofEpochMilli(event.from).atZone(AGENDA_ZONE).toLocalDate().format(DateTimeFormatter.ofPattern("EEEE, d MMMM", Locale.getDefault())), style = MaterialTheme.typography.titleMedium)
+        KeyValue("Start", time(event.from))
+        KeyValue("End", time(event.until))
+        KeyValue("Time zone", AGENDA_ZONE.id)
+        if (event.location.isNotEmpty()) KeyValue("Location", event.location)
+        if (event.notes.isNotEmpty()) Text(event.notes, style = MaterialTheme.typography.bodyMedium)
+        val context = androidx.compose.ui.platform.LocalContext.current
+        Button(onClick = { context.startActivity(Intent(context, CalendarActivity::class.java).putExtra("eventId", event.id).putExtra("eventBegin", event.from)) }) { Text("Plan departure") }
         OutlinedButton(onClick = { agenda.delete(event.id); onBack() }, shape = RoundedCornerShape(18.dp)) { Text("Delete event") }
     }
 }
@@ -203,7 +249,10 @@ class AgendaActivity : ComponentActivity() {
     var reminder by remember { mutableStateOf(true) }
     val valid = runCatching { LocalTime.parse(start) < LocalTime.parse(end) }.getOrDefault(false)
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-        Text("New event", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+            Text("New event", style = MaterialTheme.typography.headlineSmall)
+            TextButton(onClick = onDone) { Text("Cancel") }
+        }
         Text(dev.deal.shell.dateLabel(date), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
         OutlinedTextField(title, { title = it }, label = { Text("Title") }, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(16.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {

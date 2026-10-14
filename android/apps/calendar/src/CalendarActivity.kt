@@ -9,6 +9,9 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.ui.unit.dp
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
@@ -19,6 +22,7 @@ import org.json.JSONObject
 import java.io.File
 import java.util.concurrent.Executors
 
+@OptIn(ExperimentalMaterial3Api::class)
 class CalendarActivity : ComponentActivity() {
     private val worker = Executors.newSingleThreadExecutor()
     private lateinit var experience: CalendarEmbedding
@@ -40,6 +44,7 @@ class CalendarActivity : ComponentActivity() {
     private var discloseEvent by mutableStateOf(false)
     private var generating by mutableStateOf(false)
     private var generationStatus by mutableStateOf("")
+    private var inspecting by mutableStateOf(false)
     @Volatile private var cancellation: GenerationRequest? = null
     @Volatile private var cancelRequested=false
     private fun cancelGeneration(){cancelRequested=true;if(::experience.isInitialized)cancellation?.let{experience.embedding.cancel(it)}}
@@ -62,19 +67,25 @@ class CalendarActivity : ComponentActivity() {
         refreshEvents()
         setContent {
             AppTheme(Accent.Calendar) {
-                Page("A DAY WITH ROOM", "Good plans.\nEasy departures.", "Your calendar, with a little breathing room.") {
+                Scaffold(topBar = {
+                    TopAppBar(title = { Text(if (inspecting) "Inspect" else "Departure plan") },
+                        navigationIcon = { TextButton(onClick = { if (inspecting) inspecting = false else finish() }) { Text("Back") } },
+                        actions = { TextButton(onClick = { inspecting = !inspecting }) { Text(if (inspecting) "Done" else "Inspect") } })
+                }) { padding ->
+                  Column(Modifier.padding(padding).fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
                     Panel {
-                        Text("Coming up", style = MaterialTheme.typography.headlineSmall)
+                        Text(selectedUi?.title ?: "Choose an event", style = MaterialTheme.typography.titleLarge)
+                        selectedUi?.let { Text(it.time, style = MaterialTheme.typography.bodyMedium) }
                         if (!permission) Button(onClick = { requestPermissions(arrayOf(Manifest.permission.READ_CALENDAR, Manifest.permission.WRITE_CALENDAR), 1) }) { Text("Connect your calendar") }
                         else if (events.isEmpty()) Text("No upcoming events. Add one in your calendar app to get started.")
-                        for (event in events) {
+                        for (event in if (selectedUi == null) events else emptyList()) {
                             OutlinedButton(onClick = { selected = event; selectedUi = event; proposal = null }, modifier = Modifier.fillMaxWidth()) {
                                 Text("${if (selectedUi?.id == event.id) "✓  " else ""}${event.time}  ${event.title}")
                             }
                         }
                     }
-                    Panel {
-                        Text("Create an experience", style = MaterialTheme.typography.titleLarge)
+                    if (inspecting) Panel {
+                        Text("Development generation", style = MaterialTheme.typography.titleLarge)
                         OutlinedTextField(generationIntent, { generationIntent = it.take(4096) }, label = { Text("What would you like to do?") }, modifier = Modifier.fillMaxWidth(), minLines = 2, maxLines = 4, enabled = !generating)
                         Row { Checkbox(discloseEvent, { discloseEvent = it }, enabled = !generating); Text("Share selected event with the model") }
                         Text("Development inference uses a remote model. Capability descriptions are shared; provider data is not read during generation.")
@@ -105,6 +116,7 @@ class CalendarActivity : ComponentActivity() {
                     }
                     if (saved.isNotEmpty()) Text(saved)
                     if (surface != null && status.isNotEmpty()) Text(status, color = MaterialTheme.colorScheme.error)
+                  }
                 }
                 if (dialog) AlertDialog(onDismissRequest = { dialog = false }, title = { Text("Confirm Calendar change") }, text = { Text("Add a departure reminder to ${proposalEvent?.title}? Existing reminders are kept.") }, confirmButton = {
                     TextButton(onClick = {
@@ -124,14 +136,17 @@ class CalendarActivity : ComponentActivity() {
     private fun refreshEvents() {
         permission = checkSelfPermission(Manifest.permission.READ_CALENDAR) == PackageManager.PERMISSION_GRANTED && checkSelfPermission(Manifest.permission.WRITE_CALENDAR) == PackageManager.PERMISSION_GRANTED
         if (permission) try {
-            events = CalendarEvents(this).upcoming()
-            val refreshed = selected?.let { old -> events.firstOrNull { it.id == old.id && it.begin == old.begin } } ?: events.firstOrNull()
+            val requested = intent.getLongExtra("eventId", -1)
+            val begin = intent.getLongExtra("eventBegin", -1)
+            events = if (requested != -1L && begin >= 0) CalendarEvents(this).upcoming(begin, begin + 1) else CalendarEvents(this).upcoming()
+            val refreshed = if (requested != -1L) events.firstOrNull { it.id == requested && it.begin == begin }
+                else selected?.let { old -> events.firstOrNull { it.id == old.id && it.begin == old.begin } } ?: events.firstOrNull()
             if (refreshed != selected) { selected = refreshed; selectedUi = refreshed; proposal = null }
         } catch (error: Throwable) { status = error.message ?: "Calendar unavailable" }
     }
     override fun onResume() { super.onResume(); refreshEvents() }
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<String>, grantResults: IntArray) { super.onRequestPermissionsResult(requestCode, permissions, grantResults); refreshEvents() }
-    override fun onNewIntent(intent: Intent) { super.onNewIntent(intent); if (intent.hasExtra("deal") || intent.hasExtra("dealui")) activate(intent.getStringExtra("deal"), intent.getStringExtra("dealui")) }
+    override fun onNewIntent(intent: Intent) { super.onNewIntent(intent); setIntent(intent); refreshEvents(); if (intent.hasExtra("deal") || intent.hasExtra("dealui")) activate(intent.getStringExtra("deal"), intent.getStringExtra("dealui")) }
     private fun activate(deal: String?, ui: String?) {
         worker.execute {
             try {
