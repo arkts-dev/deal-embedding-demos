@@ -12,7 +12,7 @@ import re
 for file in sorted((build / 'dependencies').iterdir()):
     receipts.append(hashlib.sha256(file.read_bytes()).hexdigest() + '  ' + file.name)
     if file.suffix == '.jar':
-        if not file.name.startswith(('kotlin-stdlib', 'listenablefuture')):
+        if not file.name.startswith(('kotlin-stdlib', 'listenablefuture', 'guava-', 'failureaccess-')):
             jars.append(str(file))
         continue
     if file.suffix != '.aar' or file.name.startswith(('activity-ktx-', 'lifecycle-runtime-ktx-', 'lifecycle-viewmodel-ktx-', 'collection-ktx-', 'savedstate-ktx-')): continue

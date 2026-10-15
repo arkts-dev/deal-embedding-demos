@@ -17,6 +17,12 @@ configurations.androidRuntime.resolutionStrategy.eachDependency { details ->
     if (group == 'androidx.annotation' && name == 'annotation') details.useTarget "${group}:annotation-jvm:${details.requested.version}"
 }
 dependencies {
+    androidRuntime('com.google.mlkit:genai-prompt:1.0.0-beta4') {
+        // AndroidX is supplied by this host's existing Compose runtime.
+        exclude group: 'androidx.lifecycle'
+        exclude group: 'androidx.savedstate'
+        exclude group: 'com.google.guava'
+    }
     androidRuntime 'androidx.compose.material3:material3-android:1.5.0-alpha06'
     androidRuntime 'androidx.compose.material:material-icons-extended-android:1.7.8'
     androidRuntime 'androidx.compose.foundation:foundation-android:1.9.3'

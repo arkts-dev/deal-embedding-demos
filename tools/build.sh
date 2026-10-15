@@ -45,7 +45,7 @@ fi
 for library in jsengine core lifecycle-runtime versionedparcelable arch-runtime; do
     [[ -f "build/toolchain/$library.jar" ]] || unzip -p "build/toolchain/$library.aar" classes.jar > "build/toolchain/$library.jar"
 done
-if [[ ! -d build/compose/dependencies ]]; then
+if [[ ! -d build/compose/dependencies || ! -f build/compose/dependencies/genai-prompt-1.0.0-beta4.aar ]]; then
     if [[ ! -x build/toolchain/gradle-9.2.1/bin/gradle ]]; then
         curl -fL --max-time 120 https://downloads.gradle.org/distributions/gradle-9.2.1-bin.zip -o build/toolchain/gradle9.zip
         printf '%s  %s\n' 72f44c9f8ebcb1af43838f45ee5c4aa9c5444898b3468ab3f4af7b6076c5bc3f build/toolchain/gradle9.zip | sha256sum -c -
@@ -54,7 +54,7 @@ if [[ ! -d build/compose/dependencies ]]; then
     build/toolchain/gradle-9.2.1/bin/gradle -p tools/compose copyRuntime --no-daemon
 fi
 COMPOSE_STAMP=build/compose/.prepared
-if [[ ! -f "$COMPOSE_STAMP" || tools/compose/dependencies.sha256 -nt "$COMPOSE_STAMP" ]]; then
+if [[ ! -f "$COMPOSE_STAMP" || tools/compose/dependencies.sha256 -nt "$COMPOSE_STAMP" || tools/compose/prepare.py -nt "$COMPOSE_STAMP" ]]; then
     (cd build/compose/dependencies && sha256sum -c ../../../tools/compose/dependencies.sha256)
     python3 tools/compose/prepare.py
     touch "$COMPOSE_STAMP"
@@ -178,7 +178,7 @@ for app in "${TARGETS[@]}"; do
     case "$app" in
         calendar) profile="host";   sources=(android/apps/shared-ui/*.kt android/apps/development/*.kt android/apps/calendar/src/*.kt); app_apis=("$EMBEDDING_JAR"); profile_jars=("$EMBEDDING_JAR" "${RUNTIME_JARS[@]}") ;;
         organizer) profile="host";  sources=(android/apps/shared-ui/*.kt android/apps/development/*.kt android/apps/organizer/src/*.kt); app_apis=("$EMBEDDING_JAR"); profile_jars=("$EMBEDDING_JAR" "${RUNTIME_JARS[@]}") ;;
-        tests) profile="host";      sources=(android/tests/*.kt android/apps/development/*.kt android/apps/shared-ui/*.kt android/apps/organizer/src/*.kt); app_apis=("$EMBEDDING_JAR"); profile_jars=("$EMBEDDING_JAR" "${RUNTIME_JARS[@]}") ;;
+        tests) profile="host";      sources=(android/tests/*.kt android/apps/development/*.kt android/apps/shared-ui/*.kt android/apps/organizer/src/*.kt android/apps/calendar/src/*.kt); app_apis=("$EMBEDDING_JAR"); profile_jars=("$EMBEDDING_JAR" "${RUNTIME_JARS[@]}") ;;
         *) profile="provider";      sources=(android/apps/shared-ui/*.kt "android/apps/$app/src/"*.kt); app_apis=(build/capability-api.jar); profile_jars=(build/capability-api.jar "${COMPOSE_JARS[@]}") ;;
     esac
     if [[ "$profile" == host ]]; then
@@ -238,6 +238,7 @@ for app in "${TARGETS[@]}"; do
         done
     done
     (cd "build/$app/merged" && zip -q ../unsigned.apk classes*.dex)
+    if [[ "$profile" == host ]]; then python3 tools/package-java-resources.py "build/$app/unsigned.apk" "${RUNTIME_JARS[@]}"; fi
     sign "$app"
     printf 'App (%s), compile/dex/package: %s s\n' "$app" "$((SECONDS - app_started))"
 done

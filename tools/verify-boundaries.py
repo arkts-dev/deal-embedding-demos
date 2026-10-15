@@ -18,6 +18,7 @@ assert {p.name for p in (library/'core/host').glob('*.d.deal')} == {'checker.d.d
 assert (library/'android/src/compiler/ExperienceCompiler.kt').exists()
 assert {p.name for p in (library/'android/src/bindings').glob('*.kt')} == {'DealSessionBindings.kt', 'ExperienceGenerator.kt', 'SandboxProgram.kt', 'EmbeddingLog.kt', 'ChoiceProtocol.kt', 'ApplicationProtocol.kt', 'ProtocolController.kt','ObservationPresentation.kt','DiagnosticFiles.kt','FailureEvidence.kt','TrustedProgram.kt'}
 assert {p.name for p in (library/'android/src/inference').glob('*.kt')} == {'ModelClient.kt'}
+assert {p.name for p in (library/'android/src/discovery').glob('*.kt')} == {'Discovery.kt', 'NanoDiscovery.kt'}
 assert (root/'android/apps/development/GenerationGateway.kt').exists()
 assert not (library/'android/src/bindings/PublicProtocolBinding.kt').exists()
 for app in ('organizer','calendar'):
@@ -57,6 +58,7 @@ with zipfile.ZipFile(os.environ.get('EMBEDDING_AAR', root / 'build/embedding-lib
     with zipfile.ZipFile(io.BytesIO(aar.read('classes.jar'))) as classes:
         names = classes.namelist()
         assert 'dev/deal/embedding/capabilities/ICapabilityService.class' in names
+        assert 'dev/deal/embedding/discovery/Discovery.class' in names
         assert 'deal/Main.class' in names and 'deal/ui/UiSourceGenerator.class' in names
         assert not any(name.startswith('dev/deal/apps/') for name in names)
         assert 'dev/deal/embedding/GenerationGateway.class' not in names
