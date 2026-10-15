@@ -12,6 +12,11 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.Alignment
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.outlined.ArrowBack
+import androidx.compose.material.icons.outlined.Close
+import androidx.compose.material.icons.outlined.MoreVert
 import androidx.compose.ui.unit.dp
 import dev.deal.embedding.*
 import dev.deal.embedding.capabilities.*
@@ -37,6 +42,9 @@ class PreparationActivity : ComponentActivity() {
     private var checking by mutableStateOf(false)
     private var generating by mutableStateOf(false)
     private var connected by mutableStateOf(false)
+    private var menu by mutableStateOf(false)
+    private var access by mutableStateOf(false)
+    private var consent by mutableStateOf<DiscoverySuggestion?>(null)
     private var proposal by mutableStateOf<Int?>(null)
     private var confirm by mutableStateOf(false)
     private var eventUi by mutableStateOf<ShowEvent?>(null)
@@ -58,40 +66,57 @@ class PreparationActivity : ComponentActivity() {
         day = LocalDate.parse(intent.getStringExtra("day") ?: error("Missing demo day"))
         contentResolver.registerContentObserver(CalendarContract.CONTENT_URI, true, observer)
         setContent { AppTheme(Accent.Calendar) {
-            Scaffold(topBar = { TopAppBar(title = { Text("Preparation plan") }, navigationIcon = { TextButton(onClick = { finish() }) { Text("Back") } }, actions = {
+            Scaffold(topBar = { TopAppBar(title = { Text(eventUi?.title ?: "Preparation", maxLines = 1) }, navigationIcon = {
+                IconButton(onClick = { finish() }) { Icon(Icons.AutoMirrored.Outlined.ArrowBack, "Back") }
+            }, actions = {
                 TextButton(onClick = { startActivity(Intent(this@PreparationActivity, PreparationInspectActivity::class.java)) }) { Text("Inspect") }
+                Box {
+                    IconButton(onClick = { menu = true }) { Icon(Icons.Outlined.MoreVert, "More options") }
+                    DropdownMenu(menu, { menu = false }) {
+                        DropdownMenuItem(text = { Text("Calendar access") }, onClick = { menu = false; access = true })
+                    }
+                }
             }) }) { padding ->
                 Column(Modifier.padding(padding).fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    eventUi?.let { e -> Text(e.title, style = MaterialTheme.typography.titleLarge); Text(e.notes.removePrefix("Preparation demo · ")) }
-                    Text("On-device discovery uses this Gig Demo event. Opening a suggestion shares its captured facts with ${dev.deal.apps.development.GenerationBuild.label} for generation. Appointments change only after native confirmation.", style = MaterialTheme.typography.bodySmall)
-                    if (checking) Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) { CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp); Text("Looking for useful help…") }
-                    suggestion?.let { tip -> Card { Column(Modifier.padding(12.dp)) {
-                        Text(tip.title, style = MaterialTheme.typography.titleMedium)
-                        Row { TextButton(onClick = { accept(tip) }, enabled = !generating) { Text("Open") }
-                            TextButton(onClick = {
+                    if (checking || generating) Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                        CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp)
+                        Text(if (generating) "Preparing…" else "Looking ahead…", style = MaterialTheme.typography.bodySmall)
+                    }
+                    suggestion?.let { tip -> OutlinedCard(Modifier.fillMaxWidth()) {
+                        Row(Modifier.padding(start = 16.dp, top = 8.dp, end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Text(tip.title, Modifier.weight(1f), style = MaterialTheme.typography.titleMedium)
+                            IconButton(onClick = {
                                 check(getSharedPreferences("preparation-discovery-dismissals", 0).edit().putBoolean(current!!.identity, true).commit())
                                 suggestion = null; discovery.cancel(); message = ""
-                            }) { Text("Dismiss") } }
-                    } } }
-                    if (generating) Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) { CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp); Text("Building your interaction…") }
+                            }) { Icon(Icons.Outlined.Close, "Dismiss") }
+                        }
+                        TextButton(onClick = { consent = tip }, enabled = !generating, modifier = Modifier.padding(start = 4.dp, bottom = 4.dp)) { Text("Open") }
+                    } }
                     if (message.isNotEmpty()) Text(message)
                     surface?.let { ExperienceSurface(it, onSnapshot = { snapshot ->
                         DiagnosticFiles.write(filesDir, "preparation-ui.json", snapshot.json().toString())
                     }) }
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text("Allow Calendar capabilities")
+                    proposal?.let { minute ->
+                        OutlinedButton(onClick = { confirm = true }) { Text("Review reminder · %02d:%02d".format(minute / 60, minute % 60)) }
+                    }
+                }
+            }
+            consent?.let { tip -> AlertDialog(onDismissRequest = { consent = null }, title = { Text("Create this tool?") },
+                text = { Text("Send this event’s details to ${dev.deal.apps.development.GenerationBuild.label} to create it?") },
+                confirmButton = { TextButton(onClick = { consent = null; accept(tip) }) { Text("Create") } },
+                dismissButton = { TextButton(onClick = { consent = null }) { Text("Cancel") } }) }
+            if (access) AlertDialog(onDismissRequest = { access = false }, title = { Text("Calendar access") },
+                text = { Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text("Allow this tool to read the selected event and suggest a reminder. Saving still needs your confirmation.")
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Text("Selected event", Modifier.weight(1f))
                         Switch(connected, { value ->
                             if (value) api?.grant("host/calendar") else api?.revoke("host/calendar")
                             connected = value; proposal = null; confirm = false
                         }, enabled = api != null)
                     }
-                    proposal?.let { minute ->
-                        Text("Proposed reminder: %02d:%02d. Nothing has changed.".format(minute / 60, minute % 60))
-                        TextButton(onClick = { confirm = true }) { Text("Review Calendar change") }
-                    }
-                }
-            }
-            if (confirm) AlertDialog(onDismissRequest = { confirm = false }, title = { Text("Confirm Calendar change") }, text = { Text("Add the proposed reminder to this Gig Demo event? Existing reminders stay unchanged.") },
+                } }, confirmButton = { TextButton(onClick = { access = false }) { Text("Done") } })
+            if (confirm) AlertDialog(onDismissRequest = { confirm = false }, title = { Text("Confirm Calendar change") }, text = { Text("Add a reminder at %02d:%02d?".format((proposal ?: 0) / 60, (proposal ?: 0) % 60)) },
                 confirmButton = { TextButton(onClick = {
                     confirm = false
                     val origin = observed; val minute = proposal
@@ -99,8 +124,8 @@ class PreparationActivity : ComponentActivity() {
                         check(foreground && connected && origin != null && origin == event && origin == activeEvent && minute != null)
                         ShowAgenda(this@PreparationActivity).confirmReminder(origin, minute)
                         proposal = null; message = "Reminder saved"
-                    } catch (error: Throwable) { proposal = null; message = error.message ?: "Calendar change failed" }
-                }) { Text("Confirm write") } }, dismissButton = { TextButton(onClick = { confirm = false }) { Text("Keep unchanged") } })
+                    } catch (error: Throwable) { proposal = null; failure("reminder", "Couldn’t save reminder", error) }
+                }) { Text("Save reminder") } }, dismissButton = { TextButton(onClick = { confirm = false }) { Text("Keep unchanged") } })
         } }
     }
     override fun onResume() { super.onResume(); foreground = true; refresh() }
@@ -112,7 +137,11 @@ class PreparationActivity : ComponentActivity() {
         synchronized(ownerLock) { revision++ }; discovery.cancel(); suggestion = null; checking = false
         api?.revoke("host/calendar"); connected = false; observed = null; surface = null
         request?.let { runCatching { api?.cancel(it) } }
-        proposal = null; confirm = false
+        proposal = null; confirm = false; consent = null; access = false; menu = false
+    }
+    private fun failure(stage: String, label: String, error: Throwable) {
+        PreparationRecords.record(this, stage, JSONObject().put("status", "failed").put("reason", android.util.Log.getStackTraceString(error)))
+        message = label
     }
     private fun readEvent(): ShowEvent = ShowAgenda(this).events(day).singleOrNull { it.id == eventId } ?: error("Demo event changed or removed")
     private fun input(e: ShowEvent, contracts: List<SharedCapabilityContract>): DiscoveryInput = DiscoveryInput(listOf(
@@ -146,15 +175,16 @@ class PreparationActivity : ComponentActivity() {
                     if (getSharedPreferences("preparation-discovery-dismissals", 0).getBoolean(facts.identity, false)) { message = ""; return@runOnUiThread }
                     checking = true; message = ""
                     val started = android.os.SystemClock.elapsedRealtime()
+                    PreparationRecords.record(this, "opportunity", JSONObject().put("status", "started").put("model", "On-device").put("input", facts.identity).put("eventTitle", e.title).put("eventNotes", e.notes))
                     discovery.discover(facts).whenComplete { tip, error -> runOnUiThread {
                         if (!foreground || epoch != revision) return@runOnUiThread
                         checking = false
-                        message = if (error == null) "" else "Discovery failed: ${error.cause?.message ?: error.message}"
+                        message = if (error == null) "" else "Couldn’t find help"
                         suggestion = tip
-                        PreparationRecords.record(this, "opportunity", JSONObject().put("status", if (error != null) "failed" else if (tip == null) "none" else "suggested").put("elapsedMs", android.os.SystemClock.elapsedRealtime() - started).put("title", tip?.title).put("brief", tip?.brief).put("input", facts.identity).put("reason", error?.toString()))
+                        PreparationRecords.record(this, "opportunity", JSONObject().put("status", if (error != null) "failed" else if (tip == null) "none" else "suggested").put("elapsedMs", android.os.SystemClock.elapsedRealtime() - started).put("title", tip?.title).put("brief", tip?.brief).put("input", facts.identity).put("factIds", tip?.factIds?.let(::JSONArray)).put("capabilityIds", tip?.capabilityIds?.let(::JSONArray)).put("reason", error?.toString()))
                     } }
                 }
-            } catch (error: Throwable) { runOnUiThread { if (foreground && epoch == revision) { checking = false; message = error.message ?: "Preparation unavailable" } } }
+            } catch (error: Throwable) { runOnUiThread { if (foreground && epoch == revision) { checking = false; failure("opportunity-open", "Preparation unavailable", error) } } }
         }
     }
     private fun createApi(): ApplicationProtocol {
@@ -172,7 +202,7 @@ class PreparationActivity : ComponentActivity() {
         check(foreground && epoch == revision && readEvent() == captured) { "Facts changed before activation" }
         val next = ExperienceSurface(protocol, experience)
         try {
-            next.activate { error -> runOnUiThread { if (foreground && epoch == revision) message = error.message ?: "Interaction failed" } }
+            next.activate { error -> runOnUiThread { if (foreground && epoch == revision) failure("opportunity-execution", "Tool unavailable", error) } }
             val previous = synchronized(ownerLock) {
                 check(foreground && epoch == revision && readEvent() == captured) { "Facts changed during activation" }
                 owner.also { owner = next; activeInput = identity; activeEvent = captured }
@@ -194,6 +224,7 @@ class PreparationActivity : ComponentActivity() {
                 check(fresh.identity == facts.identity)
                 val admitted = discovery.request(tip, fresh, protocol); request = admitted
                 activeEvent = event
+                PreparationRecords.record(this, "opportunity-generation", JSONObject().put("status", "started").put("model", dev.deal.apps.development.GenerationBuild.label).put("trace", protocol.requestTrace(admitted)).put("input", facts.identity).put("brief", tip.brief))
                 if (!foreground || epoch != revision) protocol.cancel(admitted)
                 protocol.withPreparation(protocol.generate(admitted)) { experience ->
                     check(foreground && epoch == revision && readEvent() == event) { "Facts changed during generation" }
@@ -203,7 +234,7 @@ class PreparationActivity : ComponentActivity() {
                 }
             } catch (error: Throwable) {
                 PreparationRecords.record(this, "opportunity-generation", JSONObject().put("status", "failed").put("reason", error.toString()).put("elapsedMs", android.os.SystemClock.elapsedRealtime() - started))
-                runOnUiThread { if (foreground && epoch == revision) message = "Generation failed: ${error.message}" }
+                runOnUiThread { if (foreground && epoch == revision) message = "Couldn’t create this tool" }
             } finally { request = null; runOnUiThread { generating = false } }
         }
     }
