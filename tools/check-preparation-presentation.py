@@ -13,7 +13,7 @@ import subprocess
 import xml.etree.ElementTree as ET
 
 p = argparse.ArgumentParser(description=__doc__)
-p.add_argument('--state', required=True, choices=['suggestion', 'pending', 'populated', 'empty', 'failure', 'inspect', 'consent', 'access'])
+p.add_argument('--state', required=True, choices=['suggestion', 'pending', 'populated', 'empty', 'failure', 'inspect', 'access'])
 p.add_argument('--visible', action='append', default=[], help='Exact task label/value required above the fold; repeat for controls and result')
 a = p.parse_args()
 out = Path('build/preparation-presentation')
@@ -42,10 +42,10 @@ for label in a.visible:
     assert matches, f'Missing task content: {label}'
     assert any(fully_visible(n) for n in matches), f'Task content clipped/offscreen: {label}'
 descriptions = [n.get('content-desc', '') for n in nodes if n.get('content-desc')]
-if a.state not in ['inspect', 'consent', 'access']:
+if a.state not in ['inspect', 'access']:
     assert 'Inspect' in text and 'Back' in descriptions
     assert not any(n.get('class') == 'android.widget.Switch' for n in nodes), 'Inline grant control leaked into task UI'
-    for forbidden in ['On-device discovery uses', 'Allow Calendar capabilities', 'Generation failed:', 'Discovery failed:', 'java.lang.', 'UI2004', 'ATTEMPT_LIMIT']:
+    for forbidden in ['On-device discovery uses', 'Allow Calendar capabilities', 'Generation failed:', 'Discovery failed:', 'java.lang.', 'UI2004', 'ATTEMPT_LIMIT', 'Create this tool?', 'Send this event', 'Cortex', 'Cerebras']:
         assert not any(forbidden in s for s in text), f'Diagnostic copy leaked: {forbidden}'
     if a.state == 'suggestion':
         assert text.count('Open') == 1 and 'Dismiss' in descriptions

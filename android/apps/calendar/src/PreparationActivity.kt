@@ -44,7 +44,6 @@ class PreparationActivity : ComponentActivity() {
     private var connected by mutableStateOf(false)
     private var menu by mutableStateOf(false)
     private var access by mutableStateOf(false)
-    private var consent by mutableStateOf<DiscoverySuggestion?>(null)
     private var proposal by mutableStateOf<Int?>(null)
     private var confirm by mutableStateOf(false)
     private var eventUi by mutableStateOf<ShowEvent?>(null)
@@ -90,7 +89,7 @@ class PreparationActivity : ComponentActivity() {
                                 suggestion = null; discovery.cancel(); message = ""
                             }) { Icon(Icons.Outlined.Close, "Dismiss") }
                         }
-                        TextButton(onClick = { consent = tip }, enabled = !generating, modifier = Modifier.padding(start = 4.dp, bottom = 4.dp)) { Text("Open") }
+                        TextButton(onClick = { accept(tip) }, enabled = !generating, modifier = Modifier.padding(start = 4.dp, bottom = 4.dp)) { Text("Open") }
                     } }
                     if (message.isNotEmpty()) Text(message)
                     surface?.let { ExperienceSurface(it, onSnapshot = { snapshot ->
@@ -101,10 +100,6 @@ class PreparationActivity : ComponentActivity() {
                     }
                 }
             }
-            consent?.let { tip -> AlertDialog(onDismissRequest = { consent = null }, title = { Text("Create this tool?") },
-                text = { Text("Send this event’s details to ${dev.deal.apps.development.GenerationBuild.label} to create it?") },
-                confirmButton = { TextButton(onClick = { consent = null; accept(tip) }) { Text("Create") } },
-                dismissButton = { TextButton(onClick = { consent = null }) { Text("Cancel") } }) }
             if (access) AlertDialog(onDismissRequest = { access = false }, title = { Text("Calendar access") },
                 text = { Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     Text("Allow this tool to read the selected event and suggest a reminder. Saving still needs your confirmation.")
@@ -137,7 +132,7 @@ class PreparationActivity : ComponentActivity() {
         synchronized(ownerLock) { revision++ }; discovery.cancel(); suggestion = null; checking = false
         api?.revoke("host/calendar"); connected = false; observed = null; surface = null
         request?.let { runCatching { api?.cancel(it) } }
-        proposal = null; confirm = false; consent = null; access = false; menu = false
+        proposal = null; confirm = false; access = false; menu = false
     }
     private fun failure(stage: String, label: String, error: Throwable) {
         PreparationRecords.record(this, stage, JSONObject().put("status", "failed").put("reason", android.util.Log.getStackTraceString(error)))
@@ -213,6 +208,10 @@ class PreparationActivity : ComponentActivity() {
     }
     private fun accept(tip: DiscoverySuggestion) {
         if (generating) return
+        if (!getSharedPreferences("preparation", 0).getBoolean("generation", false)) {
+            message = "Enable tailored plans in Extensions"
+            return
+        }
         val epoch = revision; val facts = current ?: return
         suggestion = null; generating = true; message = ""
         generationWorker.execute {
@@ -220,6 +219,7 @@ class PreparationActivity : ComponentActivity() {
             try {
                 val protocol = api ?: error("Preparation unavailable")
                 check(foreground && epoch == revision && readEvent() == event)
+                check(getSharedPreferences("preparation", 0).getBoolean("generation", false)) { "Generation disclosure disabled" }
                 val fresh = input(readEvent(), protocol.refresh())
                 check(fresh.identity == facts.identity)
                 val admitted = discovery.request(tip, fresh, protocol); request = admitted
