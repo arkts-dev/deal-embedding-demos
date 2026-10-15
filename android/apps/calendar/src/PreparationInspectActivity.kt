@@ -53,10 +53,11 @@ class PreparationInspectActivity : ComponentActivity() {
                         PreparationRecords.api(this@PreparationInspectActivity).use { api ->
                             val page = api.retainedEvents()
                             val traces = local.map { it.optString("trace") }.filter { it.isNotEmpty() }.toSet()
-                            val saved = api.saved()
+                            val opportunities = PreparationRecords.opportunityApi(this@PreparationInspectActivity).use { other -> other.saved().map { it to other.source(it) } }
+                            val saved = api.saved() + opportunities.map { it.first }
                             val ids = saved.map { it.id }.toSet()
                             val scoped = page.events.filter { it.optString("trace") in traces || it.optString("workspace") in ids }
-                            val source = saved.map { it to api.source(it) }
+                            val source = api.saved().map { it to api.source(it) } + opportunities
                             withContext(Dispatchers.Main) {
                                 records = local; events = scoped.reversed(); sources = source
                                 scope = ""

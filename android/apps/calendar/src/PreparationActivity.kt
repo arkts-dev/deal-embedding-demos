@@ -1,6 +1,9 @@
 package dev.deal.apps.calendar
 
 import android.os.Bundle
+import android.content.Intent
+import android.database.ContentObserver
+import android.provider.CalendarContract
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.*
@@ -11,156 +14,203 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import dev.deal.embedding.*
+import dev.deal.embedding.capabilities.*
+import dev.deal.embedding.discovery.*
 import dev.deal.shell.*
 import org.json.*
+import java.time.*
 import java.util.concurrent.Executors
-import java.util.concurrent.TimeUnit
 
-/** Native lifetime/disclosure decisions; generation/checking/execution belong to embedding DEAL. */
+/** Calendar owns disclosed demo facts, placement and write confirmation. Embedding owns execution. */
 @OptIn(ExperimentalMaterial3Api::class)
 class PreparationActivity : ComponentActivity() {
     private val worker = Executors.newSingleThreadExecutor()
     private val generationWorker = Executors.newSingleThreadExecutor()
-    private val deadline = android.os.Handler(android.os.Looper.getMainLooper())
-    private var api: ApplicationProtocol? = null
+    private val discovery by lazy { Discovery(applicationContext) }
+    @Volatile private var api: ApplicationProtocol? = null
     private var owner: ExperienceSurface? = null
+    private val ownerLock = Any()
+    @Volatile private var activeInput: String? = null
     private var surface by mutableStateOf<ExperienceSurface?>(null)
-    private var message by mutableStateOf("Opening plan…")
-    private var tailoring by mutableStateOf(false)
-    private var tailored by mutableStateOf<Experience?>(null)
-    @Volatile private var request: GenerationRequest? = null
+    private var message by mutableStateOf("Opening preparation…")
+    private var suggestion by mutableStateOf<DiscoverySuggestion?>(null)
+    private var checking by mutableStateOf(false)
+    private var generating by mutableStateOf(false)
+    private var connected by mutableStateOf(false)
+    private var proposal by mutableStateOf<Int?>(null)
+    private var confirm by mutableStateOf(false)
+    private var eventUi by mutableStateOf<ShowEvent?>(null)
+    @Volatile private var event: ShowEvent? = null
     @Volatile private var foreground = false
-    @Volatile private var cancelled = false
-    private lateinit var accepted: String
-    private lateinit var recordKey: String
-    private var record = JSONObject()
-    private val recordLock = Any()
-    override fun onResume() {
-        super.onResume(); foreground = true
-        if (api != null) worker.execute {
-            if (!runCatching { valid() }.getOrDefault(false)) runOnUiThread { surface = null; tailored = null; message = "Facts or permissions changed. Return to Calendar." }
-        }
-    }
-    override fun onPause() {
-        foreground = false; cancelled = true
-        request?.let { current -> runCatching { api?.cancel(current) } }
-        super.onPause()
-    }
-    private fun remember() { synchronized(recordLock) { check(PreparationRecords.prefs(this).edit().putString(recordKey, record.toString()).commit()) } }
-    private fun valid(): Boolean = PreparationDiscovery(applicationContext).use { discovery -> discovery.foreground = foreground; discovery.validate(accepted) }
-    private fun activate(experience: Experience, generated: Boolean) {
-        check(foreground && valid()) { "Facts or permissions changed" }
-        val next = ExperienceSurface(api!!, experience)
-        next.activate { runOnUiThread { message = "Plan unavailable. Return to Calendar." } }
-        val previous = owner; owner = next
-        synchronized(recordLock) { record.put("active", experience.id); remember() }
-        PreparationRecords.record(this, "execution", JSONObject().put("origin", if (generated) record.optString("generatedModel", "Unknown model") + " generated, checked" else "Authored fallback").put("experience", experience.id))
-        runOnUiThread { if (!isDestroyed && foreground) surface = next }
-        previous?.close()
-    }
+    @Volatile private var revision = 0L
+    @Volatile private var request: GenerationRequest? = null
+    private var eventId = -1L
+    private lateinit var day: LocalDate
+    @Volatile private var current: DiscoveryInput? = null
+    @Volatile private var observed: ShowEvent? = null
+    @Volatile private var activeEvent: ShowEvent? = null
+    private val handler = android.os.Handler(android.os.Looper.getMainLooper())
+    private val observer = object : ContentObserver(handler) { override fun onChange(selfChange: Boolean) { if (foreground) refresh() } }
     override fun onCreate(state: Bundle?) {
         super.onCreate(state)
-        accepted = intent.getStringExtra("accepted") ?: error("Missing accepted facts")
-        val facts = JSONObject(accepted)
-        recordKey = "plan." + PreparationRecords.key(accepted)
-        record = JSONObject(PreparationRecords.prefs(this).getString(recordKey, "{}"))
-        val context = facts.getJSONObject("context")
-        val eventId = facts.getString("eventId")
-        val taskId = facts.getString("taskId")
-        val event = context.getJSONArray("events").let { events -> (0 until events.length()).map { events.getJSONObject(it) }.single { it.getString("id") == eventId } }
-        worker.execute {
-            try {
-                check(valid()) { "Facts or permissions changed" }
-                val protocol = PreparationRecords.api(this); api = protocol
-                protocol.capture(true)
-                // Different disclosed facts invalidate old experiences and their retained drafts.
-                val p = PreparationRecords.prefs(this)
-                for (key in p.all.keys.filter { it.startsWith("plan.") && it != recordKey }) {
-                    val old = JSONObject(p.getString(key, "{}"))
-                    if (old.optString("eventId") == eventId) {
-                        protocol.saved().filter { it.id == old.optString("fallback") || it.id == old.optString("generated") }.forEach(protocol::forget)
-                        check(p.edit().remove(key).commit())
-                        PreparationRecords.record(this, "invalidation", JSONObject().put("reason", "Disclosed facts changed").put("eventId", eventId))
-                    }
-                }
-                val saved = protocol.saved()
-                val existing = saved.firstOrNull { it.id == record.optString("active") }
-                if (existing != null) activate(existing, existing.id == record.optString("generated")) else {
-                    val source = fallback(context.getJSONArray("tasks"), taskId, event.getInt("startMinute"))
-                    protocol.withPreparation(protocol.load("Preparation plan", source)) { prepared ->
-                        record.put("eventId", eventId).put("fallback", prepared.id)
-                        activate(prepared, false)
-                    }
-                }
-                val generated = protocol.saved().firstOrNull { it.id == record.optString("generated") }
-                if (generated != null && generated.id != record.optString("active")) runOnUiThread { tailored = generated }
-                if (!record.optBoolean("generationAdmitted") && getSharedPreferences("preparation", 0).getBoolean("generation", false)) {
-                    record.put("generationAdmitted", true); remember()
-                    generationWorker.execute { generate(context, event, taskId) }
-                }
-            } catch (error: Throwable) {
-                PreparationRecords.record(this, "open", JSONObject().put("status", "failed").put("reason", error.message?.take(1000)))
-                runOnUiThread { message = "This plan is no longer available. Return to Calendar." }
-            }
-        }
+        eventId = intent.getLongExtra("eventId", -1L)
+        require(eventId >= 0) { "Missing demo event" }
+        day = LocalDate.parse(intent.getStringExtra("day") ?: error("Missing demo day"))
+        contentResolver.registerContentObserver(CalendarContract.CONTENT_URI, true, observer)
         setContent { AppTheme(Accent.Calendar) {
-            Scaffold(topBar = { TopAppBar(title = { Text("Preparation plan") }, navigationIcon = { TextButton(onClick = { finish() }) { Text("Back") } }) }) { padding ->
-                Column(Modifier.padding(padding).fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                    Text(event.getString("title"), style = MaterialTheme.typography.titleLarge)
-                    Text(event.getString("notes").removePrefix("Preparation demo · "), style = MaterialTheme.typography.bodyMedium)
-                    if (tailoring) Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) { CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp); Text("Tailoring your plan…", style = MaterialTheme.typography.bodySmall) }
-                    tailored?.let { next -> TextButton(onClick = { worker.execute { try { activate(next, true); runOnUiThread { tailored = null } } catch (_: Throwable) { runOnUiThread { tailored = null; message = "Facts changed. Return to Calendar." } } } }) { Text("View tailored plan") } }
-                    surface?.let { ExperienceSurface(it) } ?: Text(message)
+            Scaffold(topBar = { TopAppBar(title = { Text("Preparation plan") }, navigationIcon = { TextButton(onClick = { finish() }) { Text("Back") } }, actions = {
+                TextButton(onClick = { startActivity(Intent(this@PreparationActivity, PreparationInspectActivity::class.java)) }) { Text("Inspect") }
+            }) }) { padding ->
+                Column(Modifier.padding(padding).fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    eventUi?.let { e -> Text(e.title, style = MaterialTheme.typography.titleLarge); Text(e.notes.removePrefix("Preparation demo · ")) }
+                    Text("On-device discovery uses this Gig Demo event. Opening a suggestion shares its captured facts with ${dev.deal.apps.development.GenerationBuild.label} for generation. Appointments change only after native confirmation.", style = MaterialTheme.typography.bodySmall)
+                    if (checking) Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) { CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp); Text("Looking for useful help…") }
+                    suggestion?.let { tip -> Card { Column(Modifier.padding(12.dp)) {
+                        Text(tip.title, style = MaterialTheme.typography.titleMedium)
+                        Row { TextButton(onClick = { accept(tip) }, enabled = !generating) { Text("Open") }
+                            TextButton(onClick = {
+                                check(getSharedPreferences("preparation-discovery-dismissals", 0).edit().putBoolean(current!!.identity, true).commit())
+                                suggestion = null; discovery.cancel(); message = ""
+                            }) { Text("Dismiss") } }
+                    } } }
+                    if (generating) Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) { CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp); Text("Building your interaction…") }
+                    if (message.isNotEmpty()) Text(message)
+                    surface?.let { ExperienceSurface(it, onSnapshot = { snapshot ->
+                        DiagnosticFiles.write(filesDir, "preparation-ui.json", snapshot.json().toString())
+                    }) }
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text("Allow Calendar capabilities")
+                        Switch(connected, { value ->
+                            if (value) api?.grant("host/calendar") else api?.revoke("host/calendar")
+                            connected = value; proposal = null; confirm = false
+                        }, enabled = api != null)
+                    }
+                    proposal?.let { minute ->
+                        Text("Proposed reminder: %02d:%02d. Nothing has changed.".format(minute / 60, minute % 60))
+                        TextButton(onClick = { confirm = true }) { Text("Review Calendar change") }
+                    }
                 }
             }
+            if (confirm) AlertDialog(onDismissRequest = { confirm = false }, title = { Text("Confirm Calendar change") }, text = { Text("Add the proposed reminder to this Gig Demo event? Existing reminders stay unchanged.") },
+                confirmButton = { TextButton(onClick = {
+                    confirm = false
+                    val origin = observed; val minute = proposal
+                    try {
+                        check(foreground && connected && origin != null && origin == event && origin == activeEvent && minute != null)
+                        ShowAgenda(this@PreparationActivity).confirmReminder(origin, minute)
+                        proposal = null; message = "Reminder saved"
+                    } catch (error: Throwable) { proposal = null; message = error.message ?: "Calendar change failed" }
+                }) { Text("Confirm write") } }, dismissButton = { TextButton(onClick = { confirm = false }) { Text("Keep unchanged") } })
         } }
     }
-    private fun fallback(tasks: JSONArray, selected: String, start: Int): Source {
-        fun quote(value: String) = "\"" + value.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n").replace("\r", "\\r").replace("\t", "\\t") + "\""
-        val declarations = (0 until tasks.length()).joinToString(" ") { i -> val t = tasks.getJSONObject(i); "let task$i: Task = {id:${quote(t.getString("id"))},title:${quote(t.getString("title"))},chosen:${t.getString("id") == selected}}; tasks[tasks.length] = task$i;" }
-        val initial = "let tasks: Task[] = []; $declarations return {tasks:tasks,start:$start,loaded:true};"
-        return Source(assets.open("preparation/preparation.deal").bufferedReader().use { it.readText() }.replace("function acceptedState(): State { return {}; }", "function acceptedState(): State { $initial }"), assets.open("preparation/preparation.dealui").bufferedReader().use { it.readText() })
+    override fun onResume() { super.onResume(); foreground = true; refresh() }
+    override fun onPause() {
+        foreground = false; invalidate()
+        super.onPause()
     }
-    private fun generate(context: JSONObject, event: JSONObject, selected: String) {
-        val protocol = api ?: return
-        val started = android.os.SystemClock.elapsedRealtime()
-        var timer: Runnable? = null
+    private fun invalidate() {
+        synchronized(ownerLock) { revision++ }; discovery.cancel(); suggestion = null; checking = false
+        api?.revoke("host/calendar"); connected = false; observed = null; surface = null
+        request?.let { runCatching { api?.cancel(it) } }
+        proposal = null; confirm = false
+    }
+    private fun readEvent(): ShowEvent = ShowAgenda(this).events(day).singleOrNull { it.id == eventId } ?: error("Demo event changed or removed")
+    private fun input(e: ShowEvent, contracts: List<SharedCapabilityContract>): DiscoveryInput = DiscoveryInput(listOf(
+        DiscoveryFact("event", "Gig Demo event ${e.id}: ${e.title}. Starts ${Instant.ofEpochMilli(e.from).atZone(AGENDA_ZONE)}; ends ${Instant.ofEpochMilli(e.until).atZone(AGENDA_ZONE)}. Location: ${e.location}. Start minute ${Instant.ofEpochMilli(e.from).atZone(AGENDA_ZONE).let { it.hour * 60 + it.minute }}. Notes: ${e.notes.removePrefix("Preparation demo · ")}")
+    ), contracts)
+    private fun refresh() {
+        invalidate()
+        val epoch = revision
+        worker.execute {
+            try {
+                check(foreground && epoch == revision)
+                val e = readEvent()
+                val protocol = api ?: createApi().also { api = it }
+                val facts = input(e, protocol.refresh())
+                if (current?.identity != facts.identity) {
+                    protocol.revoke("host/calendar"); activeEvent = null
+                    val previous = synchronized(ownerLock) { owner.also { owner = null; activeInput = null } }; previous?.close()
+                    runOnUiThread { surface = null; connected = false }
+                }
+                current = facts; event = e
+                val retained = PreparationRecords.prefs(this).getString("opportunity.${e.id}", null)?.let(::JSONObject)
+                if (activeInput != facts.identity && retained?.optString("input") == facts.identity) {
+                    protocol.saved().firstOrNull { it.id == retained.optString("experience") }?.let { saved ->
+                        activate(protocol, saved, e, facts.identity, epoch)
+                    }
+                }
+                runOnUiThread {
+                    if (!foreground || epoch != revision) return@runOnUiThread
+                    eventUi = e
+                    if (activeInput == facts.identity) { surface = synchronized(ownerLock) { owner }; message = ""; return@runOnUiThread }
+                    if (getSharedPreferences("preparation-discovery-dismissals", 0).getBoolean(facts.identity, false)) { message = ""; return@runOnUiThread }
+                    checking = true; message = ""
+                    val started = android.os.SystemClock.elapsedRealtime()
+                    discovery.discover(facts).whenComplete { tip, error -> runOnUiThread {
+                        if (!foreground || epoch != revision) return@runOnUiThread
+                        checking = false
+                        message = if (error == null) "" else "Discovery failed: ${error.cause?.message ?: error.message}"
+                        suggestion = tip
+                        PreparationRecords.record(this, "opportunity", JSONObject().put("status", if (error != null) "failed" else if (tip == null) "none" else "suggested").put("elapsedMs", android.os.SystemClock.elapsedRealtime() - started).put("title", tip?.title).put("brief", tip?.brief).put("input", facts.identity).put("reason", error?.toString()))
+                    } }
+                }
+            } catch (error: Throwable) { runOnUiThread { if (foreground && epoch == revision) { checking = false; message = error.message ?: "Preparation unavailable" } } }
+        }
+    }
+    private fun createApi(): ApplicationProtocol {
+        val caps = calendarCapabilities({
+            val now = readEvent(); check(foreground && now == event && now == activeEvent) { "Event changed" }; observed = now
+            Instant.ofEpochMilli(now.from).atZone(AGENDA_ZONE).let { it.hour * 60 + it.minute }
+        }, { minute ->
+            val origin = observed; check(foreground && origin != null && origin == readEvent() && origin == event && origin == activeEvent) { "Read the current event before proposing a reminder" }
+            runOnUiThread { if (foreground && origin == event && connected) proposal = minute }
+        })
+        val registry = CapabilityRegistry(this, CapabilityDiscovery(this) { false }, listOf(caps))
+        return PreparationRecords.opportunityApi(this, registry)
+    }
+    private fun activate(protocol: ApplicationProtocol, experience: Experience, captured: ShowEvent, identity: String, epoch: Long) {
+        check(foreground && epoch == revision && readEvent() == captured) { "Facts changed before activation" }
+        val next = ExperienceSurface(protocol, experience)
         try {
-            check(foreground && !cancelled && valid() && getSharedPreferences("preparation", 0).getBoolean("generation", false)) { "Left plan or disclosure changed" }
-            val task = context.getJSONArray("tasks").let { a -> (0 until a.length()).map { a.getJSONObject(it) }.single { it.getString("id") == selected } }
-            val disclosed = JSONObject().put("eventTitle", event.getString("title")).put("eventNote", event.getString("notes")).put("taskTitle", task.getString("title")).put("startMinute", event.getInt("startMinute"))
-            val schema = WireType("record", fields = listOf(WireField("eventTitle", WireType("string", maximum = 120)), WireField("eventNote", WireType("string", maximum = 384)), WireField("taskTitle", WireType("string", maximum = 120)), WireField("startMinute", WireType("int", minimumInt = 0, maximumInt = 1439))))
-            val objective = "Create a compact useful preparation experience for this accepted event/task relationship. Specialize interactive behavior to the disclosed note, not just a generic departure form. For requested documents offer an editable preparation checklist; for numerical discussion offer editable integer amounts and a calculated comparison plus meeting notes when useful. These are examples, not required domain branches. Do not invent obligations, amounts, document counts or completed actions. Clearly label user-entered assumptions. Keep a locally editable timing estimate. No capabilities, network, appointment writes or task completion. Use the native pack with Section, Toggle, TextField, IntField and Time; initialize useful state immediately, no load button. Use minimal DEAL, no ternary expressions, declare typed arrays and typed items before appending. Define export class State in preparation.deal and export function initialState(): State. In preparation.dealui import * as app from \"./preparation\" and * as ui from \"./platform.dealui-pack\"; declare // @ui-root then export view Preparation(state: app.State): View. Do not name the state class AppState unless declared; imports precede declarations. @ui-update functions take State and a declared exported action class. Use integers for money, optional user-entered values clearly labelled, never fabricated amounts. State array fields MUST default to []; initialize them in initialState with typed local records, never inline record arrays. Within ForEach an action may use payload but MUST NOT capture item.id together with payload; use Option or Toggle with value:item.id to select/focus the item, then render the focused TextField outside ForEach. Handlers never mutate or alias state: create typed records/arrays and return a new State. These restrictions avoid known unsupported lowering patterns. Return both source files."
-            EmbeddingLog.capture(applicationContext, true)
-            protocol.capture(true)
-            val current = protocol.request("Tailored preparation", objective, protocol.snapshot(schema, disclosed.toString())); request = current
-            check(foreground && !cancelled)
-            runOnUiThread { tailoring = true }
-            // Initial live samples took 80–90s plus 34–40s repair; allow one such cycle.
-            // Foreground safeguard, not a call quota; Inspect records actual latency.
-            timer = Runnable { cancelled = true; worker.execute { runCatching { protocol.cancel(current) } }; tailoring = false }
-            deadline.postDelayed(timer, 180000)
-            PreparationRecords.record(this, "generation", JSONObject().put("model", dev.deal.apps.development.GenerationBuild.label).put("status", "started").put("trace", protocol.requestTrace(current)))
-            protocol.withPreparation(protocol.generate(current)) { experience ->
-                check(foreground && !cancelled && valid()) { "Left plan or facts changed" }
-                // Persist checked source without mounting it over the user's current plan.
-                ExperienceSurface(protocol, experience).use { checked -> checked.activate { error -> throw error } }
-                synchronized(recordLock) { record.put("generated", experience.id).put("generatedModel", dev.deal.apps.development.GenerationBuild.label); remember() }
-                PreparationRecords.record(this, "generation", JSONObject().put("model", dev.deal.apps.development.GenerationBuild.label).put("status", "checked").put("attempts", experience.attempts).put("elapsedMs", android.os.SystemClock.elapsedRealtime() - started).put("trace", protocol.requestTrace(current)))
-                runOnUiThread { if (foreground) tailored = experience }
+            next.activate { error -> runOnUiThread { if (foreground && epoch == revision) message = error.message ?: "Interaction failed" } }
+            val previous = synchronized(ownerLock) {
+                check(foreground && epoch == revision && readEvent() == captured) { "Facts changed during activation" }
+                owner.also { owner = next; activeInput = identity; activeEvent = captured }
             }
-        } catch (error: Throwable) {
-            PreparationRecords.record(this, "generation", JSONObject().put("model", dev.deal.apps.development.GenerationBuild.label).put("status", if (cancelled) "interrupted or timed out" else "failed").put("elapsedMs", android.os.SystemClock.elapsedRealtime() - started).put("reason", error.message?.take(2000)))
-        } finally { timer?.let(deadline::removeCallbacks); request = null; runOnUiThread { tailoring = false } }
+            runOnUiThread { if (foreground && epoch == revision) surface = next }
+            previous?.close()
+        } catch (error: Throwable) { runCatching { next.close() }.onFailure(error::addSuppressed); throw error }
+    }
+    private fun accept(tip: DiscoverySuggestion) {
+        if (generating) return
+        val epoch = revision; val facts = current ?: return
+        suggestion = null; generating = true; message = ""
+        generationWorker.execute {
+            val started = android.os.SystemClock.elapsedRealtime()
+            try {
+                val protocol = api ?: error("Preparation unavailable")
+                check(foreground && epoch == revision && readEvent() == event)
+                val fresh = input(readEvent(), protocol.refresh())
+                check(fresh.identity == facts.identity)
+                val admitted = discovery.request(tip, fresh, protocol); request = admitted
+                activeEvent = event
+                if (!foreground || epoch != revision) protocol.cancel(admitted)
+                protocol.withPreparation(protocol.generate(admitted)) { experience ->
+                    check(foreground && epoch == revision && readEvent() == event) { "Facts changed during generation" }
+                    activate(protocol, experience, event!!, facts.identity, epoch)
+                    check(PreparationRecords.prefs(this).edit().putString("opportunity.$eventId", JSONObject().put("input", facts.identity).put("experience", experience.id).toString()).commit())
+                    PreparationRecords.record(this, "opportunity-generation", JSONObject().put("status", "activated").put("experience", experience.id).put("trace", protocol.requestTrace(admitted)).put("attempts", experience.attempts).put("elapsedMs", android.os.SystemClock.elapsedRealtime() - started).put("brief", tip.brief))
+                }
+            } catch (error: Throwable) {
+                PreparationRecords.record(this, "opportunity-generation", JSONObject().put("status", "failed").put("reason", error.toString()).put("elapsedMs", android.os.SystemClock.elapsedRealtime() - started))
+                runOnUiThread { if (foreground && epoch == revision) message = "Generation failed: ${error.message}" }
+            } finally { request = null; runOnUiThread { generating = false } }
+        }
     }
     override fun onDestroy() {
-        foreground = false; cancelled = true
-        request?.let { runCatching { api?.cancel(it) } }
+        foreground = false; invalidate(); contentResolver.unregisterContentObserver(observer)
         generationWorker.shutdown()
-        worker.execute {
-            generationWorker.awaitTermination(15, TimeUnit.SECONDS)
-            teardown({ owner?.close() }, { api?.close() })
-        }
-        worker.shutdown(); deadline.removeCallbacksAndMessages(null); super.onDestroy()
+        worker.execute { teardown({ discovery.close() }, { check(generationWorker.awaitTermination(15, java.util.concurrent.TimeUnit.SECONDS)) { "Generation worker did not terminate" } }, { synchronized(ownerLock) { owner }?.close() }, { api?.close() }) }
+        worker.shutdown(); super.onDestroy()
     }
 }

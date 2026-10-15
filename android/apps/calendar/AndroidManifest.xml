@@ -1,9 +1,10 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android" package="dev.deal.apps.calendar">
     <uses-sdk android:minSdkVersion="36" android:targetSdkVersion="36" />
     <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="com.google.android.apps.aicore.service.BIND_SERVICE" />
     <uses-permission android:name="android.permission.READ_CALENDAR" />
     <uses-permission android:name="android.permission.WRITE_CALENDAR" />
-    <queries><intent><action android:name="dev.deal.embedding.CAPABILITIES_V1" /></intent></queries>
+    <queries><package android:name="com.google.android.aicore" /><intent><action android:name="dev.deal.embedding.CAPABILITIES_V1" /></intent></queries>
     <application android:label="Calendar" android:theme="@android:style/Theme.Material.Light.NoActionBar" android:allowBackup="false" android:debuggable="true" android:usesCleartextTraffic="true">
         <activity android:name=".AgendaActivity" android:exported="true" android:launchMode="singleTop">
             <intent-filter>
@@ -12,6 +13,7 @@
             </intent-filter>
         </activity>
         <activity android:name=".PreparationActivity" android:exported="false" />
+        <activity android:name=".AuthoredPreparationActivity" android:exported="false" />
         <activity android:name=".PreparationInspectActivity" android:exported="false" />
         <activity android:name=".CalendarActivity" android:exported="true" android:launchMode="singleTop" android:label="Departure plan">
             <intent-filter>

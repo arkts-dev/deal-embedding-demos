@@ -15,12 +15,18 @@ object PreparationRecords {
         events.put(JSONObject(value.toString()).put("stage", stage).put("at", System.currentTimeMillis()))
         check(p.edit().putString("events", events.toString()).commit())
     }
+    fun opportunityApi(context: Context, registry: dev.deal.embedding.capabilities.CapabilityRegistry? = null): ApplicationProtocol {
+        val capabilities = registry ?: dev.deal.embedding.capabilities.CapabilityRegistry(context, dev.deal.embedding.capabilities.CapabilityDiscovery(context) { false }, emptyList())
+        return ApplicationProtocol(context, Embedding(context, capabilities, dev.deal.apps.development.GenerationGateway("http://127.0.0.1:8787/generate"), EmbeddingConfig("experience", emptyList(), "preparation-opportunity", retainState = true)))
+    }
     fun api(context: Context): ApplicationProtocol {
         val registry = dev.deal.embedding.capabilities.CapabilityRegistry(context, dev.deal.embedding.capabilities.CapabilityDiscovery(context) { false }, emptyList())
         return ApplicationProtocol(context, Embedding(context, registry, dev.deal.apps.development.GenerationGateway("http://127.0.0.1:8787/generate"), EmbeddingConfig("preparation", emptyList(), "preparation-plan", retainState = true)))
     }
     fun clear(context: Context) {
         api(context).use { api -> api.saved().forEach(api::forget) }
+        opportunityApi(context).use { api -> api.saved().forEach(api::forget) }
+        check(context.getSharedPreferences("preparation-discovery-dismissals", 0).edit().clear().commit())
         check(context.getSharedPreferences("preparation", 0).edit().remove("state").commit())
         check(context.getSharedPreferences("preparation-inputs", 0).edit().clear().commit())
         check(prefs(context).edit().clear().commit())

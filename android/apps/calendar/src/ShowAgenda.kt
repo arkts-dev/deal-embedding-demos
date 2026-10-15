@@ -1,5 +1,6 @@
 package dev.deal.apps.calendar
 
+import android.content.ContentProviderOperation
 import android.content.ContentValues
 import android.content.Context
 import android.content.Intent
@@ -37,7 +38,7 @@ class ShowAgenda(private val context: Context) {
     fun calendarId(): Long? {
         val uri = CalendarContract.Calendars.CONTENT_URI
         val projection = arrayOf(CalendarContract.Calendars._ID, CalendarContract.Calendars.CALENDAR_DISPLAY_NAME, CalendarContract.Calendars.ACCOUNT_NAME)
-        context.contentResolver.query(uri, projection, "${CalendarContract.Calendars.CALENDAR_DISPLAY_NAME}=?", arrayOf(SHOW_CALENDAR), null)?.use { cursor ->
+        context.contentResolver.query(uri, projection, "${CalendarContract.Calendars.CALENDAR_DISPLAY_NAME}=? AND ${CalendarContract.Calendars.ACCOUNT_NAME}=? AND ${CalendarContract.Calendars.ACCOUNT_TYPE}=?", arrayOf(SHOW_CALENDAR, "deal.demo", CalendarContract.ACCOUNT_TYPE_LOCAL), null)?.use { cursor ->
             if (cursor.moveToFirst()) return cursor.getLong(0)
         }
         val values = ContentValues().apply {
@@ -117,6 +118,23 @@ class ShowAgenda(private val context: Context) {
             .filter { it.notes.startsWith("Preparation demo ·") }.distinctBy { it.id }.forEach { delete(it.id) }
         val start = day.atTime(15, 0).atZone(AGENDA_ZONE).toInstant().toEpochMilli()
         add(title, start, start + 3600_000, "Demo location", "", "Preparation demo · $note", null)
+    }
+
+    /** Native confirmation targets only this exact dedicated-calendar event revision. */
+    fun confirmReminder(event: ShowEvent, minute: Int) {
+        require(minute in 0..1439)
+        val current = events(Instant.ofEpochMilli(event.from).atZone(AGENDA_ZONE).toLocalDate()).single { it.id == event.id }
+        check(current == event) { "Event changed. Recalculate before saving." }
+        val start = Instant.ofEpochMilli(event.from).atZone(AGENDA_ZONE).let { it.hour * 60 + it.minute }
+        val delta = start - minute
+        require(delta in 0..1440) { "Reminder must precede the event" }
+        val ops = arrayListOf(ContentProviderOperation.newUpdate(CalendarContract.Events.CONTENT_URI)
+            .withValue(CalendarContract.Events.HAS_ALARM, 1)
+            .withSelection("_id=? AND calendar_id=? AND dtstart=? AND dtend=? AND title=? AND description=? AND eventLocation=? AND deleted=0", arrayOf(event.id.toString(), calendarId().toString(), event.from.toString(), event.until.toString(), event.title, event.notes, event.location))
+            .withExpectedCount(1).build(), ContentProviderOperation.newInsert(CalendarContract.Reminders.CONTENT_URI)
+            .withValue(CalendarContract.Reminders.EVENT_ID, event.id).withValue(CalendarContract.Reminders.MINUTES, delta)
+            .withValue(CalendarContract.Reminders.METHOD, CalendarContract.Reminders.METHOD_ALERT).build())
+        context.contentResolver.applyBatch(CalendarContract.AUTHORITY, ops)
     }
 
     fun delete(eventId: Long) {
@@ -279,7 +297,7 @@ class AgendaActivity : ComponentActivity() {
                                         TextButton(modifier = Modifier.weight(1f), enabled = !accepting, onClick = {
                                             accepting = true
                                             worker.execute {
-                                                try { val accepted = discovery!!.accept(tip); runOnUiThread { if (visible && suggestion === tip) { suggestion = null; startActivity(Intent(this@AgendaActivity, PreparationActivity::class.java).putExtra("accepted", accepted)) } } }
+                                                try { val accepted = discovery!!.accept(tip); runOnUiThread { if (visible && suggestion === tip) { suggestion = null; startActivity(Intent(this@AgendaActivity, AuthoredPreparationActivity::class.java).putExtra("accepted", accepted)) } } }
                                                 catch (error: Throwable) { runOnUiThread { suggestion = null; discoveryMessage = "Facts changed. No plan was opened." } }
                                                 finally { runOnUiThread { accepting = false } }
                                             }
@@ -366,6 +384,7 @@ class AgendaActivity : ComponentActivity() {
         if (event.location.isNotEmpty()) KeyValue("Location", event.location)
         if (event.notes.isNotEmpty()) Text(event.notes, style = MaterialTheme.typography.bodyMedium)
         val context = androidx.compose.ui.platform.LocalContext.current
+        Button(onClick = { context.startActivity(Intent(context, PreparationActivity::class.java).putExtra("eventId", event.id).putExtra("day", Instant.ofEpochMilli(event.from).atZone(AGENDA_ZONE).toLocalDate().toString())) }) { Text("Preparation") }
         Button(onClick = { context.startActivity(Intent(context, CalendarActivity::class.java).putExtra("eventId", event.id).putExtra("eventBegin", event.from)) }) { Text("Plan departure") }
         OutlinedButton(onClick = { agenda.delete(event.id); onBack() }, shape = RoundedCornerShape(18.dp)) { Text("Delete event") }
     }
