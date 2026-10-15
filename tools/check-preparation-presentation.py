@@ -53,6 +53,9 @@ if a.state not in ['inspect', 'access']:
         assert sum(s in ['Preparing…', 'Looking ahead…'] for s in text) == 1
     elif a.state == 'populated':
         assert 'Open' not in text and 'Preparing…' not in text and 'Looking ahead…' not in text
+    elif a.state == 'empty':
+        assert any(s in ['No suggestions', 'Suggestions are off'] for s in text)
+        assert 'Open' not in text and 'Preparing…' not in text and 'Looking ahead…' not in text
     elif a.state == 'failure':
         assert any(s in ['Couldn’t find help', 'Preparation unavailable', 'Couldn’t create this tool', 'Tool unavailable', 'Couldn’t save reminder'] for s in text)
 receipt = {'state': a.state, 'structuralChecks': 'passed', 'visualReview': 'required', 'requiredVisible': a.visible, 'texts': text, 'descriptions': descriptions}

@@ -72,11 +72,21 @@ class PreparationActivity : ComponentActivity() {
                 Box {
                     IconButton(onClick = { menu = true }) { Icon(Icons.Outlined.MoreVert, "More options") }
                     DropdownMenu(menu, { menu = false }) {
+                        DropdownMenuItem(text = { Text("Event details") }, onClick = {
+                            menu = false
+                            startActivity(Intent(this@PreparationActivity, EventDetailsActivity::class.java).putExtra("eventId", eventId).putExtra("day", day.toString()))
+                        })
                         DropdownMenuItem(text = { Text("Calendar access") }, onClick = { menu = false; access = true })
                     }
                 }
             }) }) { padding ->
                 Column(Modifier.padding(padding).fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    eventUi?.let { selected ->
+                        val start = Instant.ofEpochMilli(selected.from).atZone(AGENDA_ZONE)
+                        val end = Instant.ofEpochMilli(selected.until).atZone(AGENDA_ZONE)
+                        Text("${start.format(java.time.format.DateTimeFormatter.ofPattern("EEE d MMM · HH:mm"))}–${end.format(java.time.format.DateTimeFormatter.ofPattern("HH:mm"))}", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        if (selected.location.isNotEmpty()) Text(selected.location, style = MaterialTheme.typography.bodyMedium)
+                    }
                     if (checking || generating) Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                         CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp)
                         Text(if (generating) "Preparing…" else "Looking ahead…", style = MaterialTheme.typography.bodySmall)
@@ -86,10 +96,10 @@ class PreparationActivity : ComponentActivity() {
                             Text(tip.title, Modifier.weight(1f), style = MaterialTheme.typography.titleMedium)
                             IconButton(onClick = {
                                 check(getSharedPreferences("preparation-discovery-dismissals", 0).edit().putBoolean(current!!.identity, true).commit())
-                                suggestion = null; discovery.cancel(); message = ""
+                                suggestion = null; discovery.cancel(); message = "No suggestions"
                             }) { Icon(Icons.Outlined.Close, "Dismiss") }
                         }
-                        TextButton(onClick = { accept(tip) }, enabled = !generating, modifier = Modifier.padding(start = 4.dp, bottom = 4.dp)) { Text("Open") }
+                        Button(onClick = { accept(tip) }, enabled = !generating, modifier = Modifier.padding(start = 16.dp, bottom = 12.dp)) { Text("Open") }
                     } }
                     if (message.isNotEmpty()) Text(message)
                     surface?.let { ExperienceSurface(it, onSnapshot = { snapshot ->
@@ -167,14 +177,15 @@ class PreparationActivity : ComponentActivity() {
                     if (!foreground || epoch != revision) return@runOnUiThread
                     eventUi = e
                     if (activeInput == facts.identity) { surface = synchronized(ownerLock) { owner }; message = ""; return@runOnUiThread }
-                    if (getSharedPreferences("preparation-discovery-dismissals", 0).getBoolean(facts.identity, false)) { message = ""; return@runOnUiThread }
+                    if (!getSharedPreferences("preparation", 0).getBoolean("opportunity", true)) { message = "Suggestions are off"; return@runOnUiThread }
+                    if (getSharedPreferences("preparation-discovery-dismissals", 0).getBoolean(facts.identity, false)) { message = "No suggestions"; return@runOnUiThread }
                     checking = true; message = ""
                     val started = android.os.SystemClock.elapsedRealtime()
                     PreparationRecords.record(this, "opportunity", JSONObject().put("status", "started").put("model", "On-device").put("input", facts.identity).put("eventTitle", e.title).put("eventNotes", e.notes))
                     discovery.discover(facts).whenComplete { tip, error -> runOnUiThread {
                         if (!foreground || epoch != revision) return@runOnUiThread
                         checking = false
-                        message = if (error == null) "" else "Couldn’t find help"
+                        message = if (error != null) "Couldn’t find help" else if (tip == null) "No suggestions" else ""
                         suggestion = tip
                         PreparationRecords.record(this, "opportunity", JSONObject().put("status", if (error != null) "failed" else if (tip == null) "none" else "suggested").put("elapsedMs", android.os.SystemClock.elapsedRealtime() - started).put("title", tip?.title).put("brief", tip?.brief).put("input", facts.identity).put("factIds", tip?.factIds?.let(::JSONArray)).put("capabilityIds", tip?.capabilityIds?.let(::JSONArray)).put("reason", error?.toString()))
                     } }

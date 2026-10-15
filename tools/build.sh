@@ -3,7 +3,7 @@
 # Runtime dex is built once per profile and reused, because dexing Compose dominates build time.
 set -euo pipefail
 cd "$(dirname "$0")/.."
-GENERATION_BACKEND="${DEAL_GENERATION_BACKEND:-cortex}"
+GENERATION_BACKEND="${DEAL_GENERATION_BACKEND:-cerebras}"
 case "$GENERATION_BACKEND" in cortex|cerebras) ;; *) echo 'DEAL_GENERATION_BACKEND must be cortex or cerebras' >&2; exit 1 ;; esac
 TARGETS=("$@")
 [[ ${#TARGETS[@]} -eq 0 ]] && TARGETS=(calendar vehicle todo organizer rental pizza tests)

@@ -151,54 +151,9 @@ data class ShowEvent(val id: Long, val title: String, val from: Long, val until:
 class AgendaActivity : ComponentActivity() {
     private val agenda by lazy { ShowAgenda(this) }
     private val worker = java.util.concurrent.Executors.newSingleThreadExecutor()
-    private var discovery: PreparationDiscovery? = null
-    private var suggestion by mutableStateOf<org.json.JSONObject?>(null)
-    private var discoveryMessage by mutableStateOf("")
-    private var checking by mutableStateOf(false)
-    private var accepting by mutableStateOf(false)
-    @Volatile private var showingAgenda = true
-    @Volatile private var visible = true
     private var resumeVersion by mutableStateOf(0)
-    @Volatile private var discoveryRevision = 0L
-    private var pendingDay: LocalDate? = null
-    override fun onPause() { visible = false; discoveryRevision++; pendingDay = null; discovery?.foreground = false; suggestion = null; super.onPause() }
-    override fun onResume() { super.onResume(); visible = true; discovery?.foreground = showingAgenda; resumeVersion++ }
-    private fun checkPreparation(day: LocalDate) {
-        pendingDay = day
-        val revision = ++discoveryRevision
-        suggestion = null
-        discovery?.foreground = false
-        if (checking || !visible || !showingAgenda) return
-        pendingDay = null
-        checking = true
-        discoveryMessage = "Checking preparation…"
-        worker.execute {
-            try {
-                if (revision != discoveryRevision || !visible || !showingAgenda) return@execute
-                val service = discovery ?: PreparationDiscovery(applicationContext).also { discovery = it }
-                service.foreground = revision == discoveryRevision && visible && showingAgenda
-                val result = service.discover(day)
-                runOnUiThread {
-                    if (revision == discoveryRevision && visible && showingAgenda && service.enabled()) {
-                        suggestion = result.optJSONObject("suggestion")?.takeIf { it.length() > 0 }
-                        discoveryMessage = when (result.getString("status")) {
-                            "unavailable" -> "AI is unavailable. No suggestion was made; unchanged facts won’t be sent again."
-                            "stale" -> "Facts changed during the check. Open the agenda again."
-                            "rejected" -> "AI returned an unsupported suggestion. Nothing was added."
-                            "already_checked", "dismissed" -> ""
-                            "no_relationship" -> "No preparation suggestion for these facts."
-                                                        else -> ""
-                        }
-                    }
-                }
-            } catch (error: Throwable) { android.util.Log.e("Preparation", "Discovery failed", error); runOnUiThread { if (revision == discoveryRevision) discoveryMessage = "Couldn’t check preparation. Ensure Todo sharing is enabled; no changes were made." } }
-            finally { runOnUiThread {
-                checking = false
-                pendingDay?.let { next -> if (visible && showingAgenda) checkPreparation(next) }
-            } }
-        }
-    }
-    override fun onDestroy() { worker.execute { discovery?.close() }; worker.shutdown(); super.onDestroy() }
+    override fun onResume() { super.onResume(); resumeVersion++ }
+    override fun onDestroy() { worker.shutdown(); super.onDestroy() }
     override fun onCreate(state: Bundle?) {
         super.onCreate(state)
         if (intent.hasExtra("demoEvent") && checkSelfPermission(android.Manifest.permission.WRITE_CALENDAR) == android.content.pm.PackageManager.PERMISSION_GRANTED) {
@@ -209,12 +164,10 @@ class AgendaActivity : ComponentActivity() {
                 var date by remember { mutableStateOf(LocalDate.now(AGENDA_ZONE)) }
                 var events by remember { mutableStateOf(emptyList<ShowEvent>()) }
                 var adding by remember { mutableStateOf(false) }
-                var selected by remember { mutableStateOf<ShowEvent?>(null) }
                 var granted by remember { mutableStateOf(checkSelfPermission(android.Manifest.permission.READ_CALENDAR) == android.content.pm.PackageManager.PERMISSION_GRANTED && checkSelfPermission(android.Manifest.permission.WRITE_CALENDAR) == android.content.pm.PackageManager.PERMISSION_GRANTED) }
                 var error by remember { mutableStateOf("") }
-                var disclose by remember { mutableStateOf(getSharedPreferences("preparation", 0).getBoolean("disclose", false)) }
+                var discover by remember { mutableStateOf(getSharedPreferences("preparation", 0).getBoolean("opportunity", true)) }
                 var access by remember { mutableStateOf(false) }
-                var disclosureDialog by remember { mutableStateOf(false) }
                 var clearing by remember { mutableStateOf(false) }
                 var clearConfirm by remember { mutableStateOf(false) }
                 val permissionRequest = androidx.activity.compose.rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
@@ -226,13 +179,7 @@ class AgendaActivity : ComponentActivity() {
                 LaunchedEffect(date, granted, resumeVersion) {
                     if (granted) { runCatching { agenda.seedSchedule(showDate()) }; refresh() }
                 }
-                LaunchedEffect(date, granted, disclose, resumeVersion, adding, selected, access) {
-                    showingAgenda = !adding && selected == null && !access
-                    discovery?.foreground = visible && showingAgenda && !checking
-                    if (granted && disclose && showingAgenda) checkPreparation(date)
-                    else { discoveryRevision++; pendingDay = null; suggestion = null; discovery?.foreground = false }
-                }
-                BackHandler(enabled = adding || selected != null || access) { adding = false; selected = null; access = false }
+                BackHandler(enabled = adding || access) { adding = false; access = false }
                 Scaffold(topBar = {
                     TopAppBar(title = {
                         Column {
@@ -243,27 +190,24 @@ class AgendaActivity : ComponentActivity() {
                         if (access) IconButton(onClick = { access = false }) { Icon(Icons.Outlined.ArrowBack, "Back") }
                     }, actions = {
                         if (!access) {
-                            TextButton(onClick = { date = LocalDate.now(AGENDA_ZONE); selected = null; adding = false }) { Text("Today") }
+                            TextButton(onClick = { date = LocalDate.now(AGENDA_ZONE); adding = false }) { Text("Today") }
                             IconButton(onClick = { adding = true }, enabled = granted) { Icon(Icons.Outlined.Add, "Add event") }
-                            IconButton(onClick = { access = true; suggestion = null }) { Icon(Icons.Outlined.Settings, "Extensions") }
+                            IconButton(onClick = { access = true }) { Icon(Icons.Outlined.Settings, "Extensions") }
                         }
                     })
                 }) { padding ->
                     Column(Modifier.padding(padding).fillMaxSize()) {
-                        if (!adding && selected == null && !access) WeekStrip(date) { date = it }
+                        if (!adding && !access) WeekStrip(date) { date = it }
                         when {
                             access -> Column(Modifier.padding(20.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(16.dp)) {
                                 Text("Preparation help", style = MaterialTheme.typography.titleLarge)
                                 Text("Optional AI assistance. No appointment or task is changed.", style = MaterialTheme.typography.bodyMedium)
                                 Text("AI permissions", style = MaterialTheme.typography.titleMedium)
                                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                                    Column(Modifier.weight(1f)) { Text("AI discovery"); Text("Jev uses selected and next-day event notes and task titles.", style = MaterialTheme.typography.bodySmall) }
-                                    Switch(disclose, { enabled ->
-                                        if (enabled) disclosureDialog = true else {
-                                            getSharedPreferences("preparation", 0).edit().putBoolean("disclose", false).commit()
-                                            disclose = false; suggestion = null; discovery?.foreground = false
-                                            worker.execute { discovery?.allow(false) }
-                                        }
+                                    Column(Modifier.weight(1f)) { Text("Preparation suggestions"); Text("On-device discovery when you open a demo event.", style = MaterialTheme.typography.bodySmall) }
+                                    Switch(discover, { enabled ->
+                                        check(getSharedPreferences("preparation", 0).edit().putBoolean("opportunity", enabled).commit())
+                                        discover = enabled
                                     })
                                 }
                                 var generationAllowed by remember { mutableStateOf(getSharedPreferences("preparation", 0).getBoolean("generation", false)) }
@@ -271,7 +215,6 @@ class AgendaActivity : ComponentActivity() {
                                     Column(Modifier.weight(1f)) { Text("Tailored plans"); Text("${dev.deal.apps.development.GenerationBuild.label} uses accepted facts when you open help.", style = MaterialTheme.typography.bodySmall) }
                                     Switch(generationAllowed, { value -> getSharedPreferences("preparation", 0).edit().putBoolean("generation", value).commit(); generationAllowed = value })
                                 }
-                                Text("Task sharing is controlled separately in Todo → Extensions.", style = MaterialTheme.typography.bodyMedium)
                                 HorizontalDivider()
                                 Text("Saved assistance", style = MaterialTheme.typography.titleMedium)
                                 ListItem(headlineContent = { Text("Inspect") }, supportingContent = { Text("Activity, model exchanges and checked source") }, trailingContent = { Icon(Icons.Outlined.ChevronRight, null) }, modifier = Modifier.clickable { startActivity(Intent(this@AgendaActivity, PreparationInspectActivity::class.java)) })
@@ -282,40 +225,17 @@ class AgendaActivity : ComponentActivity() {
                                 Button(onClick = { permissionRequest.launch(arrayOf(android.Manifest.permission.READ_CALENDAR, android.Manifest.permission.WRITE_CALENDAR)) }) { Text("Connect calendar") }
                             }
                             adding -> EventEditor(agenda, date) { adding = false; refresh() }
-                            selected != null -> EventDetail(selected!!, agenda) { selected = null; refresh() }
                             error.isNotEmpty() -> Column(Modifier.padding(20.dp)) { Text(error); TextButton(onClick = { refresh() }) { Text("Retry") } }
-                            else -> Agenda(events, date, suggestion?.optString("eventId"), {
-                                if (checking) Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                    CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp)
-                                    Text("Looking ahead…", style = MaterialTheme.typography.bodySmall)
-                                }
-                                suggestion?.let { tip ->
-                                    val eventDay = LocalDate.parse(org.json.JSONObject(tip.getString("input")).getString("day"))
-                                    HorizontalDivider(Modifier.padding(vertical = 8.dp))
-                                    if (date != eventDay) Text("${if (date == LocalDate.now(AGENDA_ZONE)) "Tomorrow" else eventDay.format(DateTimeFormatter.ofPattern("EEE d MMM", Locale.getDefault()))} · ${tip.getString("eventTitle")}", style = MaterialTheme.typography.labelLarge)
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                        TextButton(modifier = Modifier.weight(1f), enabled = !accepting, onClick = {
-                                            accepting = true
-                                            worker.execute {
-                                                try { val accepted = discovery!!.accept(tip); runOnUiThread { if (visible && suggestion === tip) { suggestion = null; startActivity(Intent(this@AgendaActivity, AuthoredPreparationActivity::class.java).putExtra("accepted", accepted)) } } }
-                                                catch (error: Throwable) { runOnUiThread { suggestion = null; discoveryMessage = "Facts changed. No plan was opened." } }
-                                                finally { runOnUiThread { accepting = false } }
-                                            }
-                                        }) { Text(if (tip.getBoolean("uncertain")) "Could “${tip.getString("taskTitle")}” help?" else "“${tip.getString("taskTitle")}” might help you prepare") }
-                                        IconButton(enabled = !accepting, onClick = { suggestion = null; worker.execute { runCatching { discovery?.dismiss(tip) }.onFailure { android.util.Log.e("Preparation", "Dismissal persistence failed", it) } } }) { Icon(Icons.Outlined.Close, "Dismiss suggestion") }
-                                    }
-                                }
-                            }) { suggestion = null; selected = it }
+                            else -> Agenda(events, date) { event ->
+                                startActivity(Intent(this@AgendaActivity, PreparationActivity::class.java).putExtra("eventId", event.id).putExtra("day", date.toString()))
+                            }
                         }
                     }
                 }
                 if (clearConfirm) AlertDialog(onDismissRequest = { clearConfirm = false }, title = { Text("Clear saved assistance?") }, text = { Text("Remove saved plans and discovery history. Permissions, appointments and tasks stay unchanged.") }, confirmButton = { TextButton(onClick = {
-                    clearConfirm = false; clearing = true; suggestion = null
-                    worker.execute { try { discovery?.close(); discovery = null; PreparationRecords.clear(applicationContext) } finally { runOnUiThread { clearing = false } } }
+                    clearConfirm = false; clearing = true
+                    worker.execute { try { PreparationRecords.clear(applicationContext) } finally { runOnUiThread { clearing = false } } }
                 }) { Text("Clear", color = MaterialTheme.colorScheme.error) } }, dismissButton = { TextButton(onClick = { clearConfirm = false }) { Text("Cancel") } })
-                if (disclosureDialog) AlertDialog(onDismissRequest = { disclosureDialog = false }, title = { Text("Find preparation help?") }, text = { Text("While Calendar is open, send up to four event titles/notes and eight unfinished task titles to Jev for relevance discovery. After you open help, accepted facts also go to ${dev.deal.apps.development.GenerationBuild.label} to generate a tailored plan. Enable sharing in Todo separately. No task or appointment is changed. You can stop sharing here.") },
-                    confirmButton = { TextButton(onClick = { disclosureDialog = false; getSharedPreferences("preparation", 0).edit().putBoolean("disclose", true).putBoolean("generation", true).commit(); disclose = true }) { Text("Allow") } },
-                    dismissButton = { TextButton(onClick = { disclosureDialog = false }) { Text("Not now") } })
             }
         }
     }
@@ -344,13 +264,12 @@ class AgendaActivity : ComponentActivity() {
     }
 }
 
-@Composable private fun Agenda(events: List<ShowEvent>, date: LocalDate, target: String?, assistance: @Composable () -> Unit, onOpen: (ShowEvent) -> Unit) {
+@Composable private fun Agenda(events: List<ShowEvent>, date: LocalDate, onOpen: (ShowEvent) -> Unit) {
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         item {
             Text(date.format(DateTimeFormatter.ofPattern("EEEE, d MMMM", Locale.getDefault())), style = MaterialTheme.typography.titleMedium)
             Spacer(Modifier.height(8.dp))
         }
-        if (events.none { "${it.id}:${it.from}" == target }) item { assistance() }
         if (events.isEmpty()) item { Text("No events this day.", modifier = Modifier.padding(vertical = 24.dp), color = MaterialTheme.colorScheme.onSurfaceVariant) }
         items(events, key = { "${it.id}:${it.from}" }) { event ->
             Surface(onClick = { onOpen(event) }, shape = RoundedCornerShape(8.dp), color = MaterialTheme.colorScheme.surface) {
@@ -366,8 +285,21 @@ class AgendaActivity : ComponentActivity() {
                     }
                 }
             }
-            if ("${event.id}:${event.from}" == target) assistance()
         }
+    }
+}
+
+class EventDetailsActivity : ComponentActivity() {
+    override fun onCreate(state: Bundle?) {
+        super.onCreate(state)
+        val agenda = ShowAgenda(this)
+        val day = LocalDate.parse(intent.getStringExtra("day"))
+        val event = agenda.events(day).singleOrNull { it.id == intent.getLongExtra("eventId", -1L) }
+        setContent { AppTheme(Accent.Calendar) {
+            Scaffold { padding -> Box(Modifier.padding(padding)) {
+                if (event == null) Text("Event unavailable") else EventDetail(event, agenda) { finish() }
+            } }
+        } }
     }
 }
 
@@ -384,7 +316,6 @@ class AgendaActivity : ComponentActivity() {
         if (event.location.isNotEmpty()) KeyValue("Location", event.location)
         if (event.notes.isNotEmpty()) Text(event.notes, style = MaterialTheme.typography.bodyMedium)
         val context = androidx.compose.ui.platform.LocalContext.current
-        Button(onClick = { context.startActivity(Intent(context, PreparationActivity::class.java).putExtra("eventId", event.id).putExtra("day", Instant.ofEpochMilli(event.from).atZone(AGENDA_ZONE).toLocalDate().toString())) }) { Text("Preparation") }
         Button(onClick = { context.startActivity(Intent(context, CalendarActivity::class.java).putExtra("eventId", event.id).putExtra("eventBegin", event.from)) }) { Text("Plan departure") }
         OutlinedButton(onClick = { agenda.delete(event.id); onBack() }, shape = RoundedCornerShape(18.dp)) { Text("Delete event") }
     }
