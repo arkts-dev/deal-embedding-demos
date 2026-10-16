@@ -17,9 +17,9 @@ assert not (library/'backends').exists()
 assert {p.name for p in (library/'core/host').glob('*.d.deal')} == {'checker.d.deal', 'discovery.d.deal', 'model.d.deal', 'chooser.d.deal', 'policy-data.d.deal', 'observer.d.deal', 'embedding.d.deal', 'catalogue-policy.d.deal', 'protocol.d.deal'}
 assert (library/'android/src/compiler/ExperienceCompiler.kt').exists()
 assert {p.name for p in (library/'android/src/bindings').glob('*.kt')} == {'DealSessionBindings.kt', 'ExperienceGenerator.kt', 'SandboxProgram.kt', 'EmbeddingLog.kt', 'ChoiceProtocol.kt', 'ApplicationProtocol.kt', 'ProtocolController.kt','ObservationPresentation.kt','DiagnosticFiles.kt','FailureEvidence.kt','TrustedProgram.kt'}
-assert {p.name for p in (library/'android/src/inference').glob('*.kt')} == {'ModelClient.kt'}
+assert {p.name for p in (library/'android/src/inference').glob('*.kt')} == {'ModelClient.kt', 'GenerationGateway.kt'}
 assert {p.name for p in (library/'android/src/discovery').glob('*.kt')} == {'Discovery.kt', 'NanoDiscovery.kt'}
-assert (root/'android/apps/development/GenerationGateway.kt').exists()
+assert not (root/'android/apps/development').exists()
 assert not (library/'android/src/bindings/PublicProtocolBinding.kt').exists()
 for app in ('organizer','calendar'):
     for path in (root/f'android/apps/{app}/src').glob('*.kt'):
@@ -58,7 +58,8 @@ with zipfile.ZipFile(os.environ.get('EMBEDDING_AAR', root / 'build/embedding-lib
         assert 'dev/deal/embedding/discovery/Discovery.class' in names
         assert 'deal/Main.class' in names and 'deal/ui/UiSourceGenerator.class' in names
         assert not any(name.startswith('dev/deal/apps/') for name in names)
-        assert 'dev/deal/embedding/GenerationGateway.class' not in names
+        assert 'dev/deal/embedding/GenerationGatewayConfig.class' in names
+        assert 'dev/deal/embedding/GatewayModelClient.class' in names
         assert not any('ChoiceCatalogue' in name for name in names)
     with zipfile.ZipFile(root / os.environ.get('HOST_APK', 'build/organizer.apk')) as app:
         for name in aar.namelist():
@@ -79,7 +80,12 @@ with zipfile.ZipFile(os.environ.get('EMBEDDING_AAR', root / 'build/embedding-lib
         assert [f['name'] for f in chooser['functions']] == ['choose']
         assert 'assets/generation/catalogue-source.js' not in app.namelist()
         assert 'assets/generation/choice-policy.js' not in app.namelist()
-        assert 'assets/organizer-policy/app-policy.js' in app.namelist()
+        host_dex = b''.join(app.read(n) for n in app.namelist() if n.endswith('.dex'))
+        if b'Ldev/deal/apps/organizer/OrganizerHost;' in host_dex:
+            assert 'assets/organizer-policy/app-policy.js' in app.namelist()
+        else:
+            assert not any(n.startswith('assets/organizer-policy/') for n in app.namelist())
+        assert b'Ldev/deal/apps/development/GenerationGateway;' not in host_dex
         assert 'assets/protocol/embedding.d.deal' in app.namelist()
         assert 'assets/embedding/bindings/protocol-contracts.js' in app.namelist()
         for declaration in ['embedding.d.deal','catalogue-policy.d.deal']:

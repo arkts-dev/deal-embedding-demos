@@ -4,7 +4,7 @@
  <uses-permission android:name="android.permission.READ_CALENDAR" /><uses-permission android:name="android.permission.WRITE_CALENDAR" />
  <uses-sdk android:minSdkVersion="36" android:targetSdkVersion="36" />
  <queries><package android:name="com.google.android.aicore" /><package android:name="dev.deal.apps.todo" /><package android:name="dev.deal.apps.vehicle" /><package android:name="dev.deal.apps.calendar" /></queries>
- <application android:debuggable="true" android:theme="@android:style/Theme.Material.Light.NoActionBar">
+ <application android:debuggable="true" android:theme="@android:style/Theme.Material.Light.NoActionBar" android:usesCleartextTraffic="true">
   <activity android:name="dev.deal.apps.calendar.AgendaActivity" android:exported="false" />
   <activity android:name=".WorkspaceClarityActivity" android:exported="true" />
   <service android:name=".RemoteProbeService" android:exported="true" android:process=":provider"><intent-filter><action android:name="dev.deal.embedding.CAPABILITIES_V1" /></intent-filter></service>
@@ -12,6 +12,7 @@
  <instrumentation android:name=".DiscoveryLiveInstrumentation" android:targetPackage="dev.deal.connectors.tests" />
  <instrumentation android:name=".DiscoveryInstrumentation" android:targetPackage="dev.deal.connectors.tests" />
  <instrumentation android:name=".DiscoveryCalendarInstrumentation" android:targetPackage="dev.deal.connectors.tests" />
+ <instrumentation android:name=".GenerationGatewayInstrumentation" android:targetPackage="dev.deal.connectors.tests" />
  <instrumentation android:name=".GuidanceInstrumentation" android:targetPackage="dev.deal.connectors.tests" />
  <instrumentation android:name=".DiagnosticInstrumentation" android:targetPackage="dev.deal.connectors.tests" />
  <instrumentation android:name=".RemoteCapabilityInstrumentation" android:targetPackage="dev.deal.connectors.tests" />

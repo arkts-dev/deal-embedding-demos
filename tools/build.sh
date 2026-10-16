@@ -176,9 +176,9 @@ embedding_dex() {
 }
 for app in "${TARGETS[@]}"; do
     case "$app" in
-        calendar) profile="host";   sources=(android/apps/shared-ui/*.kt android/apps/development/*.kt android/apps/calendar/src/*.kt); app_apis=("$EMBEDDING_JAR"); profile_jars=("$EMBEDDING_JAR" "${RUNTIME_JARS[@]}") ;;
-        organizer) profile="host";  sources=(android/apps/shared-ui/*.kt android/apps/development/*.kt android/apps/organizer/src/*.kt); app_apis=("$EMBEDDING_JAR"); profile_jars=("$EMBEDDING_JAR" "${RUNTIME_JARS[@]}") ;;
-        tests) profile="host";      sources=(android/tests/*.kt android/apps/development/*.kt android/apps/shared-ui/*.kt android/apps/organizer/src/*.kt android/apps/calendar/src/*.kt); app_apis=("$EMBEDDING_JAR"); profile_jars=("$EMBEDDING_JAR" "${RUNTIME_JARS[@]}") ;;
+        calendar) profile="host";   sources=(android/apps/shared-ui/*.kt android/apps/calendar/src/*.kt); app_apis=("$EMBEDDING_JAR"); profile_jars=("$EMBEDDING_JAR" "${RUNTIME_JARS[@]}") ;;
+        organizer) profile="host";  sources=(android/apps/shared-ui/*.kt android/apps/organizer/src/*.kt); app_apis=("$EMBEDDING_JAR"); profile_jars=("$EMBEDDING_JAR" "${RUNTIME_JARS[@]}") ;;
+        tests) profile="host";      sources=(android/tests/*.kt android/apps/shared-ui/*.kt android/apps/organizer/src/*.kt android/apps/calendar/src/*.kt); app_apis=("$EMBEDDING_JAR"); profile_jars=("$EMBEDDING_JAR" "${RUNTIME_JARS[@]}") ;;
         *) profile="provider";      sources=(android/apps/shared-ui/*.kt "android/apps/$app/src/"*.kt); app_apis=(build/capability-api.jar); profile_jars=(build/capability-api.jar "${COMPOSE_JARS[@]}") ;;
     esac
     if [[ "$profile" == host ]]; then
@@ -193,8 +193,10 @@ for app in "${TARGETS[@]}"; do
     rm -rf "build/$app"; mkdir -p "build/$app/classes" "build/$app/dex"
     if [[ "$profile" == "host" ]]; then
         # App transport selection only; credentials and provider calls stay gateway-side.
-        printf 'package dev.deal.apps.development\nobject GenerationBuild { const val backend = "%s"; const val label = "%s" }\n' "$GENERATION_BACKEND" "$( [[ "$GENERATION_BACKEND" == cerebras ]] && echo 'Cerebras · qwen-3.8-27b' || echo 'Cortex' )" > "build/$app/GenerationBuild.kt"
-        sources+=("build/$app/GenerationBuild.kt")
+        for host in $( [[ "$app" == tests ]] && echo 'calendar organizer' || echo "$app" ); do
+            printf 'package dev.deal.apps.%s\nimport dev.deal.embedding.GenerationGatewayConfig\nobject GenerationBuild { const val backend = "%s"; const val label = "%s"; fun gateway() = GenerationGatewayConfig("http://127.0.0.1:8787/generate", backend) }\n' "$host" "$GENERATION_BACKEND" "$( [[ "$GENERATION_BACKEND" == cerebras ]] && echo 'Cerebras · qwen-3.8-27b' || echo 'Cortex' )" > "build/$app/${host}-GenerationBuild.kt"
+            sources+=("build/$app/${host}-GenerationBuild.kt")
+        done
         printf 'Generation backend (%s): %s\n' "$app" "$GENERATION_BACKEND"
         rm -rf "build/assets/$app"; mkdir -p "build/assets/$app"
         cp -r build/embedding-consumer/assets/* "build/assets/$app/"

@@ -234,7 +234,7 @@ class PreparationActivity : ComponentActivity() {
                 check(fresh.identity == facts.identity)
                 val admitted = checkNotNull(discovery).request(tip, fresh); request = admitted
                 activeEvent = event
-                PreparationRecords.record(this, "opportunity-generation", JSONObject().put("status", "started").put("model", dev.deal.apps.development.GenerationBuild.label).put("trace", protocol.requestTrace(admitted)).put("input", facts.identity).put("brief", tip.brief))
+                PreparationRecords.record(this, "opportunity-generation", JSONObject().put("status", "started").put("model", GenerationBuild.label).put("trace", protocol.requestTrace(admitted)).put("input", facts.identity).put("brief", tip.brief))
                 if (!foreground || epoch != revision) protocol.cancel(admitted)
                 protocol.withPreparation(protocol.generate(admitted)) { experience ->
                     check(foreground && epoch == revision && readEvent() == event) { "Facts changed during generation" }

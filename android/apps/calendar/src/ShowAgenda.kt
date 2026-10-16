@@ -210,7 +210,7 @@ class AgendaActivity : ComponentActivity() {
                                 }
                                 var generationAllowed by remember { mutableStateOf(getSharedPreferences("preparation", 0).getBoolean("generation", false)) }
                                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                                    Column(Modifier.weight(1f)) { Text("Tailored plans"); Text("${dev.deal.apps.development.GenerationBuild.label} uses accepted facts when you open help.", style = MaterialTheme.typography.bodySmall) }
+                                    Column(Modifier.weight(1f)) { Text("Tailored plans"); Text("${GenerationBuild.label} uses accepted facts when you open help.", style = MaterialTheme.typography.bodySmall) }
                                     Switch(generationAllowed, { value -> getSharedPreferences("preparation", 0).edit().putBoolean("generation", value).commit(); generationAllowed = value })
                                 }
                                 HorizontalDivider()
