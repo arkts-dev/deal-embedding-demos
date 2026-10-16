@@ -47,7 +47,7 @@ fun rentalCapabilities(context: Context): NativeCapabilities {
                 .put("items", args.getString(0)).put("from", args.getString(1)).put("until", args.getString(2)).put("collector", args.getString(3)).toString()).commit()
             JSONObject().put("proposalId", id).put("state", "pending")
         },
-        "outcome" to { args -> JSONObject(context.getSharedPreferences("proposals", 0).getString("rental:" + args.getString(0), "{}")) },
+        "outcome" to { args -> dev.deal.shell.proposalOutcome(context, "rental", args.getString(0), "reservationId") },
     ))
 }
 

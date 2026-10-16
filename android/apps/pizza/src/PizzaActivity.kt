@@ -18,6 +18,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import dev.deal.shell.*
+import dev.deal.embedding.discovery.DiscoveryFact
 
 @OptIn(ExperimentalMaterial3Api::class)
 class PizzaActivity : ComponentActivity() {
@@ -40,6 +41,7 @@ class PizzaActivity : ComponentActivity() {
                         TopAppBar(colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent), title = {
                             Column { Text("Pizza", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold); Text("Demo order · no real purchase or delivery", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant) }
                         }, actions = {
+                            AssistanceSettingsButton()
                             if (basket.isNotEmpty()) BadgedBox(badge = { Badge { Text(basket.values.sum().toString()) } }) { IconButton(onClick = { confirming = true }) { Icon(Icons.Outlined.ShoppingBag, "Review order") } }
                         })
                     }, bottomBar = {
@@ -52,7 +54,20 @@ class PizzaActivity : ComponentActivity() {
                         Box(Modifier.padding(padding)) {
                             when {
                                 tab == 2 -> Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp)) {
-                                    ProviderAccess(consent, { consent = it; store.setConsent(it) }, "Organizer access", "Organizer may read the menu and delivery availability, propose orders for confirmation and read shared order status. Revoking keeps existing orders.")
+                                    ProposalReview(this@PizzaActivity, "pizza") { proposal ->
+                                        val entries = proposal.getString("items").split(",").map { entry ->
+                                            val parts = entry.trim().split(":"); require(parts.size == 2)
+                                            parts[0].trim() to parts[1].trim().toInt()
+                                        }
+                                        require(entries.isNotEmpty() && entries.size <= 16 && entries.map { it.first }.distinct().size == entries.size)
+                                        require(entries.all { store.item(it.first) != null && it.second in 1..32 })
+                                        val window = proposal.getString("windowId"); require(store.window(window) != null)
+                                        val lines = entries.toMap(); val id = store.newOrderId()
+                                        val order = Order(id, "Shared demo proposal", lines, window, store.address, store.instructions, proposal.getString("recipient"), store.foodTotal(lines), store.deliveryCents)
+                                        store.saveOrders(store.orders() + order); orders = store.orders()
+                                        org.json.JSONObject().put("state", "confirmed").put("orderId", id).put("detail", "Demo order saved after native confirmation; no real purchase")
+                                    }
+                                    ProviderAccess(consent, { consent = it; store.setConsent(it) }, "Connected apps", "Demo apps may read the menu and delivery windows and submit order proposals. Orders still need native confirmation. Revoking keeps existing orders.")
                                 }
                                 tab == 1 -> Orders(orders, onOpen = { openOrder = it })
                                 openOrder != null -> OrderDetail(openOrder!!, store) { updated ->
@@ -61,7 +76,11 @@ class PizzaActivity : ComponentActivity() {
                                 confirming -> Basket(store, basket, windowId, { windowId = it }, onEdit = { confirming = false }, onOrder = { order ->
                                     orders = orders + order; store.saveOrders(orders); basket = emptyMap(); confirming = false; openOrder = order
                                 })
-                                openItem != null -> ProductDetail(openItem!!, onAdd = { basket = basket + (openItem!!.id to (basket[openItem!!.id] ?: 0) + 1) }, onBack = { openItem = null })
+                                openItem != null -> AssistedTask(listOf(DiscoveryFact("menu_item", openItem!!.let { item ->
+                                    "Synthetic demo menu item ${item.id}: ${item.name}, ${item.size}, ${item.cents} EUR cents. Vegan ${item.vegan}; vegetarian ${item.vegetarian}. Ingredients ${item.ingredients}; allergens ${item.allergens}. Delivery charge ${store.deliveryCents} EUR cents. Delivery windows ${store.windows.joinToString { it.id + " " + it.from + "–" + it.until }}. Event delivery to ${store.address}; ${store.instructions}. Recipient ${store.recipient}. No purchase or delivery has occurred."
+                                }))) {
+                                    ProductDetail(openItem!!, onAdd = { basket = basket + (openItem!!.id to (basket[openItem!!.id] ?: 0) + 1) }, onBack = { openItem = null })
+                                }
                                 else -> Menu(store, filter, { filter = it }, basket) { openItem = it }
                             }
                         }

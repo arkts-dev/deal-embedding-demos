@@ -6,11 +6,11 @@ import dev.deal.embedding.capabilities.*
 
 /** Native bootstrap and local authority only; orchestration runs through compiled DEAL. */
 class OrganizerHost(private val context: Context) : AutoCloseable {
-    private val discovery=CapabilityDiscovery(context){uid->context.packageManager.checkSignatures(uid,context.applicationInfo.uid)==android.content.pm.PackageManager.SIGNATURE_MATCH}
+    private val discovery=CapabilityDiscovery(context){uid->uid != context.applicationInfo.uid && dev.deal.shell.Connections.trusted(context,uid)}
     val registry:CapabilityRegistry by lazy {CapabilityRegistry(context,discovery,listOf(organizerCapabilities(context){registry.invokingExperience()}))}
     private val mechanisms=Embedding(context,registry,GenerationBuild.gateway(),EmbeddingConfig("experience",emptyList(),"organizer-protocol",policyAssets="organizer-policy"))
     val embedding=ApplicationProtocol(context,mechanisms)
-    fun prepare(){embedding.refresh().forEach{embedding.grant(it.module)}}
+    fun prepare(){dev.deal.shell.Connections.apply(context,embedding)}
     fun forget(experience:Experience)=embedding.forget(experience)
     override fun close(){embedding.shutdown()}
 }

@@ -43,8 +43,8 @@ class RentalStore(private val context: Context) {
     fun saveReservations(value: List<Reservation>) { prefs.edit().putString("reservations", JSONArray(value.map { it.json() }).toString()).commit() }
     fun lineTotal(line: QuoteLine) = (item(line.itemId)?.cents ?: 0) * line.quantity
     fun quoteTotal(quote: Quote) = quote.lines.sumOf(::lineTotal)
-    fun consent() = prefs.getBoolean("allowed", false)
-    fun setConsent(value: Boolean) { prefs.edit().putBoolean("allowed", value).commit() }
+    fun consent() = context.getSharedPreferences("provider", 0).getBoolean("allowed", false)
+    fun setConsent(value: Boolean) { context.getSharedPreferences("provider", 0).edit().putBoolean("allowed", value).commit() }
 
     /** A package consumes the stand and cable it contains rather than extra stock. */
     fun consumed(itemId: String, quantity: Int): Map<String, Int> =

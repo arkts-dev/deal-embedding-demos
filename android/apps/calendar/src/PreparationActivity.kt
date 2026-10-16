@@ -36,6 +36,7 @@ class PreparationActivity : ComponentActivity() {
     private var owner: ExperienceSurface? = null
     private val ownerLock = Any()
     @Volatile private var activeInput: String? = null
+    @Volatile private var connectedModules: List<String> = emptyList()
     private var surface by mutableStateOf<ExperienceSurface?>(null)
     private var message by mutableStateOf("Opening preparation…")
     private var suggestion by mutableStateOf<DiscoverySuggestion?>(null)
@@ -68,7 +69,9 @@ class PreparationActivity : ComponentActivity() {
             Scaffold(topBar = { TopAppBar(title = { Text(eventUi?.title ?: "Preparation", maxLines = 1) }, navigationIcon = {
                 IconButton(onClick = { finish() }) { Icon(Icons.AutoMirrored.Outlined.ArrowBack, "Back") }
             }, actions = {
+                if (surface != null) IntelligenceMark("AI-built")
                 TextButton(onClick = { startActivity(Intent(this@PreparationActivity, PreparationInspectActivity::class.java)) }) { Text("Inspect") }
+                AssistanceSettingsButton()
                 Box {
                     IconButton(onClick = { menu = true }) { Icon(Icons.Outlined.MoreVert, "More options") }
                     DropdownMenu(menu, { menu = false }) {
@@ -92,6 +95,7 @@ class PreparationActivity : ComponentActivity() {
                         Text(if (generating) "Preparing…" else "Looking ahead…", style = MaterialTheme.typography.bodySmall)
                     }
                     suggestion?.let { tip -> OutlinedCard(Modifier.fillMaxWidth()) {
+                        Box(Modifier.padding(start = 16.dp, top = 12.dp)) { IntelligenceMark("Suggestion") }
                         Row(Modifier.padding(start = 16.dp, top = 8.dp, end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                             Text(tip.title, Modifier.weight(1f), style = MaterialTheme.typography.titleMedium)
                             IconButton(onClick = {
@@ -139,7 +143,7 @@ class PreparationActivity : ComponentActivity() {
     }
     private fun invalidate() {
         synchronized(ownerLock) { revision++ }; discovery?.cancel(); suggestion = null; checking = false
-        api?.revoke("host/calendar"); connected = false; observed = null; surface = null
+        api?.let { protocol -> connectedModules.forEach(protocol::revoke); protocol.revoke("host/calendar") }; connected = false; observed = null; surface = null
         request?.let { runCatching { api?.cancel(it) } }
         proposal = null; confirm = false; access = false; menu = false
     }
@@ -159,6 +163,7 @@ class PreparationActivity : ComponentActivity() {
                 check(foreground && epoch == revision)
                 val e = readEvent()
                 val protocol = api ?: createApi().also { api = it }
+                connectedModules = Connections.apply(this, protocol)
                 val facts = input(e)
                 val finder = discovery ?: Discovery(applicationContext, protocol).also { discovery = it }
                 if (current?.identity != facts.identity) {
@@ -177,7 +182,7 @@ class PreparationActivity : ComponentActivity() {
                     if (!foreground || epoch != revision) return@runOnUiThread
                     eventUi = e
                     if (activeInput == facts.identity) { surface = synchronized(ownerLock) { owner }; message = ""; return@runOnUiThread }
-                    if (!getSharedPreferences("preparation", 0).getBoolean("opportunity", true)) { message = "Suggestions are off"; return@runOnUiThread }
+                    if (!(getSharedPreferences("preparation", 0).getBoolean("opportunity", true) && Connections.settings(this).getBoolean("discovery", true))) { message = "Suggestions are off"; return@runOnUiThread }
                     if (getSharedPreferences("preparation-discovery-dismissals", 0).getBoolean(facts.identity, false)) { message = "No suggestions"; return@runOnUiThread }
                     checking = true; message = ""
                     finder.discover(facts).whenComplete { tip, error -> runOnUiThread {
@@ -198,7 +203,7 @@ class PreparationActivity : ComponentActivity() {
             val origin = observed; check(foreground && origin != null && origin == readEvent() && origin == event && origin == activeEvent) { "Read the current event before proposing a reminder" }
             runOnUiThread { if (foreground && origin == event && connected) proposal = minute }
         })
-        val registry = CapabilityRegistry(this, CapabilityDiscovery(this) { false }, listOf(caps))
+        val registry = CapabilityRegistry(this, CapabilityDiscovery(this) { uid -> uid != applicationInfo.uid && Connections.trusted(this, uid) }, listOf(caps))
         return PreparationRecords.opportunityApi(this, registry)
     }
     private fun activate(protocol: ApplicationProtocol, experience: Experience, captured: ShowEvent, identity: String, epoch: Long) {
@@ -216,7 +221,7 @@ class PreparationActivity : ComponentActivity() {
     }
     private fun accept(tip: DiscoverySuggestion) {
         if (generating) return
-        if (!getSharedPreferences("preparation", 0).getBoolean("generation", false)) {
+        if (!(getSharedPreferences("preparation", 0).getBoolean("generation", false) || Connections.settings(this).getBoolean("generation", false))) {
             message = "Enable tailored plans in Extensions"
             return
         }
@@ -227,7 +232,7 @@ class PreparationActivity : ComponentActivity() {
             try {
                 val protocol = api ?: error("Preparation unavailable")
                 check(foreground && epoch == revision && readEvent() == event)
-                check(getSharedPreferences("preparation", 0).getBoolean("generation", false)) { "Generation disclosure disabled" }
+                check(getSharedPreferences("preparation", 0).getBoolean("generation", false) || Connections.settings(this).getBoolean("generation", false)) { "Generation disclosure disabled" }
                 val fresh = input(readEvent())
                 check(fresh.identity == facts.identity)
                 val admitted = checkNotNull(discovery).request(tip, fresh); request = admitted

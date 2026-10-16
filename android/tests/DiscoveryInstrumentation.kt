@@ -24,6 +24,9 @@ class DiscoveryInstrumentation : Instrumentation() {
                 check(runCatching { Discovery.parse(bad, capturedInput) }.isFailure) { bad }
             }
             check(runCatching { DiscoveryInput(listOf(DiscoveryFact("event", "x".repeat(2049)))) }.isFailure)
+            val full = (1..24).map { SharedCapabilityContract("host/bound$it", "d".repeat(500), functions = listOf(SharedCapabilityFunction("read", "d".repeat(300), result = WireType("int")))) }
+            check(CapturedDiscoveryInput(input, full).catalogueJson.toByteArray().size in 16385..32768)
+            check(runCatching { CapturedDiscoveryInput(input, full.map { it.copy(functions = it.functions + SharedCapabilityFunction("other", "d".repeat(500), result = WireType("int"))) }) }.isFailure)
             var reads = 0
             val module = dev.deal.embedding.capabilities.NativeCapabilities(
                 dev.deal.embedding.capabilities.CapabilityContract("host/probe", "Explicit read", listOf(

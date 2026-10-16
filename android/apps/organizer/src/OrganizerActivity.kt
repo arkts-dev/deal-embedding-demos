@@ -20,6 +20,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import dev.deal.embedding.*
+import dev.deal.embedding.discovery.DiscoveryFact
 import dev.deal.shell.*
 import org.json.JSONObject
 import java.util.concurrent.Executors
@@ -298,7 +299,9 @@ class OrganizerActivity : ComponentActivity() {
                                         onAction={currentPrepared=false;reviewReady[surface.experience.id]=false},
                                         onSnapshot={snapshot->publish(surface.experience.id,snapshot.json())})}
                                 }
-                                selectedRequirement != null -> RequirementDetail(
+                                selectedRequirement != null -> AssistedTask(listOf(DiscoveryFact("requirement", show!!.requirement(selectedRequirement!!)!!.let { r ->
+                                    "Synthetic demo show ${show!!.title}, ${show!!.date} at ${show!!.venue}, ${show!!.address}. ${r.act}: ${r.quantity} × ${r.name}. Specification ${r.specification}. Needed from ${java.time.Instant.ofEpochMilli(r.from)} until ${java.time.Instant.ofEpochMilli(r.until)} at ${r.location}. Status ${r.summary}. Notes ${r.notes}."
+                                }))) { RequirementDetail(
                                     show = show!!, requirementId = selectedRequirement!!,
                                     onBack = { selectedRequirement = null; returnRequirement = null },
                                     assistanceError = openError,
@@ -306,7 +309,7 @@ class OrganizerActivity : ComponentActivity() {
                                     onEdit = { updated -> update { it.requirements = it.requirements.map { r -> if (r.id == updated.id) updated else r } } },
                                     onVerify = { id -> update { s -> s.requirements = s.requirements.map { r -> if (r.id == id) r.copy(verified = !r.verified) else r } } },
                                     onArrange = ::findEquipment,
-                                )
+                                ) }
                                 else -> when (destination) {
                                     Destination.Overview -> OverviewScreen(state = show!!, hasOptions = { id -> links.getString(requirementKey(id), null)?.let { retained -> saved.any { it.id == retained } } == true }, onOpenRequirement = { selectedAct = null; selectedRequirement = it }, onFindEquipment = ::findEquipment, onOpenRiders = { department -> selectedAct = null; selectedDepartment = department; destination = Destination.Riders })
                                     Destination.Riders -> RidersScreen(state = show!!, selectedAct, selectedDepartment, onSelectDepartment = { selectedDepartment = it }, onSelectAct = { selectedAct = it }, onOpenRequirement = { selectedRequirement = it })
@@ -345,6 +348,7 @@ class OrganizerActivity : ComponentActivity() {
             }
         },
         actions = {
+            AssistanceSettingsButton()
             if (show == null) TextButton(onClick = onInitialize) { Text("Initialize demo show") }
             TextButton(onClick = onInspect) { Icon(Icons.Outlined.Timeline, null, modifier = Modifier.size(18.dp)); Spacer(Modifier.width(4.dp)); Text("Inspect") }
         },

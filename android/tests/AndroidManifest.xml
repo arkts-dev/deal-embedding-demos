@@ -17,6 +17,13 @@
  <instrumentation android:name=".InspectionInstrumentation" android:targetPackage="dev.deal.connectors.tests" />
  <instrumentation android:name=".DiagnosticInstrumentation" android:targetPackage="dev.deal.connectors.tests" />
  <instrumentation android:name=".RemoteCapabilityInstrumentation" android:targetPackage="dev.deal.connectors.tests" />
+ <instrumentation android:name=".DiscoveryDiagInstrumentation" android:targetPackage="dev.deal.connectors.tests" />
+ <instrumentation android:name=".HiveCalendarInstrumentation" android:targetPackage="dev.deal.apps.calendar" />
+ <instrumentation android:name=".HiveOrganizerInstrumentation" android:targetPackage="dev.deal.apps.organizer" />
+ <instrumentation android:name=".HiveRentalInstrumentation" android:targetPackage="dev.deal.apps.rental" />
+ <instrumentation android:name=".HivePizzaInstrumentation" android:targetPackage="dev.deal.apps.pizza" />
+ <instrumentation android:name=".HiveTodoInstrumentation" android:targetPackage="dev.deal.apps.todo" />
+ <instrumentation android:name=".HiveVehicleInstrumentation" android:targetPackage="dev.deal.apps.vehicle" />
  <instrumentation android:name=".CallerInstrumentation" android:targetPackage="dev.deal.apps.todo" />
  <instrumentation android:name=".VehicleCallerInstrumentation" android:targetPackage="dev.deal.apps.vehicle" />
  <instrumentation android:name=".LoggingInstrumentation" android:targetPackage="dev.deal.apps.organizer" />

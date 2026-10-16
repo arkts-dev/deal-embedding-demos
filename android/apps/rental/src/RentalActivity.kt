@@ -18,6 +18,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import dev.deal.shell.*
+import dev.deal.embedding.discovery.DiscoveryFact
 import java.time.LocalDate
 import java.util.UUID
 
@@ -31,7 +32,7 @@ class RentalActivity : ComponentActivity() {
         var tab by mutableStateOf(0)
         var category by mutableStateOf("All")
         var basket by mutableStateOf<Map<String, Int>>(emptyMap())
-        var period by mutableStateOf(1L to 0L)
+        var period by mutableStateOf(defaultPeriod())
         var openItem by mutableStateOf<RentalItem?>(null)
         var openQuote by mutableStateOf<Quote?>(null)
         var openReservation by mutableStateOf<Reservation?>(null)
@@ -50,6 +51,7 @@ class RentalActivity : ComponentActivity() {
                         TopAppBar(colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent), title = {
                             Column { Text("Equipment Rental", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold); Text("Demo reservation · no real supplier", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant) }
                         }, actions = {
+                            AssistanceSettingsButton()
                             if (basket.isNotEmpty()) BadgedBox(badge = { Badge { Text(basket.values.sum().toString()) } }) { IconButton(onClick = { commitBasket() }) { Icon(Icons.Outlined.ShoppingCart, "Review basket") } }
                         })
                     }, bottomBar = {
@@ -62,7 +64,20 @@ class RentalActivity : ComponentActivity() {
                         Box(Modifier.padding(padding)) {
                             when {
                                 tab == 2 -> Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp)) {
-                                    ProviderAccess(consent, { consent = it; store.setConsent(it) }, "Organizer access", "Organizer may read the catalogue and availability, request quotes, propose reservations for confirmation and read shared reservation status. Revoking keeps existing reservations.")
+                                    ProposalReview(this@RentalActivity, "rental") { proposal ->
+                                        val lines = parseLines(proposal.getString("items")); require(lines.isNotEmpty() && lines.size <= 16)
+                                        require(lines.map { it.first }.distinct().size == lines.size && lines.all { store.item(it.first) != null && it.second in 1..32 })
+                                        val start = java.time.Instant.parse(proposal.getString("from")).toEpochMilli()
+                                        val end = java.time.Instant.parse(proposal.getString("until")).toEpochMilli(); require(start < end)
+                                        val stock = store.availability(start, end); require(lines.all { (stock[it.first] ?: 0) >= it.second })
+                                        val id = UUID.randomUUID().toString()
+                                        val quote = Quote(id, lines.map { QuoteLine(it.first, it.second) }, start, end, System.currentTimeMillis() + 900000, "Exact items only")
+                                        store.saveQuotes(store.quotes() + quote)
+                                        val reservation = Reservation(id, quote.id, "Shared demo proposal", quote.lines, start, end, proposal.getString("collector"))
+                                        store.saveReservations(store.reservations() + reservation); reservations = store.reservations()
+                                        org.json.JSONObject().put("state", "confirmed").put("reservationId", id).put("detail", "Demo reservation saved after native confirmation")
+                                    }
+                                    ProviderAccess(consent, { consent = it; store.setConsent(it) }, "Connected apps", "Demo apps may read the catalogue and availability, request quotes and submit reservation proposals. Reservations still need native confirmation. Revoking keeps existing reservations.")
                                 }
                                 tab == 1 -> ReservationList(reservations, onOpen = { openReservation = it })
                                 openReservation != null -> ReservationDetail(openReservation!!, availability) { updated ->
@@ -71,9 +86,12 @@ class RentalActivity : ComponentActivity() {
                                 openQuote != null -> QuoteScreen(openQuote!!, store, availability, onBack = { openQuote = null }, onConfirmed = { reservation ->
                                     reservations = reservations + reservation; store.saveReservations(reservations); openQuote = null; openReservation = reservation
                                 })
-                                openItem != null -> ItemDetail(openItem!!, availability[openItem!!.id] ?: 0, inBasket = basket[openItem!!.id] ?: 0,
-                                    onAdd = { basket = basket + (openItem!!.id to (basket[openItem!!.id] ?: 0) + 1) },
-                                    onBack = { openItem = null })
+                                openItem != null -> AssistedTask(listOf(DiscoveryFact("equipment", openItem!!.let { item ->
+                                    "Synthetic demo rental item ${item.id}: ${item.name}. ${item.specification}. Stock ${item.quantity}. Hire price ${item.cents} EUR cents per item. Included: ${item.included.joinToString()}. Not included: ${item.notIncluded.joinToString()}. Selected period ${java.time.Instant.ofEpochMilli(from)} to ${java.time.Instant.ofEpochMilli(until)}."
+                                }))) {
+                                    ItemDetail(openItem!!, availability[openItem!!.id] ?: 0, inBasket = basket[openItem!!.id] ?: 0,
+                                        onAdd = { basket = basket + (openItem!!.id to (basket[openItem!!.id] ?: 0) + 1) }, onBack = { openItem = null })
+                                }
                                 else -> Catalogue(store, category, { category = it }, availability, from, until, period = { period = it }, basket = basket,
                                     onOpen = { openItem = it }, onAdd = { id -> basket = basket + (id to (basket[id] ?: 0) + 1) })
                             }

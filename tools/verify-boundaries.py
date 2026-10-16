@@ -21,7 +21,7 @@ assert {p.name for p in (library/'android/src/inference').glob('*.kt')} == {'Mod
 assert {p.name for p in (library/'android/src/discovery').glob('*.kt')} == {'Discovery.kt', 'NanoDiscovery.kt'}
 assert not (root/'android/apps/development').exists()
 assert not (library/'android/src/bindings/PublicProtocolBinding.kt').exists()
-for app in ('organizer','calendar'):
+for app in ('organizer','calendar','todo','vehicle','rental','pizza','shared-ui'):
     for path in (root/f'android/apps/{app}/src').glob('*.kt'):
         text=path.read_text()
         assert '.poll(' not in text and 'scheduleWithFixedDelay' not in text and 'newSingleThreadScheduledExecutor' not in text, path
@@ -107,7 +107,11 @@ for provider, other in [('todo', 'vehicle'), ('vehicle', 'todo')]:
         dex=b''.join(apk.read(name) for name in apk.namelist() if name.endswith('.dex'))
         assert b'Ldev/deal/embedding/capabilities/ICapabilityService;' in dex
         assert f'Ldev/deal/apps/{other}/'.encode() not in dex
-        assert b'Ldeal/Main;' not in dex and b'Ldev/deal/embedding/ExperienceRuntime;' not in dex
+        assert b'Ldeal/Main;' in dex and b'Ldev/deal/embedding/ExperienceRuntime;' in dex
+        assert b'Ldev/deal/embedding/ApplicationProtocol;' in dex
+        assert b'Ldev/deal/embedding/discovery/Discovery;' in dex
+        assert b'Ldev/deal/embedding/ExperienceSurface;' in dex
+        assert 'assets/protocol/embedding.d.deal' in apk.namelist()
 # Compare credential bytes without emitting them or their configuration.
 import json
 config=json.loads((Path.home()/'.pi/agent/models.json').read_text())['providers']['devagent']

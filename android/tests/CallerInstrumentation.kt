@@ -8,7 +8,7 @@ import org.json.*
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 
-/** Same-signer provider UID is not Calendar. Both published APIs must reject it. */
+/** A same-signer non-demo identity is not a member of the six-app trust set. */
 open class CallerInstrumentation : Instrumentation() {
     protected open val provider = "todo"
     override fun onCreate(arguments: Bundle?) { super.onCreate(arguments); start() }
@@ -26,8 +26,8 @@ open class CallerInstrumentation : Instrumentation() {
         }
         try {
             val service = if (provider == "todo") "TodoService" else "VehicleService"
-            check(targetContext.bindService(Intent().setComponent(ComponentName("dev.deal.apps.$provider", "dev.deal.apps.$provider.$service")), connection, Context.BIND_AUTO_CREATE))
-            check(latch.await(10, TimeUnit.SECONDS) && denied) { "Provider accepted non-Calendar UID" }
+            check(context.bindService(Intent().setComponent(ComponentName("dev.deal.apps.$provider", "dev.deal.apps.$provider.$service")), connection, Context.BIND_AUTO_CREATE))
+            check(latch.await(10, TimeUnit.SECONDS) && denied) { "Provider accepted non-demo test UID" }
             val type = CapabilityType("record", fields = mapOf("nested" to CapabilityType("array", element = CapabilityType.IntType, maximum = 2)))
             type.validate(JSONObject().put("nested", JSONArray(listOf(1, 2))))
             check(runCatching { type.validate(JSONObject().put("nested", JSONArray(listOf("bad")))) }.isFailure)
@@ -36,7 +36,7 @@ open class CallerInstrumentation : Instrumentation() {
             result.putString("callerAuthentication", "$provider rejected provider UID; typed records validated")
             finish(0, result)
         } catch (error: Throwable) { result.putString("failure", error.toString()); finish(1, result) }
-        finally { try { targetContext.unbindService(connection) } catch (_: IllegalArgumentException) {} }
+        finally { try { context.unbindService(connection) } catch (_: IllegalArgumentException) {} }
     }
 }
 class VehicleCallerInstrumentation : CallerInstrumentation() { override val provider = "vehicle" }

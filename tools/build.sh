@@ -179,7 +179,7 @@ for app in "${TARGETS[@]}"; do
         calendar) profile="host";   sources=(android/apps/shared-ui/*.kt android/apps/calendar/src/*.kt); app_apis=("$EMBEDDING_JAR"); profile_jars=("$EMBEDDING_JAR" "${RUNTIME_JARS[@]}") ;;
         organizer) profile="host";  sources=(android/apps/shared-ui/*.kt android/apps/organizer/src/*.kt); app_apis=("$EMBEDDING_JAR"); profile_jars=("$EMBEDDING_JAR" "${RUNTIME_JARS[@]}") ;;
         tests) profile="host";      sources=(android/tests/*.kt android/apps/shared-ui/*.kt android/apps/organizer/src/*.kt android/apps/calendar/src/*.kt); app_apis=("$EMBEDDING_JAR"); profile_jars=("$EMBEDDING_JAR" "${RUNTIME_JARS[@]}") ;;
-        *) profile="provider";      sources=(android/apps/shared-ui/*.kt "android/apps/$app/src/"*.kt); app_apis=(build/capability-api.jar); profile_jars=(build/capability-api.jar "${COMPOSE_JARS[@]}") ;;
+        *) profile="host";          sources=(android/apps/shared-ui/*.kt "android/apps/$app/src/"*.kt); app_apis=("$EMBEDDING_JAR"); profile_jars=("$EMBEDDING_JAR" "${RUNTIME_JARS[@]}") ;;
     esac
     if [[ "$profile" == host ]]; then
         profile_dex host-stable "${RUNTIME_JARS[@]}"
@@ -197,6 +197,8 @@ for app in "${TARGETS[@]}"; do
             printf 'package dev.deal.apps.%s\nimport dev.deal.embedding.GenerationGatewayConfig\nobject GenerationBuild { const val backend = "%s"; const val label = "%s"; fun gateway() = GenerationGatewayConfig("http://127.0.0.1:8787/generate", backend) }\n' "$host" "$GENERATION_BACKEND" "$( [[ "$GENERATION_BACKEND" == cerebras ]] && echo 'Cerebras · qwen-3.8-27b' || echo 'Cortex' )" > "build/$app/${host}-GenerationBuild.kt"
             sources+=("build/$app/${host}-GenerationBuild.kt")
         done
+        printf 'package dev.deal.shell\nimport dev.deal.embedding.GenerationGatewayConfig\nobject AssistanceBuild { fun gateway() = GenerationGatewayConfig("http://127.0.0.1:8787/generate", "%s") }\n' "$GENERATION_BACKEND" > "build/$app/AssistanceBuild.kt"
+        sources+=("build/$app/AssistanceBuild.kt")
         printf 'Generation backend (%s): %s\n' "$app" "$GENERATION_BACKEND"
         rm -rf "build/assets/$app"; mkdir -p "build/assets/$app"
         cp -r build/embedding-consumer/assets/* "build/assets/$app/"

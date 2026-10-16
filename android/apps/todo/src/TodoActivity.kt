@@ -18,6 +18,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import dev.deal.shell.*
+import dev.deal.embedding.discovery.DiscoveryFact
 import java.time.*
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -45,7 +46,7 @@ class TodoActivity : ComponentActivity() {
                     Scaffold(topBar = {
                         TopAppBar(title = {
                             Column { Text(if (access) "Extensions" else "Tasks", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold); Text(if (access) "Connected apps" else "Your tasks", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant) }
-                        }, actions = { IconButton(onClick = { access = false; adding = true }) { Icon(Icons.Outlined.Add, "Add task") } })
+                        }, actions = { AssistanceSettingsButton(); IconButton(onClick = { access = false; adding = true }) { Icon(Icons.Outlined.Add, "Add task") } })
                     }, bottomBar = {
                         NavigationBar(containerColor = MaterialTheme.colorScheme.surface) {
                             NavigationBarItem(selected = !access && open == null && !adding, onClick = { open = null; adding = false; access = false }, icon = { Icon(Icons.Outlined.Checklist, null) }, label = { Text("Tasks") })
@@ -54,18 +55,29 @@ class TodoActivity : ComponentActivity() {
                     }) { padding ->
                         Box(Modifier.padding(padding)) {
                             when {
-                                access -> Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                                access -> Column(Modifier.padding(20.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                                    ProposalReview(this@TodoActivity, "todo") { proposal ->
+                                        val id = store.newId()
+                                        val checks = proposal.getJSONArray("checks")
+                                        commit(tasks + Task(id, proposal.getString("title"), proposal.getString("assignee"), Instant.parse(proposal.getString("due")).toEpochMilli(),
+                                            proposal.getString("location"), proposal.getString("instructions"), checklist = (0 until checks.length()).map { ChecklistItem(checks.getString(it)) }))
+                                        org.json.JSONObject().put("state", "confirmed").put("taskId", id).put("detail", "Task saved after native confirmation")
+                                    }
                                     Text("Task sharing", style = MaterialTheme.typography.titleLarge)
-                                    Text("Calendar can read unfinished task titles for preparation help. Organizer can read task status and propose tasks for your review.")
+                                    Text("Connected demo apps can read shared tasks and propose new tasks for your review. Changes are never automatic.")
                                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                                         Text("Allow connected apps", modifier = Modifier.weight(1f))
                                         Switch(consent, { consent = it; store.setConsent(it) })
                                     }
                                 }
                                 adding -> TaskEditor(null) { created -> commit(tasks + created); adding = false }
-                                open != null -> TaskDetail(open!!) { updated ->
-                                    val next = if (updated == null) tasks.filterNot { it.id == open!!.id } else tasks.map { if (it.id == updated.id) updated else it }
-                                    commit(next); open = updated
+                                open != null -> AssistedTask(listOf(DiscoveryFact("task", open!!.let { task ->
+                                    "Synthetic demo task ${task.id}: ${task.title}. Assigned to ${task.assignee}. Due ${Instant.ofEpochMilli(task.due)} in Europe/Berlin. Location: ${task.location}. Show: ${task.show}. Instructions: ${task.instructions}. Checks: ${task.checklist.joinToString { it.text + if (it.done) " (done)" else " (open)" }}. Complete: ${task.complete}."
+                                }))) {
+                                    TaskDetail(open!!) { updated ->
+                                        val next = if (updated == null) tasks.filterNot { it.id == open!!.id } else tasks.map { if (it.id == updated.id) updated else it }
+                                        commit(next); open = updated
+                                    }
                                 }
                                 else -> TaskList(tasks, filter, { filter = it }) { open = it }
                             }

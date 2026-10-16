@@ -12,6 +12,9 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+        <service android:name=".AgendaService" android:exported="true"><intent-filter><action android:name="dev.deal.embedding.CAPABILITIES_V1" /></intent-filter></service>
+        <activity android:name="dev.deal.shell.AssistanceSettingsActivity" android:exported="false" />
+        <activity android:name="dev.deal.shell.AssistanceInspectActivity" android:exported="false" />
         <activity android:name=".PreparationActivity" android:exported="false" />
         <activity android:name=".EventDetailsActivity" android:exported="false" />
         <activity android:name=".PreparationInspectActivity" android:exported="false" />

@@ -41,7 +41,7 @@ fun todoCapabilities(context: Context): NativeCapabilities {
                 .put("complete", task.complete).put("status", if (task.complete) "completed" else "open")
         },
         "proposeTask" to { args -> propozal(context, store, args) },
-        "outcome" to { args -> JSONObject(context.getSharedPreferences("proposals", 0).getString("todo:" + args.getString(0), "{}")) },
+        "outcome" to { args -> dev.deal.shell.proposalOutcome(context, "todo", args.getString(0), "taskId") },
     ))
 }
 

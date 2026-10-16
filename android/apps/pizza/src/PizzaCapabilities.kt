@@ -41,6 +41,6 @@ fun pizzaCapabilities(context: Context): NativeCapabilities {
                 .put("items", args.getString(0)).put("windowId", args.getString(1)).put("recipient", args.getString(2)).toString()).commit()
             JSONObject().put("proposalId", id).put("state", "pending")
         },
-        "outcome" to { args -> JSONObject(context.getSharedPreferences("proposals", 0).getString("pizza:" + args.getString(0), "{}")) },
+        "outcome" to { args -> dev.deal.shell.proposalOutcome(context, "pizza", args.getString(0), "orderId") },
     ))
 }
