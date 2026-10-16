@@ -103,9 +103,7 @@ class PreparationActivity : ComponentActivity() {
                         Button(onClick = { accept(tip) }, enabled = !generating, modifier = Modifier.padding(start = 16.dp, bottom = 12.dp)) { Text("Open") }
                     } }
                     if (message.isNotEmpty()) Text(message)
-                    surface?.let { ExperienceSurface(it, onSnapshot = { snapshot ->
-                        DiagnosticFiles.write(filesDir, "preparation-ui.json", snapshot.json().toString())
-                    }) }
+                    surface?.let { ExperienceSurface(it) }
                     proposal?.let { minute ->
                         OutlinedButton(onClick = { confirm = true }) { Text("Review reminder · %02d:%02d".format(minute / 60, minute % 60)) }
                     }

@@ -17,6 +17,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import dev.deal.embedding.Experience
+import dev.deal.embedding.EventPage
+import dev.deal.embedding.inspection
 import dev.deal.embedding.dialogueExchanges
 import dev.deal.embedding.retainedEvents
 import dev.deal.shell.*
@@ -36,7 +38,7 @@ class DiagnosticsActivity : ComponentActivity() {
         val embedding=host.embedding
         fun workspaces(): List<Experience> = embedding.saved()
         setContent { AppTheme(Accent.Organizer) {
-            var entries by remember { mutableStateOf<List<JSONObject>>(emptyList()) }
+            var evidence by remember { mutableStateOf(EventPage(emptyList(), "", false)) }
             var capture by remember { mutableStateOf(embedding.capturesContent()) }
             var selected by remember { mutableStateOf<JSONObject?>(null) }
             var detail by remember { mutableStateOf("") }
@@ -53,9 +55,9 @@ class DiagnosticsActivity : ComponentActivity() {
                     val read = withContext(Dispatchers.IO) { runCatching {
                         val page=embedding.retainedEvents()
                         val health=embedding.health()
-                        page.events.reversed() to if(health.incomplete||page.incomplete)JSONObject().put("active",health.active).toString()else ""
+                        page to if(health.incomplete||page.incomplete)JSONObject().put("active",health.active).toString()else ""
                     } }
-                    read.onSuccess { (events, status) -> entries = events; health = status; readError = "" }
+                    read.onSuccess { (page, status) -> evidence = page; health = status; readError = "" }
                         .onFailure { readError = "Couldn’t read activity: ${it.javaClass.simpleName}. Retained display may be stale." }
                     capture = embedding.capturesContent()
                     delay(500)
@@ -68,8 +70,8 @@ class DiagnosticsActivity : ComponentActivity() {
                     } ?: "Content omitted or evicted. Capture is explicit and not retroactive."
                 }
             }
-            val traces = entries.filter { it.optString("workspace") == workspace && workspace.isNotEmpty() }.map { it.optString("trace") }.toSet()
-            val scoped = entries.filter { all || if (workspace.isNotEmpty()) it.optString("workspace") == workspace || it.optString("trace") in traces else since > 0 && it.optString("time").toLongOrNull()?.let { t -> t >= since } == true }
+            val scopedEvidence = if (all) evidence.inspection() else evidence.inspection(experiences = setOf(workspace), since = if (workspace.isEmpty()) since else 0)
+            val scoped = scopedEvidence.events.reversed()
             val visible = scoped.take(200)
             Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
                 Column(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -81,6 +83,7 @@ class DiagnosticsActivity : ComponentActivity() {
                     Text("Observed activity · not AI reasoning", style = MaterialTheme.typography.bodySmall)
                     if (health.isNotEmpty()) Text(if (runCatching { JSONObject(health).optBoolean("active", true) }.getOrDefault(true)) "Logger unavailable — log incomplete" else "Logger recovered — earlier log incomplete", color = MaterialTheme.colorScheme.error)
                     if (readError.isNotEmpty()) Text(readError, color = MaterialTheme.colorScheme.error)
+                    if (scopedEvidence.incomplete && health.isEmpty()) Text("Retained evidence is incomplete; missing outcomes are not success.", color = MaterialTheme.colorScheme.error)
                     Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         listOf("Activity", "Dialogue", "Source", "Workspaces").forEach { name -> FilterChip(selected = tab == name, onClick = { tab = name }, label = { Text(name) }) }
                     }
@@ -161,7 +164,7 @@ class DiagnosticsActivity : ComponentActivity() {
                 confirmButton = { TextButton(onClick = { embedding.capture(true); capture = true; confirm = false }) { Text("Enable") } },
                 dismissButton = { TextButton(onClick = { confirm = false }) { Text("Cancel") } })
             if (clearing) AlertDialog(onDismissRequest = { clearing = false }, title = { Text("Clear retained diagnostics?") }, text = { Text("Deletes retained activity, captured artifacts and logger health evidence. Saved workspaces are kept.") },
-                confirmButton = { TextButton(onClick = { embedding.clearObservation(); entries = emptyList(); clearing = false }) { Text("Clear") } },
+                confirmButton = { TextButton(onClick = { embedding.clearObservation(); evidence = EventPage(emptyList(), "", false); clearing = false }) { Text("Clear") } },
                 dismissButton = { TextButton(onClick = { clearing = false }) { Text("Keep") } })
             selected?.let { event -> AlertDialog(onDismissRequest = { selected = null }, title = { Text(activitySummary(event)) },
                 text = { Column(Modifier.heightIn(max = 500.dp).verticalScroll(rememberScrollState())) {

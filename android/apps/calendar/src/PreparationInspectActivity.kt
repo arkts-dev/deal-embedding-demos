@@ -30,13 +30,13 @@ class PreparationInspectActivity : ComponentActivity() {
         setContent { AppTheme(Accent.Calendar) {
             var tab by remember { mutableStateOf("Activity") }
             var records by remember { mutableStateOf<List<JSONObject>>(emptyList()) }
-            var events by remember { mutableStateOf<List<JSONObject>>(emptyList()) }
+            var evidence by remember { mutableStateOf(EventPage(emptyList(), "", false)) }
             var sources by remember { mutableStateOf<List<Pair<Experience, Source>>>(emptyList()) }
             var scope by remember { mutableStateOf("") }
             var detail by remember { mutableStateOf<String?>(null) }
             var selected by remember { mutableStateOf<JSONObject?>(null) }
             var warning by remember { mutableStateOf("Reading retained evidence…") }
-            var capture by remember { mutableStateOf(EmbeddingLog(this@PreparationInspectActivity).capturesContent) }
+            var capture by remember { mutableStateOf(false) }
             var confirmCapture by remember { mutableStateOf(false) }
             var captureChange by remember { mutableStateOf<Boolean?>(null) }
             LaunchedEffect(captureChange) {
@@ -52,14 +52,10 @@ class PreparationInspectActivity : ComponentActivity() {
                         val local = (0 until raw.length()).map { raw.getJSONObject(it) }.reversed()
                         PreparationRecords.opportunityApi(this@PreparationInspectActivity).use { api ->
                             val page = api.retainedEvents()
-                            val traces = local.map { it.optString("trace") }.filter { it.isNotEmpty() }.toSet()
-                            val saved = api.saved()
-                            val ids = saved.map { it.id }.toSet()
-                            val discoveryTraces = page.events.filter { it.optString("stage") == "opportunity-handoff" && it.optString("target") in traces }.map { it.optString("trace") }.toSet()
-                            val scoped = page.events.filter { it.optString("trace") in traces || it.optString("trace") in discoveryTraces || it.optString("stage").startsWith("opportunity") || it.optString("workspace") in ids }
-                            val source = saved.map { it to api.source(it) }
+                            val source = api.saved().map { it to api.source(it) }
+                            val capturing = api.capturesContent()
                             withContext(Dispatchers.Main) {
-                                records = local; events = scoped.reversed(); sources = source
+                                records = local; evidence = page; sources = source; capture = capturing
                                 scope = ""
                                 warning = if (page.incomplete) "Retained evidence is incomplete; missing outcomes are not success." else ""
                             }
@@ -79,13 +75,12 @@ class PreparationInspectActivity : ComponentActivity() {
                 }
             }
             val chosen = sources.firstOrNull { it.first.id == scope }
-            val traces = events.filter { it.optString("workspace") == scope }.map { it.optString("trace") }.toSet()
-            val discoveryTraces = events.filter { it.optString("stage") == "opportunity-handoff" && it.optString("target") in traces }.map { it.optString("trace") }.toSet()
-            val scopedEvents = events.filter { scope.isEmpty() || it.optString("workspace") == scope || it.optString("trace") in traces || it.optString("trace") in discoveryTraces }
+            val scopedEvidence = evidence.inspection(experiences = setOf(scope))
+            val scopedEvents = scopedEvidence.events.reversed()
             Scaffold(topBar = { TopAppBar(title = { Text("Inspect") }, navigationIcon = { TextButton(onClick = { finish() }) { Text("Back") } }) }) { padding ->
                 Column(Modifier.padding(padding).fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("Observed activity, not hidden AI reasoning", style = MaterialTheme.typography.bodySmall)
-                    if (warning.isNotEmpty()) Text(warning, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    if (warning.isNotEmpty() || scopedEvidence.incomplete) Text(warning.ifEmpty { "Retained evidence is incomplete; missing outcomes are not success." }, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     TextButton(onClick = { if (capture) captureChange = false else confirmCapture = true }) { Text(if (capture) "Content capture ON · turn off" else "Capture future content") }
                     Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         listOf("Activity", "Dialogue", "Source").forEach { name -> FilterChip(tab == name, { tab = name }, label = { Text(name) }) }

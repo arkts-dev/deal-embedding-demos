@@ -87,6 +87,8 @@ class DiscoveryInstrumentation : Instrumentation() {
                 check(events.any { it.optString("stage") == "opportunity" && it.optString("outcome") == "none" })
                 val handoff = events.last { it.optString("stage") == "opportunity-handoff" }
                 check(handoff.optString("target").isNotBlank())
+                val scoped = EventPage(events, "", false).inspection(traces = setOf(handoff.getString("target")))
+                check(scoped.events.any { it.optString("stage") == "opportunity-inference" && it.optString("trace") == handoff.getString("trace") })
                 val proposal = events.last { it.optString("stage") == "opportunity" && it.optString("outcome") == "suggested" }
                 check(api.artifact(proposal.getString("artifact")).text.contains(parsed.brief))
                 val exchanges = dialogueExchanges(events)

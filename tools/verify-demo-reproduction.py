@@ -14,7 +14,26 @@ out=pathlib.Path('build/demo-reproduction')/a.task; out.mkdir(parents=True,exist
 m['capture'].__globals__['OUT']=out
 shell,tap,scrolltap,back=(m[k] for k in ('shell','tap','scrolltap','back'))
 def private(name):return shell('run-as','dev.deal.apps.organizer','cat',name)
-def snapshot():return json.loads(private('files/workspace-snapshot.json'))
+def snapshot():
+    # Use Inspect's public events/artifact path; never a host snapshot file.
+    tap('Inspect');tap('Activity')
+    try:
+        for _ in range(12):
+            label=next((label for label in m['labels'](m['ui']()) if label.startswith('snapshot · produced')),None)
+            if label is not None:break
+            m['swipe']()
+        assert label is not None,'No retained snapshot; enable capture before the action'
+        tap(label)
+        for _ in range(12):
+            for text in m['labels'](m['ui']()):
+                try:value=json.loads(text)
+                except ValueError:continue
+                if isinstance(value,dict) and 'tree' in value and 'version' in value:return value
+            shell('input','swipe',540,1700,540,850,350);time.sleep(.3)
+        raise AssertionError('Snapshot artifact omitted, evicted, truncated or unreadable in Inspect')
+    finally:
+        if 'Close' in m['labels'](m['ui']()):tap('Close')
+        back()
 def nodes(n):
     yield n
     for c in n['children']:yield from nodes(c)

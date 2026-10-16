@@ -85,7 +85,6 @@ class OrganizerActivity : ComponentActivity() {
         }
         fun publish(id: String, snapshot: JSONObject) {
             if (activeWorkspace.get() != id) return
-            DiagnosticFiles.write(filesDir,"workspace-snapshot.json",snapshot.toString())
             runOnUiThread {
                 if (!isDestroyed && activeWorkspace.get() == id) {
                     fault = snapshot.optString("fault")

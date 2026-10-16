@@ -28,6 +28,14 @@ for app in ('organizer','calendar'):
         assert '.inSession(' not in text, path
         assert not any(call in text for call in ('.run(','.next(','.dispatch(','.published(','.observe(','DealRenderer(')), path
 assert (library/'android/src/rendering/ExperienceSurface.kt').exists()
+for app, screen in [('calendar','PreparationInspectActivity.kt'), ('organizer','DiagnosticsActivity.kt')]:
+    text=(root/f'android/apps/{app}/src'/screen).read_text()
+    assert '.inspection(' in text
+    assert 'opportunity-handoff' not in text and 'val traces =' not in text and 'optString("workspace")' not in text
+for app, screen in [('calendar','PreparationActivity.kt'), ('organizer','OrganizerActivity.kt')]:
+    text=(root/f'android/apps/{app}/src'/screen).read_text()
+    assert 'workspace-snapshot.json' not in text and 'preparation-ui.json' not in text
+assert 'workspace-snapshot.json' not in (root/'tools/verify-demo-reproduction.py').read_text()
 assert 'nextId <= 128' not in (library/'android/src/capabilities/CapabilityRegistry.kt').read_text()
 assert 'issued:MutableMap' not in (library/'android/src/Embedding.kt').read_text()
 assert 'dialogueExchanges' not in (root/'android/apps/organizer/src/InspectionPresentation.kt').read_text()
