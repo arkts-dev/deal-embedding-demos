@@ -313,8 +313,6 @@ class EventDetailsActivity : ComponentActivity() {
         KeyValue("Time zone", AGENDA_ZONE.id)
         if (event.location.isNotEmpty()) KeyValue("Location", event.location)
         if (event.notes.isNotEmpty()) Text(event.notes, style = MaterialTheme.typography.bodyMedium)
-        val context = androidx.compose.ui.platform.LocalContext.current
-        Button(onClick = { context.startActivity(Intent(context, CalendarActivity::class.java).putExtra("eventId", event.id).putExtra("eventBegin", event.from)) }) { Text("Plan departure") }
         OutlinedButton(onClick = { agenda.delete(event.id); onBack() }, shape = RoundedCornerShape(18.dp)) { Text("Delete event") }
     }
 }

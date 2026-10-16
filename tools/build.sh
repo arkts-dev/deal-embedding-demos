@@ -203,12 +203,6 @@ for app in "${TARGETS[@]}"; do
             mkdir -p "build/assets/$app/guidance-example"
             cp dependencies/deal-embedding/core/generation-example.{deal,dealui} "build/assets/$app/guidance-example/"
         fi
-        if [[ "$app" == calendar || "$app" == tests ]]; then
-            python3 tools/build-calendar-policy.py
-            mkdir -p "build/assets/$app/experience"
-            cp android/apps/calendar/experiences/departure/*.deal "build/assets/$app/experience/" 2>/dev/null || true
-            cp android/apps/calendar/experiences/departure/*.dealui "build/assets/$app/experience/" 2>/dev/null || true
-        fi
     fi
     resource_link "$app" "build/$app/unsigned.apk"
     find "build/$app/rjava" -name '*.java' > build/r-sources.txt

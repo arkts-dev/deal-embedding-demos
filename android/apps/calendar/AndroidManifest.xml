@@ -15,6 +15,5 @@
         <activity android:name=".PreparationActivity" android:exported="false" />
         <activity android:name=".EventDetailsActivity" android:exported="false" />
         <activity android:name=".PreparationInspectActivity" android:exported="false" />
-        <activity android:name=".CalendarActivity" android:exported="true" android:launchMode="singleTop" android:label="Departure plan" />
     </application>
 </manifest>
