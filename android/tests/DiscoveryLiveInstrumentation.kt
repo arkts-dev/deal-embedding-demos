@@ -26,7 +26,6 @@ class DiscoveryLiveInstrumentation : Instrumentation() {
             )), mapOf("start" to { _: JSONArray -> reads++; 900 }, "propose" to { _: JSONArray -> reads++; JSONObject.NULL }))
             val model = object : ModelClient { override fun complete(input: String, previous: String, diagnostics: String, cancellation: GenerationCancellation, log: EmbeddingLog): String = error("Unexpected heavy generation") }
             ApplicationProtocol(targetContext, Embedding(targetContext, CapabilityRegistry(targetContext, CapabilityDiscovery(targetContext) { false }, listOf(native)), model, EmbeddingConfig("preparation", emptyList(), "discovery-live-test"))).use { api ->
-                val contracts = api.refresh()
                 val cases = listOf(
                     Triple("budget", true, "Gig Demo supplier review tomorrow at 15:00. Notes: Before deciding, compare the approved 12000 EUR budget with the revised 13750 EUR quotation. The comparison is not done."),
                     Triple("unrelated", false, "Gig Demo dentist appointment tomorrow at 15:00. No notes, preparation requests or unresolved decisions."),
@@ -34,12 +33,12 @@ class DiscoveryLiveInstrumentation : Instrumentation() {
                     Triple("ambiguous", false, "Gig Demo Review tomorrow at 15:00. Notes: Bring the things. Sort it out."),
                     Triple("insufficient", false, "Gig Demo evening drive tomorrow at 18:00. Notes: Avoid running out of charge. No vehicle, battery, route, range or charger data is available.")
                 )
-                Discovery(targetContext).use { discovery ->
+                Discovery(targetContext, api).use { discovery ->
                     for ((id, expected, text) in cases) {
                         val start = android.os.SystemClock.elapsedRealtime()
                         val receipt = JSONObject().put("id", id).put("expectedSuggestion", expected)
                         try {
-                            val tip = discovery.discover(DiscoveryInput(listOf(DiscoveryFact("event", text)), contracts)).get(120, TimeUnit.SECONDS)
+                            val tip = discovery.discover(DiscoveryInput(listOf(DiscoveryFact("event", text)))).get(120, TimeUnit.SECONDS)
                             receipt.put("suggested", tip != null).put("title", tip?.title).put("brief", tip?.brief).put("correctPresence", (tip != null) == expected)
                         } catch (error: Throwable) { receipt.put("error", error.toString()) }
                         receipt.put("elapsedMs", android.os.SystemClock.elapsedRealtime() - start); receipts.put(receipt)

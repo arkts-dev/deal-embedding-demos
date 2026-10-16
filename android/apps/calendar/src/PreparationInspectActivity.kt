@@ -55,7 +55,8 @@ class PreparationInspectActivity : ComponentActivity() {
                             val traces = local.map { it.optString("trace") }.filter { it.isNotEmpty() }.toSet()
                             val saved = api.saved()
                             val ids = saved.map { it.id }.toSet()
-                            val scoped = page.events.filter { it.optString("trace") in traces || it.optString("workspace") in ids }
+                            val discoveryTraces = page.events.filter { it.optString("stage") == "opportunity-handoff" && it.optString("target") in traces }.map { it.optString("trace") }.toSet()
+                            val scoped = page.events.filter { it.optString("trace") in traces || it.optString("trace") in discoveryTraces || it.optString("stage").startsWith("opportunity") || it.optString("workspace") in ids }
                             val source = saved.map { it to api.source(it) }
                             withContext(Dispatchers.Main) {
                                 records = local; events = scoped.reversed(); sources = source
@@ -79,7 +80,8 @@ class PreparationInspectActivity : ComponentActivity() {
             }
             val chosen = sources.firstOrNull { it.first.id == scope }
             val traces = events.filter { it.optString("workspace") == scope }.map { it.optString("trace") }.toSet()
-            val scopedEvents = events.filter { scope.isEmpty() || it.optString("workspace") == scope || it.optString("trace") in traces }
+            val discoveryTraces = events.filter { it.optString("stage") == "opportunity-handoff" && it.optString("target") in traces }.map { it.optString("trace") }.toSet()
+            val scopedEvents = events.filter { scope.isEmpty() || it.optString("workspace") == scope || it.optString("trace") in traces || it.optString("trace") in discoveryTraces }
             Scaffold(topBar = { TopAppBar(title = { Text("Inspect") }, navigationIcon = { TextButton(onClick = { finish() }) { Text("Back") } }) }) { padding ->
                 Column(Modifier.padding(padding).fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("Observed activity, not hidden AI reasoning", style = MaterialTheme.typography.bodySmall)

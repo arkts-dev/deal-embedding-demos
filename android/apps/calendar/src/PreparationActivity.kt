@@ -31,7 +31,7 @@ import java.util.concurrent.Executors
 class PreparationActivity : ComponentActivity() {
     private val worker = Executors.newSingleThreadExecutor()
     private val generationWorker = Executors.newSingleThreadExecutor()
-    private val discovery by lazy { Discovery(applicationContext) }
+    private var discovery: Discovery? = null
     @Volatile private var api: ApplicationProtocol? = null
     private var owner: ExperienceSurface? = null
     private val ownerLock = Any()
@@ -96,7 +96,8 @@ class PreparationActivity : ComponentActivity() {
                             Text(tip.title, Modifier.weight(1f), style = MaterialTheme.typography.titleMedium)
                             IconButton(onClick = {
                                 check(getSharedPreferences("preparation-discovery-dismissals", 0).edit().putBoolean(current!!.identity, true).commit())
-                                suggestion = null; discovery.cancel(); message = "No suggestions"
+                                suggestion = null; discovery?.cancel(); message = "No suggestions"
+                                PreparationRecords.record(this@PreparationActivity, "opportunity-dismissal", JSONObject().put("input", current!!.identity).put("status", "dismissed"))
                             }) { Icon(Icons.Outlined.Close, "Dismiss") }
                         }
                         Button(onClick = { accept(tip) }, enabled = !generating, modifier = Modifier.padding(start = 16.dp, bottom = 12.dp)) { Text("Open") }
@@ -139,7 +140,7 @@ class PreparationActivity : ComponentActivity() {
         super.onPause()
     }
     private fun invalidate() {
-        synchronized(ownerLock) { revision++ }; discovery.cancel(); suggestion = null; checking = false
+        synchronized(ownerLock) { revision++ }; discovery?.cancel(); suggestion = null; checking = false
         api?.revoke("host/calendar"); connected = false; observed = null; surface = null
         request?.let { runCatching { api?.cancel(it) } }
         proposal = null; confirm = false; access = false; menu = false
@@ -149,9 +150,9 @@ class PreparationActivity : ComponentActivity() {
         message = label
     }
     private fun readEvent(): ShowEvent = ShowAgenda(this).events(day).singleOrNull { it.id == eventId } ?: error("Demo event changed or removed")
-    private fun input(e: ShowEvent, contracts: List<SharedCapabilityContract>): DiscoveryInput = DiscoveryInput(listOf(
+    private fun input(e: ShowEvent): DiscoveryInput = DiscoveryInput(listOf(
         DiscoveryFact("event", "Gig Demo event ${e.id}: ${e.title}. Starts ${Instant.ofEpochMilli(e.from).atZone(AGENDA_ZONE)}; ends ${Instant.ofEpochMilli(e.until).atZone(AGENDA_ZONE)}. Location: ${e.location}. Start minute ${Instant.ofEpochMilli(e.from).atZone(AGENDA_ZONE).let { it.hour * 60 + it.minute }}. Notes: ${e.notes.removePrefix("Preparation demo · ")}")
-    ), contracts)
+    ))
     private fun refresh() {
         invalidate()
         val epoch = revision
@@ -160,7 +161,8 @@ class PreparationActivity : ComponentActivity() {
                 check(foreground && epoch == revision)
                 val e = readEvent()
                 val protocol = api ?: createApi().also { api = it }
-                val facts = input(e, protocol.refresh())
+                val facts = input(e)
+                val finder = discovery ?: Discovery(applicationContext, protocol).also { discovery = it }
                 if (current?.identity != facts.identity) {
                     protocol.revoke("host/calendar"); activeEvent = null
                     val previous = synchronized(ownerLock) { owner.also { owner = null; activeInput = null } }; previous?.close()
@@ -180,14 +182,11 @@ class PreparationActivity : ComponentActivity() {
                     if (!getSharedPreferences("preparation", 0).getBoolean("opportunity", true)) { message = "Suggestions are off"; return@runOnUiThread }
                     if (getSharedPreferences("preparation-discovery-dismissals", 0).getBoolean(facts.identity, false)) { message = "No suggestions"; return@runOnUiThread }
                     checking = true; message = ""
-                    val started = android.os.SystemClock.elapsedRealtime()
-                    PreparationRecords.record(this, "opportunity", JSONObject().put("status", "started").put("model", "On-device").put("input", facts.identity).put("eventTitle", e.title).put("eventNotes", e.notes))
-                    discovery.discover(facts).whenComplete { tip, error -> runOnUiThread {
+                    finder.discover(facts).whenComplete { tip, error -> runOnUiThread {
                         if (!foreground || epoch != revision) return@runOnUiThread
                         checking = false
                         message = if (error != null) "Couldn’t find help" else if (tip == null) "No suggestions" else ""
                         suggestion = tip
-                        PreparationRecords.record(this, "opportunity", JSONObject().put("status", if (error != null) "failed" else if (tip == null) "none" else "suggested").put("elapsedMs", android.os.SystemClock.elapsedRealtime() - started).put("title", tip?.title).put("brief", tip?.brief).put("input", facts.identity).put("factIds", tip?.factIds?.let(::JSONArray)).put("capabilityIds", tip?.capabilityIds?.let(::JSONArray)).put("reason", error?.toString()))
                     } }
                 }
             } catch (error: Throwable) { runOnUiThread { if (foreground && epoch == revision) { checking = false; failure("opportunity-open", "Preparation unavailable", error) } } }
@@ -231,9 +230,9 @@ class PreparationActivity : ComponentActivity() {
                 val protocol = api ?: error("Preparation unavailable")
                 check(foreground && epoch == revision && readEvent() == event)
                 check(getSharedPreferences("preparation", 0).getBoolean("generation", false)) { "Generation disclosure disabled" }
-                val fresh = input(readEvent(), protocol.refresh())
+                val fresh = input(readEvent())
                 check(fresh.identity == facts.identity)
-                val admitted = discovery.request(tip, fresh, protocol); request = admitted
+                val admitted = checkNotNull(discovery).request(tip, fresh); request = admitted
                 activeEvent = event
                 PreparationRecords.record(this, "opportunity-generation", JSONObject().put("status", "started").put("model", dev.deal.apps.development.GenerationBuild.label).put("trace", protocol.requestTrace(admitted)).put("input", facts.identity).put("brief", tip.brief))
                 if (!foreground || epoch != revision) protocol.cancel(admitted)
@@ -252,7 +251,7 @@ class PreparationActivity : ComponentActivity() {
     override fun onDestroy() {
         foreground = false; invalidate(); contentResolver.unregisterContentObserver(observer)
         generationWorker.shutdown()
-        worker.execute { teardown({ discovery.close() }, { check(generationWorker.awaitTermination(15, java.util.concurrent.TimeUnit.SECONDS)) { "Generation worker did not terminate" } }, { synchronized(ownerLock) { owner }?.close() }, { api?.close() }) }
+        worker.execute { teardown({ discovery?.close() }, { check(generationWorker.awaitTermination(15, java.util.concurrent.TimeUnit.SECONDS)) { "Generation worker did not terminate" } }, { synchronized(ownerLock) { owner }?.close() }, { api?.close() }) }
         worker.shutdown(); super.onDestroy()
     }
 }
