@@ -14,7 +14,6 @@
  <instrumentation android:name=".DiscoveryCalendarInstrumentation" android:targetPackage="dev.deal.connectors.tests" />
  <instrumentation android:name=".CalendarReminderInstrumentation" android:targetPackage="dev.deal.connectors.tests" />
  <instrumentation android:name=".GuidanceInstrumentation" android:targetPackage="dev.deal.connectors.tests" />
- <instrumentation android:name=".PreparationInstrumentation" android:targetPackage="dev.deal.connectors.tests" />
  <instrumentation android:name=".CalendarInstrumentation" android:targetPackage="dev.deal.connectors.tests" />
  <instrumentation android:name=".DiagnosticInstrumentation" android:targetPackage="dev.deal.connectors.tests" />
  <instrumentation android:name=".RemoteCapabilityInstrumentation" android:targetPackage="dev.deal.connectors.tests" />

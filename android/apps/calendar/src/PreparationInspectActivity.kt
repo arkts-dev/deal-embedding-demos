@@ -41,7 +41,7 @@ class PreparationInspectActivity : ComponentActivity() {
             var captureChange by remember { mutableStateOf<Boolean?>(null) }
             LaunchedEffect(captureChange) {
                 captureChange?.let { value ->
-                    withContext(Dispatchers.IO) { PreparationRecords.api(this@PreparationInspectActivity).use { it.capture(value) } }
+                    withContext(Dispatchers.IO) { PreparationRecords.opportunityApi(this@PreparationInspectActivity).use { it.capture(value) } }
                     capture = value; captureChange = null
                 }
             }
@@ -50,14 +50,13 @@ class PreparationInspectActivity : ComponentActivity() {
                     runCatching {
                         val raw = JSONArray(PreparationRecords.prefs(this@PreparationInspectActivity).getString("events", "[]"))
                         val local = (0 until raw.length()).map { raw.getJSONObject(it) }.reversed()
-                        PreparationRecords.api(this@PreparationInspectActivity).use { api ->
+                        PreparationRecords.opportunityApi(this@PreparationInspectActivity).use { api ->
                             val page = api.retainedEvents()
                             val traces = local.map { it.optString("trace") }.filter { it.isNotEmpty() }.toSet()
-                            val opportunities = PreparationRecords.opportunityApi(this@PreparationInspectActivity).use { other -> other.saved().map { it to other.source(it) } }
-                            val saved = api.saved() + opportunities.map { it.first }
+                            val saved = api.saved()
                             val ids = saved.map { it.id }.toSet()
                             val scoped = page.events.filter { it.optString("trace") in traces || it.optString("workspace") in ids }
-                            val source = api.saved().map { it to api.source(it) } + opportunities
+                            val source = saved.map { it to api.source(it) }
                             withContext(Dispatchers.Main) {
                                 records = local; events = scoped.reversed(); sources = source
                                 scope = ""
@@ -72,7 +71,7 @@ class PreparationInspectActivity : ComponentActivity() {
                     detail = withContext(Dispatchers.IO) {
                         val id = event.optString("artifact")
                         val captured = if (id.isEmpty()) "Content was not captured or has been evicted." else runCatching {
-                            PreparationRecords.api(this@PreparationInspectActivity).use { it.artifact(id).text }
+                            PreparationRecords.opportunityApi(this@PreparationInspectActivity).use { it.artifact(id).text }
                         }.getOrDefault("Captured content unavailable.")
                         readableLogDetail(captured) + "\n\nExact metadata\n" + event.toString(2)
                     }
@@ -128,7 +127,6 @@ class PreparationInspectActivity : ComponentActivity() {
                                     }
                                     Text(dateTimeLabel(record.optLong("at"), AGENDA_ZONE) + record.optLong("elapsedMs").takeIf { record.has("elapsedMs") }?.let { " · ${it / 1000.0}s" }.orEmpty(), style = MaterialTheme.typography.bodySmall)
                                     record.optString("reason").takeIf { it.isNotEmpty() }?.let { Text(it.take(240), color = MaterialTheme.colorScheme.error) }
-                                    record.optJSONObject("decision")?.takeIf { it.has("eventTitle") }?.let { Text(it.optString("eventTitle") + " ← " + it.optString("taskTitle")) }
                                 }
                             } }
                             items(scopedEvents.take(200)) { entry -> OutlinedCard(onClick = { selected = entry }, modifier = Modifier.fillMaxWidth()) {
@@ -139,7 +137,7 @@ class PreparationInspectActivity : ComponentActivity() {
                     }
                 }
             }
-            if (confirmCapture) AlertDialog(onDismissRequest = { confirmCapture = false }, title = { Text("Capture private content?") }, text = { Text("Store future prompts and replies privately with size limits. May contain event notes and task titles. Capture is not retroactive; turn it off after debugging. Credentials are excluded.") }, confirmButton = { TextButton(onClick = { captureChange = true; confirmCapture = false }) { Text("Enable") } }, dismissButton = { TextButton(onClick = { confirmCapture = false }) { Text("Cancel") } })
+            if (confirmCapture) AlertDialog(onDismissRequest = { confirmCapture = false }, title = { Text("Capture private content?") }, text = { Text("Store future prompts and replies privately with size limits. May contain event notes and accepted briefs. Capture is not retroactive; turn it off after debugging. Credentials are excluded.") }, confirmButton = { TextButton(onClick = { captureChange = true; confirmCapture = false }) { Text("Enable") } }, dismissButton = { TextButton(onClick = { confirmCapture = false }) { Text("Cancel") } })
             detail?.let { text -> AlertDialog(onDismissRequest = { detail = null; selected = null }, title = { Text("Retained detail · untrusted content") }, text = { Text(text, Modifier.heightIn(max = 500.dp).verticalScroll(rememberScrollState())) }, confirmButton = { TextButton(onClick = { detail = null; selected = null }) { Text("Close") } }) }
         } }
     }

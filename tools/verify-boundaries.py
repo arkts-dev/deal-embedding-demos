@@ -46,10 +46,7 @@ for path in (library / 'android').rglob('*'):
 for path in (root/'android/apps/calendar/src').glob('*.kt'):
     text=path.read_text()
     assert 'dev.deal.apps.todo' not in text and 'dev.deal.apps.vehicle' not in text and 'host/trip' not in text, path
-    if path.name != 'PreparationDiscovery.kt': assert 'host/todo' not in text, path
-    else:
-        assert '"unfinished"' in text and 'registry.read(' in text
-        assert 'proposeTask' not in text and 'DealRenderer(' not in text
+    assert 'host/todo' not in text, path
     assert 'distanceKm' not in text and 'makeTable' not in text, path
 for provider, other in [('todo', 'vehicle'), ('vehicle', 'todo')]:
     for path in (root / f'android/apps/{provider}').rglob('*'):

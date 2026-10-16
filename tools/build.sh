@@ -208,8 +208,6 @@ for app in "${TARGETS[@]}"; do
             mkdir -p "build/assets/$app/experience"
             cp android/apps/calendar/experiences/departure/*.deal "build/assets/$app/experience/" 2>/dev/null || true
             cp android/apps/calendar/experiences/departure/*.dealui "build/assets/$app/experience/" 2>/dev/null || true
-            mkdir -p "build/assets/$app/preparation"
-            cp android/apps/calendar/experiences/preparation/* "build/assets/$app/preparation/"
         fi
     fi
     resource_link "$app" "build/$app/unsigned.apk"
