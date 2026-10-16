@@ -1,7 +1,5 @@
 package dev.deal.apps.calendar
 
-import dev.deal.apps.development.GenerationGateway
-
 import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -15,7 +13,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import dev.deal.shell.*
 import dev.deal.embedding.*
 import org.json.JSONObject
@@ -80,7 +77,7 @@ class CalendarActivity : ComponentActivity() {
                         else if (events.isEmpty()) Text("No upcoming events. Add one in your calendar app to get started.")
                         for (event in if (selectedUi == null) events else emptyList()) {
                             OutlinedButton(onClick = { selected = event; selectedUi = event; proposal = null }, modifier = Modifier.fillMaxWidth()) {
-                                Text("${if (selectedUi?.id == event.id) "✓  " else ""}${event.time}  ${event.title}")
+                                Text("${event.time}  ${event.title}")
                             }
                         }
                     }
@@ -150,7 +147,7 @@ class CalendarActivity : ComponentActivity() {
     private fun activate(deal: String?, ui: String?) {
         worker.execute {
             try {
-                experience.prepare(applicationContext)
+                experience.prepare()
                 if (connected) experience.permissions(true)
                 require((deal==null)==(ui==null)){"Supply both .deal and .dealui"}
                 val remembered=if(deal==null)experience.remembered()else null
@@ -174,7 +171,7 @@ class CalendarActivity : ComponentActivity() {
         DiagnosticFiles.write(filesDir,"generation-status.json",JSONObject().put("status", "running").toString())
         worker.execute {
             try {
-                experience.prepare(applicationContext)
+                experience.prepare()
                 val schema=WireType("record",fields=listOf(WireField("eventTitle",WireType("string",maximum=1024),true),WireField("startMinute",WireType("int"),true)))
                 val facts=experience.embedding.snapshot(schema,context)
                 val request=experience.embedding.request("Departure",objective,facts);cancellation=request

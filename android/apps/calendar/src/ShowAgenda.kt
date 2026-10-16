@@ -143,9 +143,7 @@ class ShowAgenda(private val context: Context) {
     }
 }
 
-data class ShowEvent(val id: Long, val title: String, val from: Long, val until: Long, val location: String, val notes: String) {
-    val overlapping: Boolean get() = false
-}
+data class ShowEvent(val id: Long, val title: String, val from: Long, val until: Long, val location: String, val notes: String)
 
 @OptIn(ExperimentalMaterial3Api::class)
 class AgendaActivity : ComponentActivity() {
