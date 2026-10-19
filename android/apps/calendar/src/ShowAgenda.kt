@@ -164,7 +164,6 @@ class AgendaActivity : ComponentActivity() {
                 var adding by remember { mutableStateOf(false) }
                 var granted by remember { mutableStateOf(checkSelfPermission(android.Manifest.permission.READ_CALENDAR) == android.content.pm.PackageManager.PERMISSION_GRANTED && checkSelfPermission(android.Manifest.permission.WRITE_CALENDAR) == android.content.pm.PackageManager.PERMISSION_GRANTED) }
                 var error by remember { mutableStateOf("") }
-                var discover by remember { mutableStateOf(getSharedPreferences("preparation", 0).getBoolean("opportunity", true)) }
                 var access by remember { mutableStateOf(false) }
                 var clearing by remember { mutableStateOf(false) }
                 var clearConfirm by remember { mutableStateOf(false) }
@@ -198,23 +197,8 @@ class AgendaActivity : ComponentActivity() {
                         if (!adding && !access) WeekStrip(date) { date = it }
                         when {
                             access -> Column(Modifier.padding(20.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                                Text("Preparation help", style = MaterialTheme.typography.titleLarge)
-                                Text("Optional AI assistance. No appointment or task is changed.", style = MaterialTheme.typography.bodyMedium)
-                                Text("AI permissions", style = MaterialTheme.typography.titleMedium)
-                                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                                    Column(Modifier.weight(1f)) { Text("Preparation suggestions"); Text("On-device discovery when you open a demo event.", style = MaterialTheme.typography.bodySmall) }
-                                    Switch(discover, { enabled ->
-                                        check(getSharedPreferences("preparation", 0).edit().putBoolean("opportunity", enabled).commit())
-                                        discover = enabled
-                                    })
-                                }
-                                var generationAllowed by remember { mutableStateOf(getSharedPreferences("preparation", 0).getBoolean("generation", false)) }
-                                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                                    Column(Modifier.weight(1f)) { Text("Tailored plans"); Text("Send accepted demo facts to the configured code service when you tap Open.", style = MaterialTheme.typography.bodySmall) }
-                                    Switch(generationAllowed, { value -> getSharedPreferences("preparation", 0).edit().putBoolean("generation", value).commit(); generationAllowed = value })
-                                }
-                                HorizontalDivider()
-                                Button(onClick = { startActivity(Intent(this@AgendaActivity, AssistanceSettingsActivity::class.java)) }) { Text("Connected apps & sharing") }
+                                Text("Assistance", style = MaterialTheme.typography.titleLarge)
+                                Button(onClick = { startActivity(Intent(this@AgendaActivity, AssistanceSettingsActivity::class.java).putExtra("storage", "preparation-opportunity")) }) { Text("Suggestions, tools & sharing") }
                                 Text("Saved assistance", style = MaterialTheme.typography.titleMedium)
                                 ListItem(headlineContent = { Text("Inspect") }, supportingContent = { Text("Activity, model exchanges and checked source") }, trailingContent = { Icon(Icons.Outlined.ChevronRight, null) }, modifier = Modifier.clickable { startActivity(Intent(this@AgendaActivity, PreparationInspectActivity::class.java)) })
                                 ListItem(headlineContent = { Text("Clear saved assistance", color = MaterialTheme.colorScheme.error) }, supportingContent = { Text("Keep permissions, appointments and tasks") }, trailingContent = { Icon(Icons.Outlined.DeleteOutline, null, tint = MaterialTheme.colorScheme.error) }, modifier = Modifier.clickable(enabled = !clearing) { clearConfirm = true })

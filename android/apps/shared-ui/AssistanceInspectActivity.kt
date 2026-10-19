@@ -23,11 +23,15 @@ import org.json.JSONObject
 class AssistanceInspectActivity : ComponentActivity() {
     override fun onCreate(state: Bundle?) {
         super.onCreate(state)
+        val storageName = intent.getStringExtra("storage") ?: "assistance"
+        val trace = intent.getStringExtra("trace").orEmpty()
+        val since = intent.getLongExtra("since", 0L)
         setContent { AppTheme(appAccent(packageName)) {
             var tab by remember { mutableStateOf("Activity") }
             var page by remember { mutableStateOf(EventPage(emptyList(), "", false)) }
             var sources by remember { mutableStateOf<List<Pair<Experience, Source>>>(emptyList()) }
             var scope by remember { mutableStateOf(intent.getStringExtra("experience") ?: "") }
+            var requestScope by remember { mutableStateOf(trace.isNotEmpty() || since > 0) }
             var capture by remember { mutableStateOf(false) }
             var captureChange by remember { mutableStateOf<Boolean?>(null) }
             var consent by remember { mutableStateOf(false) }
@@ -35,7 +39,7 @@ class AssistanceInspectActivity : ComponentActivity() {
             var selected by remember { mutableStateOf<JSONObject?>(null) }
             var error by remember { mutableStateOf("") }
             LaunchedEffect(captureChange) { withContext(Dispatchers.IO) {
-                runCatching { assistanceProtocol(this@AssistanceInspectActivity).use { api ->
+                runCatching { assistanceProtocol(this@AssistanceInspectActivity, storageName).use { api ->
                     captureChange?.let(api::capture)
                     page = api.retainedEvents(); capture = api.capturesContent()
                     sources = api.saved().map { it to api.source(it) }
@@ -43,13 +47,15 @@ class AssistanceInspectActivity : ComponentActivity() {
             } }
             LaunchedEffect(selected) { selected?.let { event ->
                 detail = withContext(Dispatchers.IO) {
-                    runCatching { assistanceProtocol(this@AssistanceInspectActivity).use { api ->
+                    runCatching { assistanceProtocol(this@AssistanceInspectActivity, storageName).use { api ->
                         val artifact = event.optString("artifact").takeIf { it.isNotEmpty() }?.let(api::artifact)
                         (artifact?.let { "${it.status}\n${readableLogDetail(it.text)}" } ?: "Content was not captured or has been evicted.") + "\n\nExact metadata\n" + event.toString(2)
                     } }.getOrElse { "Evidence unavailable: ${it.javaClass.simpleName}" }
                 }
             } }
-            val evidence = page.inspection(experiences = setOf(scope))
+            val evidence = page.inspection(experiences = setOf(scope),
+                traces = if (requestScope && scope.isEmpty() && trace.isNotEmpty()) setOf(trace) else emptySet(),
+                since = if (requestScope && scope.isEmpty() && trace.isEmpty()) since else 0L)
             val events = evidence.events.reversed()
             Scaffold(topBar = { TopAppBar(title = { Text("Inspect") }, navigationIcon = { TextButton(onClick = { finish() }) { Text("Back") } }) }) { padding ->
                 Column(Modifier.padding(padding).fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -61,7 +67,8 @@ class AssistanceInspectActivity : ComponentActivity() {
                         listOf("Activity", "Dialogue", "Source").forEach { label -> FilterChip(tab == label, { tab = label }, label = { Text(label) }) }
                     }
                     Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        FilterChip(scope.isEmpty(), { scope = "" }, label = { Text("All assistance") })
+                        FilterChip(scope.isEmpty() && !requestScope, { scope = ""; requestScope = false }, label = { Text("All assistance") })
+                        if (trace.isNotEmpty() || since > 0) FilterChip(scope.isEmpty() && requestScope, { scope = ""; requestScope = true }, label = { Text("This request") })
                         sources.forEach { (experience, _) -> FilterChip(scope == experience.id, { scope = experience.id }, label = { Text(experience.title) }) }
                     }
                     LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {

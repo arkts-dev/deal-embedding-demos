@@ -48,6 +48,25 @@ class GuidanceInstrumentation : Instrumentation() {
                     api.close(session); api.forget(experience)
                 }
             }
+            // Exact checked source + source-bound draft reopen, not a rendered-text rewrite.
+            ApplicationProtocol(ctx, Embedding(ctx, CapabilityRegistry(ctx, CapabilityDiscovery(ctx) { false }, emptyList()), model,
+                EmbeddingConfig("experience", emptyList(), "currency-${UUID.randomUUID()}", retainState = true))).use { api ->
+                val source = Source("""export class State {amount:string="€20.00";}
+export function initialState():State {return {};}
+""", """import * as app from "./experience";
+import * as ui from "./platform.dealui-pack";
+// @ui-root
+export view Main(state:app.State):View {ui.Column(){ui.Text(value:state.amount)}}
+""")
+                val experience = api.load("Unicode currency fixture", source)
+                repeat(2) {
+                    val session = api.run(experience)
+                    check(api.next(session, "").snapshot.tree.toString().contains("€20.00"))
+                    api.close(session)
+                }
+                check(api.source(experience) == source)
+                api.forget(experience)
+            }
             receipt.putString("guidance", "exact authored example compiled; no init read; explicit success/failure/retry; no inference")
             finish(0, receipt)
         } catch (error: Throwable) { receipt.putString("failure", android.util.Log.getStackTraceString(error)); finish(1, receipt) }

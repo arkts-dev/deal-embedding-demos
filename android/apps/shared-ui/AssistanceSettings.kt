@@ -29,9 +29,9 @@ fun appAccent(packageName: String) = when (packageName.substringAfterLast('.')) 
     else -> Accent.Rental
 }
 
-@Composable fun AssistanceSettingsButton() {
+@Composable fun AssistanceSettingsButton(localModule: String = "", storageName: String = "assistance") {
     val context = LocalContext.current
-    IconButton(onClick = { context.startActivity(Intent(context, AssistanceSettingsActivity::class.java)) }) { Icon(Icons.Outlined.Settings, "Settings") }
+    IconButton(onClick = { context.startActivity(Intent(context, AssistanceSettingsActivity::class.java).putExtra("localModule", localModule).putExtra("storage", storageName)) }) { Icon(Icons.Outlined.Settings, "Settings") }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -53,6 +53,7 @@ class AssistanceSettingsActivity : ComponentActivity() {
             } }
             Scaffold(topBar = { TopAppBar(title = { Text("Settings") }, navigationIcon = { TextButton(onClick = { finish() }) { Text("Back") } }) }) { padding ->
                 Column(Modifier.padding(padding).fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                    TextButton(onClick = { startActivity(Intent(this@AssistanceSettingsActivity, AssistanceInspectActivity::class.java).putExtra("storage", intent.getStringExtra("storage") ?: "assistance")) }) { Text("Inspect") }
                     Text("Suggestions", style = MaterialTheme.typography.titleLarge)
                     Text("Find useful help on this device using this app’s demo content and connected apps’ available actions. No other app’s records are read to find a suggestion.")
                     SettingSwitch("On-device suggestions", discover) { discover = it; check(settings.edit().putBoolean("discovery", it).commit()) }
@@ -66,6 +67,12 @@ class AssistanceSettingsActivity : ComponentActivity() {
                     Text("Tool access", style = MaterialTheme.typography.titleLarge)
                     Text("Choose which connected apps tools may use. This does not turn on sharing in those apps. Revoking access does not delete their records.")
                     if (problem.isNotEmpty()) Text(problem)
+                    intent.getStringExtra("localModule")?.takeIf { it.isNotEmpty() }?.let { module ->
+                        val key = "grant.$module"
+                        SettingSwitch("${Connections.name(module)} review", grants[key] == true) { value ->
+                            check(settings.edit().putBoolean(key, value).commit()); grants = grants + (key to value)
+                        }
+                    }
                     contracts.forEach { contract ->
                         val key = "grant.${contract.module}"
                         SettingSwitch(Connections.name(contract.module), grants[key] == true) { value ->

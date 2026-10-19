@@ -23,14 +23,14 @@ import dev.deal.embedding.capabilities.*
 import dev.deal.embedding.discovery.*
 import java.util.concurrent.Executors
 
-fun assistanceProtocol(context: Context): ApplicationProtocol {
+fun assistanceProtocol(context: Context, storageName: String = "assistance"): ApplicationProtocol {
     val discovery = CapabilityDiscovery(context) { uid -> uid != context.applicationInfo.uid && Connections.trusted(context, uid) }
     return ApplicationProtocol(context, Embedding(context, CapabilityRegistry(context, discovery, emptyList()),
-        AssistanceBuild.gateway(), EmbeddingConfig("experience", emptyList(), "assistance", retainState = true)))
+        AssistanceBuild.gateway(), EmbeddingConfig("experience", emptyList(), storageName, retainState = true)))
 }
 
 /** App lifecycle/placement and retention decisions, not an execution driver. */
-private class TaskHelp(private val context: Context, private val facts: () -> List<DiscoveryFact>) : AutoCloseable {
+internal class TaskHelp(private val context: Context, private val facts: () -> List<DiscoveryFact>, private val protocolFactory: (Context) -> ApplicationProtocol) : AutoCloseable {
     private val worker = Executors.newSingleThreadExecutor()
     private val main = Handler(Looper.getMainLooper())
     @Volatile private var foreground = false
@@ -46,24 +46,35 @@ private class TaskHelp(private val context: Context, private val facts: () -> Li
     var surface by mutableStateOf<ExperienceSurface?>(null)
     var status by mutableStateOf("")
     var busy by mutableStateOf(false)
+    var failed by mutableStateOf(false)
+        private set
+    var trace by mutableStateOf("")
+        private set
+    var since by mutableLongStateOf(0L)
+        private set
     private fun post(version: Long, action: () -> Unit) { main.post { if (foreground && version == epoch) action() } }
     fun pause() {
         foreground = false; epoch++; finder?.cancel(); suggestion = null; surface = null; busy = false
         request?.let { api?.cancel(it) }
         // Grants have foreground lifetime; settings preserve only the user's decisions.
-        api?.let { protocol -> modules.forEach(protocol::revoke) }; input = null
+        api?.let { protocol -> modules.forEach(protocol::revoke) }
     }
     fun resume() {
         if (foreground) return
         foreground = true
         val version = ++epoch
-        status = "Looking ahead…"; busy = true
+        if (!failed) status = "Looking ahead…"
+        busy = true
         worker.execute {
             try {
-                val protocol = api ?: assistanceProtocol(context).also { api = it }
+                val current = DiscoveryInput(facts())
+                val sameInput = input?.identity == current.identity
+                input = current
+                // Returning from Inspect/Settings must not silently rerun a failed attempt.
+                if (sameInput && failed) { post(version) { busy = false }; return@execute }
+                val protocol = api ?: protocolFactory(context).also { api = it }
                 modules = Connections.apply(context, protocol)
                 check(foreground && version == epoch)
-                val current = DiscoveryInput(facts()); input = current
                 if (owner != null && ownerInput != current.identity) { owner?.close(); owner = null; ownerInput = null }
                 val settings = Connections.settings(context)
                 val retained = settings.getString("saved.${current.identity}", null)
@@ -73,12 +84,18 @@ private class TaskHelp(private val context: Context, private val facts: () -> Li
                     post(version) { busy = false; status = "" }; return@execute
                 }
                 val discovery = finder ?: Discovery(context, protocol).also { finder = it }
+                since = System.currentTimeMillis(); trace = ""
                 discovery.discover(current).whenComplete { tip, error -> post(version) {
-                    busy = false; suggestion = tip
+                    busy = false; suggestion = tip; failed = error != null
                     status = if (error != null) "Couldn’t find help" else ""
                 } }
-            } catch (error: Throwable) { post(version) { busy = false; status = "Help unavailable" } }
+            } catch (error: Throwable) { post(version) { busy = false; failed = true; status = "Help unavailable" } }
         }
+    }
+    fun retry() {
+        if (busy || !failed) return
+        failed = false; status = ""; trace = ""
+        pause(); resume()
     }
     fun dismiss() {
         input?.let { check(Connections.settings(context).edit().putBoolean("dismissed.${it.identity}", true).commit()) }
@@ -95,6 +112,7 @@ private class TaskHelp(private val context: Context, private val facts: () -> Li
                 check(foreground && version == epoch && Connections.settings(context).getBoolean("generation", false))
                 val current = DiscoveryInput(facts()); check(current.identity == captured.identity)
                 val admitted = checkNotNull(finder).request(tip, current); request = admitted
+                trace = protocol.requestTrace(admitted)
                 if (!foreground || version != epoch) protocol.cancel(admitted)
                 protocol.withPreparation(protocol.generate(admitted)) { experience ->
                     check(foreground && version == epoch && DiscoveryInput(facts()).identity == captured.identity)
@@ -102,7 +120,7 @@ private class TaskHelp(private val context: Context, private val facts: () -> Li
                     check(Connections.settings(context).edit().putString("saved.${captured.identity}", experience.id).commit())
                 }
                 post(version) { busy = false; status = "" }
-            } catch (error: Throwable) { post(version) { busy = false; status = "Couldn’t create this tool" } }
+            } catch (error: Throwable) { post(version) { busy = false; failed = true; status = "Couldn’t create this tool" } }
             finally { request = null }
         }
     }
@@ -110,7 +128,7 @@ private class TaskHelp(private val context: Context, private val facts: () -> Li
         check(foreground && version == epoch)
         val next = if (owner?.experience?.id == experience.id) checkNotNull(owner) else ExperienceSurface(protocol, experience)
         try {
-            next.activate { post(version) { status = "Tool unavailable" } }
+            next.activate { post(version) { failed = true; status = "Tool unavailable" } }
             check(foreground && version == epoch)
             val previous = owner; owner = next
             post(version) { surface = next }
@@ -134,12 +152,18 @@ private class TaskHelp(private val context: Context, private val facts: () -> Li
 }
 
 /** One task facade: native task → marked opportunity → checked tool, with no extra launcher. */
-@Composable fun AssistedTask(facts: List<DiscoveryFact>, content: @Composable () -> Unit) {
+@Composable fun AssistedTask(
+    facts: List<DiscoveryFact>,
+    storageName: String = "assistance",
+    protocolFactory: (Context) -> ApplicationProtocol = { assistanceProtocol(it, storageName) },
+    review: @Composable (Experience) -> Unit = {},
+    content: @Composable () -> Unit,
+) {
     val context = LocalContext.current
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     val currentFacts by rememberUpdatedState(facts)
     val identity = DiscoveryInput(facts).identity
-    val help = remember(identity) { TaskHelp(context.applicationContext) { currentFacts } }
+    val help = remember(identity, storageName) { TaskHelp(context.applicationContext, { currentFacts }, protocolFactory) }
     DisposableEffect(help, lifecycle) {
         val observer = LifecycleEventObserver { _, event -> when (event) {
             Lifecycle.Event.ON_RESUME -> help.resume()
@@ -151,20 +175,27 @@ private class TaskHelp(private val context: Context, private val facts: () -> Li
         onDispose { lifecycle.removeObserver(observer); help.close() }
     }
     Column(Modifier.fillMaxSize()) {
+        Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
+            if (help.surface != null) IntelligenceMark("AI-built")
+            Spacer(Modifier.weight(1f))
+            TextButton(onClick = { context.startActivity(Intent(context, AssistanceInspectActivity::class.java)
+                .putExtra("experience", help.surface?.experience?.id.orEmpty()).putExtra("trace", help.trace)
+                .putExtra("since", help.since).putExtra("storage", storageName)) }) { Text("Inspect") }
+        }
+        if (help.failed) Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text(help.status, Modifier.weight(1f), color = MaterialTheme.colorScheme.error)
+            Button(onClick = help::retry, enabled = !help.busy) { Text("Try again") }
+        }
         help.surface?.let { surface ->
-            Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
-                IntelligenceMark("AI-built")
-                Spacer(Modifier.weight(1f))
-                TextButton(onClick = { context.startActivity(Intent(context, AssistanceInspectActivity::class.java).putExtra("experience", surface.experience.id)) }) { Text("Inspect") }
-            }
             Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                if (help.status.isNotEmpty()) Text(help.status)
+                if (!help.failed && help.status.isNotEmpty()) Text(help.status)
                 ExperienceSurface(surface)
+                review(surface.experience)
             }
         } ?: run {
             if (help.busy) Row(Modifier.padding(16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                 CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp); Text(help.status, style = MaterialTheme.typography.bodySmall)
-            } else if (help.status.isNotEmpty()) Text(help.status, Modifier.padding(horizontal = 16.dp))
+            } else if (!help.failed && help.status.isNotEmpty()) Text(help.status, Modifier.padding(horizontal = 16.dp))
             help.suggestion?.let { tip -> OutlinedCard(Modifier.padding(horizontal = 16.dp, vertical = 8.dp).fillMaxWidth()) {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     IntelligenceMark("Suggestion")

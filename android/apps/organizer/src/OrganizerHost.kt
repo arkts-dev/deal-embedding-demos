@@ -12,5 +12,5 @@ class OrganizerHost(private val context: Context) : AutoCloseable {
     val embedding=ApplicationProtocol(context,mechanisms)
     fun prepare(){dev.deal.shell.Connections.apply(context,embedding)}
     fun forget(experience:Experience)=embedding.forget(experience)
-    override fun close(){embedding.shutdown()}
+    override fun close(){embedding.close()}
 }

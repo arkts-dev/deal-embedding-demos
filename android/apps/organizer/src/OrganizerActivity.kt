@@ -22,9 +22,6 @@ import androidx.compose.ui.unit.dp
 import dev.deal.embedding.*
 import dev.deal.embedding.discovery.DiscoveryFact
 import dev.deal.shell.*
-import org.json.JSONObject
-import java.util.concurrent.Executors
-import java.util.concurrent.CancellationException
 
 private enum class Destination(val label: String, val icon: androidx.compose.ui.graphics.vector.ImageVector) {
     Overview("Overview", Icons.Outlined.Dashboard), Riders("Riders", Icons.Outlined.Assignment), Resources("Resources", Icons.Outlined.Inventory2), Fulfilment("Fulfilment", Icons.Outlined.Checklist)
@@ -32,51 +29,9 @@ private enum class Destination(val label: String, val icon: androidx.compose.ui.
 
 class OrganizerActivity : ComponentActivity() {
     private val store by lazy { ShowStore(this) }
-    private val host by lazy { OrganizerProtocol.host(this) }
-    private val log by lazy { EmbeddingLog(this) }
-    private val worker = Executors.newSingleThreadExecutor()
-    @Volatile private var runningGeneration: GenerationRequest? = null
-    private val surfaces=java.util.concurrent.ConcurrentHashMap<String,ExperienceSurface>()
-    @Volatile private var cancelRequested=false
-    private fun cancelGeneration(){cancelRequested=true;runningGeneration?.let{host.embedding.cancel(it)}}
-    override fun onDestroy() {
-        try{cancelGeneration()}catch(error:Throwable){android.util.Log.e("Organizer","Cancellation failed during destruction",error)}
-        worker.execute {
-            try{teardown(*surfaces.values.map{surface->{surface.close()}}.toTypedArray(),{OrganizerProtocol.shutdown()})}
-            catch(error:Throwable){android.util.Log.e("Organizer","Shutdown failed",error)}
-            finally{surfaces.clear()}
-        }
-        worker.shutdown();super.onDestroy()
-    }
     override fun onCreate(state: Bundle?) {
         super.onCreate(state)
         var show by mutableStateOf(store.load())
-        var request by mutableStateOf<List<String>?>(null)
-        var generating by mutableStateOf(false)
-        var status by mutableStateOf("")
-        var problem by mutableStateOf<GenerationProblem?>(null)
-        var saved by mutableStateOf<List<Experience>>(emptyList())
-        var opening by mutableStateOf(false)
-        var openError by mutableStateOf("")
-        var open by mutableStateOf<Experience?>(null)
-        val activeWorkspace = java.util.concurrent.atomic.AtomicReference<String?>(null)
-        var activeSurface by mutableStateOf<ExperienceSurface?>(null)
-        var fault by mutableStateOf("")
-        var review by mutableStateOf(false)
-        var chooseBuildRequirement by mutableStateOf(false)
-        var returnRequirement by mutableStateOf<String?>(null)
-        var inspectionRequest by mutableStateOf("")
-        var inspectionStartedAt by mutableStateOf(0L)
-        var inspectionError by mutableStateOf("")
-        var currentPrepared by mutableStateOf(false)
-        var currentSelection by mutableStateOf<JSONObject?>(null)
-        var preparedReference = ""
-        val reviewReady = mutableMapOf<String, Boolean>()
-        val links = getSharedPreferences("organizer-workspace-links", 0)
-        fun requirementKey(id: String): String {
-            val r = show!!.requirement(id)!!
-            return "${show!!.date}:$id:${r.from}:${r.until}:${r.quantity}:${r.specification}"
-        }
         fun update(block: (ShowState) -> Unit) {
             val current = show ?: return
             // Publish a new plan identity: mutating a shared object can leave child
@@ -84,234 +39,45 @@ class OrganizerActivity : ComponentActivity() {
             val next = ShowState.parse(current.toJson().toString())
             block(next); store.save(next); show = next
         }
-        fun publish(id: String, snapshot: JSONObject) {
-            if (activeWorkspace.get() != id) return
-            runOnUiThread {
-                if (!isDestroyed && activeWorkspace.get() == id) {
-                    fault = snapshot.optString("fault")
-                    val preparedPrefs = getSharedPreferences("prepared", 0)
-                    val prepared = preparedPrefs.getString("workspace.$id", null)?.let { JSONObject(it) }
-                    val reference = preparedPrefs.getString("workspace.$id.reference", "").orEmpty()
-                    if (reference != preparedReference || prepared?.toString() != currentSelection?.toString()) {
-                        preparedReference = reference
-                        currentSelection = prepared
-                        currentPrepared = prepared != null
-                        reviewReady[id] = currentPrepared
-                    }
-                }
-            }
-        }
-        fun reportFailure(id: String, operation: String, error: Throwable) {
-            log.event("host", "failed", workspace = id, operation = operation, code = error.javaClass.simpleName)
-            runOnUiThread { if (!isDestroyed && activeWorkspace.get() == id) fault = error.message ?: "Workspace error" }
-        }
-        fun activate(workspace:Experience):ExperienceSurface {
-            val surface=surfaces.getOrPut(workspace.id){ExperienceSurface(host.embedding,workspace)}
-            host.embedding.withPreparation(workspace){surface.activate{error->reportFailure(workspace.id,"surface",error)}}
-            return surface
-        }
-        fun openSaved(id: String) {
-            if (opening || generating) return
-            opening = true; openError = ""; inspectionError = ""
-            // A durable preparation record does not prove the freshly mounted UI has
-            // a current selection. Only this process's live assistance may resume review.
-            val preparedPrefs = getSharedPreferences("prepared", 0)
-            currentSelection = preparedPrefs.getString("workspace.$id", null)?.let { JSONObject(it) }
-            preparedReference = preparedPrefs.getString("workspace.$id.reference", "").orEmpty()
-            currentPrepared = reviewReady[id] == true
-            inspectionStartedAt = 0L; inspectionRequest = ""
-            worker.execute {
-                try {
-                    host.prepare()
-                    val workspace = host.embedding.saved().first{it.id==id}
-                    val surface=activate(workspace)
-                    activeWorkspace.set(workspace.id)
-                    java.io.File(filesDir, "workspace-error.txt").delete()
-                    runOnUiThread { if (!isDestroyed) { activeSurface=surface;open = workspace; request = null; review = false; problem = null; opening = false } }
-                } catch (error: Throwable) {
-                    log.event("host", "failed", code = error.javaClass.simpleName, target = "reopen")
-                    runOnUiThread { if (!isDestroyed) { opening = false; openError = "Couldn’t open your options. They have been kept."; inspectionError = error.javaClass.simpleName + ": " + error.message } }
-                }
-            }
-        }
-        val inspect = registerForActivityResult(androidx.activity.result.contract.ActivityResultContracts.StartActivityForResult()) { result ->
-            if (result.resultCode == RESULT_OK && !generating && !opening) {
-                result.data?.getStringExtra("openWorkspace")?.let { id ->
-                    returnRequirement = linkedRequirements(links.getString("requirements.$id", null), show ?: return@let).firstOrNull()
-                    openSaved(id)
-                }
-                result.data?.getStringExtra("deleteWorkspace")?.let { id ->
-                    opening = true
-                    worker.execute {
-                        try {
-                            surfaces.remove(id)?.close();host.forget(host.embedding.saved().first{it.id==id})
-                            val entries = host.embedding.saved()
-                            activeWorkspace.compareAndSet(id, null)
-                            val editor = links.edit().remove("requirements.$id")
-                            links.all.filterValues { it == id }.keys.forEach { editor.remove(it) }
-                            check(editor.commit()) { "Cannot remove assistance link" }
-                            runOnUiThread { saved = entries; if (open?.id == id) open = null; opening = false }
-                        } catch (error: Throwable) {
-                            log.event("storage", "failed", workspace = id, code = error.javaClass.simpleName)
-                            runOnUiThread { opening = false; openError = "Couldn’t delete your options." }
-                        }
-                    }
-                }
-            }
-        }
-        worker.execute {
-            try {
-                host.prepare()
-                val entries = host.embedding.saved()
-                runOnUiThread { if (!isDestroyed) saved = entries }
-            } catch (error: Throwable) { log.event("host", "failed", code = error.javaClass.simpleName, target = "list") }
-        }
-        intent.getStringExtra("replayWorkspace")?.takeIf { applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE != 0 }?.let { openSaved(it) }
         setContent {
             AppTheme(Accent.Organizer) {
                 var destination by remember { mutableStateOf(Destination.Overview) }
                 var selectedAct by remember { mutableStateOf<String?>(null) }
                 var selectedDepartment by remember { mutableStateOf<String?>(null) }
                 var selectedRequirement by remember { mutableStateOf<String?>(null) }
-                fun findEquipment(id: String) {
-                    if (generating || opening) return
-                    selectedRequirement = id; returnRequirement = id
-                    problem = null; status = ""; openError = ""; inspectionRequest = ""; inspectionStartedAt = 0L; inspectionError = ""
-                    val retained = links.getString(requirementKey(id), null)
-                    if (retained != null && saved.any { it.id == retained }) openSaved(retained) else request = listOf(id)
-                }
-                BackHandler(enabled = generating || opening || request != null || review || open != null || selectedRequirement != null) {
-                    when {
-                        generating -> cancelGeneration()
-                        opening -> Unit // Do not abandon a mount halfway through publication.
-                        request != null -> { request = null; problem = null }
-                        review -> review = false
-                        open != null -> { activeWorkspace.set(null); open = null; selectedRequirement = returnRequirement }
-                        else -> { selectedRequirement = null; returnRequirement = null }
-                    }
-                }
+                BackHandler(enabled = selectedRequirement != null) { selectedRequirement = null }
                 Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
                     Scaffold(
                         containerColor = MaterialTheme.colorScheme.background,
                         topBar = {
                             Column {
-                                OrganizerTopBar(show, onInitialize = { show = store.initialize() }, onInspect = {
-                                    val engineering = android.content.Intent(this@OrganizerActivity, DiagnosticsActivity::class.java)
-                                    if (request == null) open?.let { engineering.putExtra("workspace", it.id) }
-                                    engineering.putExtra("since", inspectionStartedAt)
-                                    engineering.putExtra("request", inspectionRequest)
-                                    engineering.putExtra("error", if (fault.isNotEmpty() && open != null && request == null) fault else inspectionError)
-                                    engineering.putExtra("busy", generating || opening)
-                                    engineering.putExtra("context", if (generating) "Preparing equipment options" else request?.mapNotNull { show?.requirement(it)?.name }?.joinToString() ?: returnRequirement?.let { show?.requirement(it)?.name } ?: "Event activity")
-                                    inspect.launch(engineering)
-                                })
+                                OrganizerTopBar(show, onInitialize = { show = store.initialize() }, onInspect = if (selectedRequirement != null) null else ({
+                                    startActivity(android.content.Intent(this@OrganizerActivity, DiagnosticsActivity::class.java))
+                                }))
                             }
                         },
                         bottomBar = {
                             if (show != null) NavigationBar(containerColor = MaterialTheme.colorScheme.surface) {
                                 Destination.entries.forEach { item ->
-                                    NavigationBarItem(selected = destination == item, enabled = !generating && !opening, onClick = { destination = item; request = null; problem = null; selectedRequirement = null; returnRequirement = null; activeWorkspace.set(null); open = null; review = false }, icon = { Icon(item.icon, null) }, label = { Text(item.label) })
+                                    NavigationBarItem(selected = destination == item, onClick = { destination = item; selectedRequirement = null }, icon = { Icon(item.icon, null) }, label = { Text(item.label) })
                                 }
                             }
                         },
                     ) { padding ->
                         Column(Modifier.padding(padding).fillMaxSize()) {
                             when {
-                                opening -> Column(Modifier.fillMaxWidth().padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) { CircularProgressIndicator(); Text("Opening your options…") }
-                                review -> ReviewSheet(listOfNotNull(currentSelection), onConfirm = { runOnUiThread { review = false } }, onBack = { review = false })
                                 show == null -> EmptyPlan(onInitialize = { show = store.initialize() })
-                                request != null -> RequestSheet(
-                                    title = request!!.mapNotNull { id -> show!!.requirement(id)?.name }.joinToString(", "),
-                                    requirements = request!!.mapNotNull { id -> show!!.requirement(id) }, status = status, building = generating,
-                                    problem = problem, hasExistingWorkspace = open != null,
-                                    onDismissProblem = { problem = null; status = "" },
-                                    onCancel = { if (generating) cancelGeneration() else { request = null; problem = null; status = "" } },
-                                    onBuild = { goal, instruction ->
-                                        if (generating || opening) return@RequestSheet
-                                        generating = true; cancelRequested=false; problem = null; status = "Discovering connected apps…"
-                                        inspectionStartedAt = System.currentTimeMillis(); inspectionError = ""
-                                        val selected = request!!.mapNotNull { id -> show!!.requirement(id) }
-                                        val intent = "Resolve these requirements for ${selected.firstOrNull()?.act ?: "the show"}: " +
-                                            selected.joinToString("; ") { "${it.quantity} × ${it.name} — ${it.specification}, needed at ${it.location} by ${it.end(true)}" } + ". " + instruction
-                                        val disclosed = JSONObject().put("show", show!!.title).put("venue", show!!.venue)
-                                            .put("date", show!!.date.toString()).put("timeZone", SHOW_ZONE.id)
-                                            .put("requirements", org.json.JSONArray(selected.map { it.name })).apply {
-                                                if (selected.size == 1) {
-                                                    val requirement = selected.single()
-                                                    put("requirement", requirement.name).put("specification", requirement.specification)
-                                                    put("quantity", requirement.quantity)
-                                                    put("from", java.time.Instant.ofEpochMilli(requirement.from).toString())
-                                                    put("until", java.time.Instant.ofEpochMilli(requirement.until).toString())
-                                                    put("searchTerms", org.json.JSONArray(requirement.name.split(" ").filter { it.length > 2 }))
-                                                }
-                                            }.toString()
-                                        inspectionRequest = intent + "\n\nDISCLOSED CONTEXT\n" + disclosed
-                                        val token = java.util.concurrent.atomic.AtomicReference<GenerationRequest?>(null)
-                                        worker.execute {
-                                            try {
-                                                host.prepare()
-                                                val context=host.embedding.snapshot(organizerContextSchema(),disclosed)
-                                                val generation=host.embedding.request("$goal · ${selected.joinToString { it.name }}",intent,context)
-                                                token.set(generation);runningGeneration=generation
-                                                if(cancelRequested)host.embedding.cancel(generation)
-                                                val workspace=host.embedding.generate(generation)
-                                                run {
-                                                    if(cancelRequested){host.embedding.release(workspace);throw CancellationException("Generation cancelled")}
-                                                    val surface=activate(workspace)
-                                                    if(cancelRequested){surfaces.remove(workspace.id)?.close();host.forget(workspace);throw CancellationException("Generation cancelled")}
-                                                    val editor = links.edit().putString("requirements.${workspace.id}", selected.joinToString(",") { it.id })
-                                                    selected.forEach { editor.putString(requirementKey(it.id), workspace.id) }
-                                                    check(editor.commit()) { "Cannot retain workspace link" }
-                                                    currentPrepared = false; currentSelection = null; preparedReference = ""
-                                                    activeWorkspace.set(workspace.id)
-                                                    java.io.File(filesDir, "workspace-error.txt").delete()
-                                                    val workspaces = host.embedding.saved()
-                                                    runOnUiThread { if (!isDestroyed) { saved = workspaces; activeSurface=surface;open = workspace; request = null; generating = false; status = ""; problem = null; runningGeneration = null } }
-                                                }
-                                            } catch (error: Throwable) {
-                                                log.event("host", "failed", code = error.javaClass.simpleName, target = "generation")
-                                                runOnUiThread { if (!isDestroyed && runningGeneration === token.get()) { generating = false; status = ""; problem = generationProblem(error); inspectionError = (if(error is ProtocolFailure)error.code else error.javaClass.simpleName) + ": " + error.message; runningGeneration = null } }
-                                            }
-                                        }
-                                    },
-                                )
-                                open != null -> WorkspaceView(
-                                    title = if (returnRequirement != null) "" else open!!.title,
-                                    fault = fault,
-                                    onClose = {
-                                        val id = open!!.id
-                                        worker.execute {
-                                            activeWorkspace.compareAndSet(id, null)
-                                            // Back keeps the mounted state and saved source; Delete is explicit.
-                                            runOnUiThread { open = null; selectedRequirement = returnRequirement }
-                                        }
-                                    },
-                                    onNewBuild = {
-                                        inspectionStartedAt = 0L; inspectionRequest = ""
-                                        val ids = linkedRequirements(links.getString("requirements.${open!!.id}", null), show!!)
-                                        if (ids.isEmpty()) chooseBuildRequirement = true else request = ids
-                                        problem = null; status = ""
-                                    },
-                                    onReview = { review = true },
-                                    hasPreparedSelection = currentPrepared,
-                                ) {
-                                    activeSurface?.let{surface->ExperienceSurface(surface,transformTree=::displayDates,
-                                        onAction={currentPrepared=false;reviewReady[surface.experience.id]=false},
-                                        onSnapshot={snapshot->publish(surface.experience.id,snapshot.json())})}
-                                }
                                 selectedRequirement != null -> AssistedTask(listOf(DiscoveryFact("requirement", show!!.requirement(selectedRequirement!!)!!.let { r ->
                                     "Synthetic demo show ${show!!.title}, ${show!!.date} at ${show!!.venue}, ${show!!.address}. ${r.act}: ${r.quantity} × ${r.name}. Specification ${r.specification}. Needed from ${java.time.Instant.ofEpochMilli(r.from)} until ${java.time.Instant.ofEpochMilli(r.until)} at ${r.location}. Status ${r.summary}. Notes ${r.notes}."
-                                }))) { RequirementDetail(
+                                })), storageName = "organizer-protocol", protocolFactory = { OrganizerHost(it).embedding },
+                                    review = { experience -> PreparedSelectionReview(this@OrganizerActivity, experience.id) }) { RequirementDetail(
                                     show = show!!, requirementId = selectedRequirement!!,
-                                    onBack = { selectedRequirement = null; returnRequirement = null },
-                                    assistanceError = openError,
-                                    hasOptions = links.getString(requirementKey(selectedRequirement!!), null)?.let { retained -> saved.any { it.id == retained } } == true,
+                                    onBack = { selectedRequirement = null },
                                     onEdit = { updated -> update { it.requirements = it.requirements.map { r -> if (r.id == updated.id) updated else r } } },
                                     onVerify = { id -> update { s -> s.requirements = s.requirements.map { r -> if (r.id == id) r.copy(verified = !r.verified) else r } } },
-                                    onArrange = ::findEquipment,
                                 ) }
                                 else -> when (destination) {
-                                    Destination.Overview -> OverviewScreen(state = show!!, hasOptions = { id -> links.getString(requirementKey(id), null)?.let { retained -> saved.any { it.id == retained } } == true }, onOpenRequirement = { selectedAct = null; selectedRequirement = it }, onFindEquipment = ::findEquipment, onOpenRiders = { department -> selectedAct = null; selectedDepartment = department; destination = Destination.Riders })
+                                    Destination.Overview -> OverviewScreen(state = show!!, onOpenRequirement = { selectedAct = null; selectedRequirement = it }, onOpenRiders = { department -> selectedAct = null; selectedDepartment = department; destination = Destination.Riders })
                                     Destination.Riders -> RidersScreen(state = show!!, selectedAct, selectedDepartment, onSelectDepartment = { selectedDepartment = it }, onSelectAct = { selectedAct = it }, onOpenRequirement = { selectedRequirement = it })
                                     Destination.Resources -> ResourcesScreen(state = show!!, onResolve = { allocation, agreed -> update { s ->
                                         val resource = s.allocations.first { it.id == allocation }.resourceId
@@ -323,22 +89,13 @@ class OrganizerActivity : ComponentActivity() {
                         }
                     }
                 }
-                if (chooseBuildRequirement) AlertDialog(onDismissRequest = { chooseBuildRequirement = false },
-                    title = { Text("Choose requirement") },
-                    text = { Column(Modifier.heightIn(max = 400.dp).verticalScroll(rememberScrollState())) {
-                        Text("Choose the equipment requirement you want to resolve.")
-                        show!!.requirements.filter { it.canFindEquipment() }.forEach { requirement ->
-                            TextButton(onClick = { returnRequirement = requirement.id; selectedRequirement = requirement.id; request = listOf(requirement.id); chooseBuildRequirement = false }) { Text("${requirement.name} · ${requirement.act}") }
-                        }
-                    } },
-                    confirmButton = { TextButton(onClick = { chooseBuildRequirement = false }) { Text("Cancel") } })
             }
         }
     }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
-@Composable private fun OrganizerTopBar(show: ShowState?, onInitialize: () -> Unit, onInspect: () -> Unit) {
+@Composable private fun OrganizerTopBar(show: ShowState?, onInitialize: () -> Unit, onInspect: (() -> Unit)?) {
     TopAppBar(
         colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent),
         title = {
@@ -348,9 +105,9 @@ class OrganizerActivity : ComponentActivity() {
             }
         },
         actions = {
-            AssistanceSettingsButton()
+            AssistanceSettingsButton("host/organizer", "organizer-protocol")
             if (show == null) TextButton(onClick = onInitialize) { Text("Initialize demo show") }
-            TextButton(onClick = onInspect) { Icon(Icons.Outlined.Timeline, null, modifier = Modifier.size(18.dp)); Spacer(Modifier.width(4.dp)); Text("Inspect") }
+            if (onInspect != null) TextButton(onClick = onInspect) { Icon(Icons.Outlined.Timeline, null, modifier = Modifier.size(18.dp)); Spacer(Modifier.width(4.dp)); Text("Inspect") }
         },
     )
 }
@@ -362,7 +119,7 @@ class OrganizerActivity : ComponentActivity() {
     }
 }
 
-@Composable private fun OverviewScreen(state: ShowState, hasOptions: (String) -> Boolean, onOpenRequirement: (String) -> Unit, onFindEquipment: (String) -> Unit, onOpenRiders: (String) -> Unit) {
+@Composable private fun OverviewScreen(state: ShowState, onOpenRequirement: (String) -> Unit, onOpenRiders: (String) -> Unit) {
     val conflicts = state.conflicts()
     val attention = state.requirements.filter { !it.ready }
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
@@ -380,8 +137,8 @@ class OrganizerActivity : ComponentActivity() {
                         Text("${dateLabel(state.date)} · ${state.label(requirement.from)}–${state.label(requirement.until)}", style = MaterialTheme.typography.bodySmall)
                     }
                 }
-                Button(onClick = { if (requirement.canFindEquipment()) onFindEquipment(requirement.id) else onOpenRequirement(requirement.id) }, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
-                    Text(if (requirement.canFindEquipment()) { if (hasOptions(requirement.id)) "View equipment options" else "Find equipment" } else "Review requirement")
+                Button(onClick = { onOpenRequirement(requirement.id) }, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
+                    Text("Review requirement")
                 }
             }
         }
@@ -617,7 +374,7 @@ class OrganizerActivity : ComponentActivity() {
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
-@Composable private fun RequirementDetail(show: ShowState, requirementId: String, onBack: () -> Unit, onEdit: (Requirement) -> Unit, onVerify: (String) -> Unit, onArrange: (String) -> Unit, assistanceError: String = "", hasOptions: Boolean = false) {
+@Composable private fun RequirementDetail(show: ShowState, requirementId: String, onBack: () -> Unit, onEdit: (Requirement) -> Unit, onVerify: (String) -> Unit) {
     val requirement = show.requirement(requirementId) ?: return
     var editing by remember(requirementId) { mutableStateOf(false) }
     var draft by remember(requirementId, requirement) { mutableStateOf(requirement) }
@@ -633,7 +390,6 @@ class OrganizerActivity : ComponentActivity() {
                 }
             }
         }
-        if (assistanceError.isNotEmpty()) item { Text(assistanceError, color = MaterialTheme.colorScheme.error) }
         if (editing) {
             item {
                 Panel {
@@ -676,7 +432,6 @@ class OrganizerActivity : ComponentActivity() {
                     if (requirement.notes.isNotEmpty()) Text(requirement.notes, style = MaterialTheme.typography.bodyMedium)
                     Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                         OutlinedButton(onClick = { editing = true }, shape = RoundedCornerShape(18.dp)) { Text("Edit") }
-                        if (requirement.canFindEquipment()) Button(onClick = { onArrange(requirement.id) }, shape = AssistanceDesign.shape) { Text(if (hasOptions) "View equipment options" else "Find equipment") }
                         if (requirement.coverage == Coverage.Covered) TextButton(onClick = { onVerify(requirement.id) }) { Text(if (requirement.verified) "Undo check" else "Record check") }
                     }
                 }

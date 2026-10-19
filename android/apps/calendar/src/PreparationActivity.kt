@@ -42,6 +42,7 @@ class PreparationActivity : ComponentActivity() {
     private var suggestion by mutableStateOf<DiscoverySuggestion?>(null)
     private var checking by mutableStateOf(false)
     private var generating by mutableStateOf(false)
+    private var failed = false
     private var connected by mutableStateOf(false)
     private var menu by mutableStateOf(false)
     private var access by mutableStateOf(false)
@@ -71,7 +72,7 @@ class PreparationActivity : ComponentActivity() {
             }, actions = {
                 if (surface != null) IntelligenceMark("AI-built")
                 TextButton(onClick = { startActivity(Intent(this@PreparationActivity, PreparationInspectActivity::class.java)) }) { Text("Inspect") }
-                AssistanceSettingsButton()
+                AssistanceSettingsButton(storageName = "preparation-opportunity")
                 Box {
                     IconButton(onClick = { menu = true }) { Icon(Icons.Outlined.MoreVert, "More options") }
                     DropdownMenu(menu, { menu = false }) {
@@ -107,6 +108,9 @@ class PreparationActivity : ComponentActivity() {
                         Button(onClick = { accept(tip) }, enabled = !generating, modifier = Modifier.padding(start = 16.dp, bottom = 12.dp)) { Text("Open") }
                     } }
                     if (message.isNotEmpty()) Text(message)
+                    if (!checking && !generating && message in setOf("Couldn’t find help", "Preparation unavailable", "Couldn’t create this tool", "Tool unavailable")) {
+                        TextButton(onClick = { failed = false; refresh() }) { Text("Try again") }
+                    }
                     surface?.let { ExperienceSurface(it) }
                     proposal?.let { minute ->
                         OutlinedButton(onClick = { confirm = true }) { Text("Review reminder · %02d:%02d".format(minute / 60, minute % 60)) }
@@ -149,7 +153,7 @@ class PreparationActivity : ComponentActivity() {
     }
     private fun failure(stage: String, label: String, error: Throwable) {
         PreparationRecords.record(this, stage, JSONObject().put("status", "failed").put("reason", android.util.Log.getStackTraceString(error)))
-        message = label
+        message = label; failed = true
     }
     private fun readEvent(): ShowEvent = ShowAgenda(this).events(day).singleOrNull { it.id == eventId } ?: error("Demo event changed or removed")
     private fun input(e: ShowEvent): DiscoveryInput = DiscoveryInput(listOf(
@@ -171,6 +175,8 @@ class PreparationActivity : ComponentActivity() {
                     val previous = synchronized(ownerLock) { owner.also { owner = null; activeInput = null } }; previous?.close()
                     runOnUiThread { surface = null; connected = false }
                 }
+                val sameInput = current?.identity == facts.identity
+                if (!sameInput) failed = false
                 current = facts; event = e
                 val retained = PreparationRecords.prefs(this).getString("opportunity.${e.id}", null)?.let(::JSONObject)
                 if (activeInput != facts.identity && retained?.optString("input") == facts.identity) {
@@ -181,13 +187,14 @@ class PreparationActivity : ComponentActivity() {
                 runOnUiThread {
                     if (!foreground || epoch != revision) return@runOnUiThread
                     eventUi = e
+                    if (sameInput && failed) return@runOnUiThread
                     if (activeInput == facts.identity) { surface = synchronized(ownerLock) { owner }; message = ""; return@runOnUiThread }
-                    if (!(getSharedPreferences("preparation", 0).getBoolean("opportunity", true) && Connections.settings(this).getBoolean("discovery", true))) { message = "Suggestions are off"; return@runOnUiThread }
+                    if (!Connections.settings(this).getBoolean("discovery", true)) { message = "Suggestions are off"; return@runOnUiThread }
                     if (getSharedPreferences("preparation-discovery-dismissals", 0).getBoolean(facts.identity, false)) { message = "No suggestions"; return@runOnUiThread }
                     checking = true; message = ""
                     finder.discover(facts).whenComplete { tip, error -> runOnUiThread {
                         if (!foreground || epoch != revision) return@runOnUiThread
-                        checking = false
+                        checking = false; failed = error != null
                         message = if (error != null) "Couldn’t find help" else if (tip == null) "No suggestions" else ""
                         suggestion = tip
                     } }
@@ -221,8 +228,8 @@ class PreparationActivity : ComponentActivity() {
     }
     private fun accept(tip: DiscoverySuggestion) {
         if (generating) return
-        if (!(getSharedPreferences("preparation", 0).getBoolean("generation", false) || Connections.settings(this).getBoolean("generation", false))) {
-            message = "Enable tailored plans in Extensions"
+        if (!Connections.settings(this).getBoolean("generation", false)) {
+            message = "Enable tailored tools in Settings"
             return
         }
         val epoch = revision; val facts = current ?: return
@@ -232,7 +239,7 @@ class PreparationActivity : ComponentActivity() {
             try {
                 val protocol = api ?: error("Preparation unavailable")
                 check(foreground && epoch == revision && readEvent() == event)
-                check(getSharedPreferences("preparation", 0).getBoolean("generation", false) || Connections.settings(this).getBoolean("generation", false)) { "Generation disclosure disabled" }
+                check(Connections.settings(this).getBoolean("generation", false)) { "Generation disclosure disabled" }
                 val fresh = input(readEvent())
                 check(fresh.identity == facts.identity)
                 val admitted = checkNotNull(discovery).request(tip, fresh); request = admitted
@@ -247,7 +254,7 @@ class PreparationActivity : ComponentActivity() {
                 }
             } catch (error: Throwable) {
                 PreparationRecords.record(this, "opportunity-generation", JSONObject().put("status", "failed").put("reason", error.toString()).put("elapsedMs", android.os.SystemClock.elapsedRealtime() - started))
-                runOnUiThread { if (foreground && epoch == revision) message = "Couldn’t create this tool" }
+                runOnUiThread { if (foreground && epoch == revision) { failed = true; message = "Couldn’t create this tool" } }
             } finally { request = null; runOnUiThread { generating = false } }
         }
     }

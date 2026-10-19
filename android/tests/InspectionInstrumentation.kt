@@ -42,7 +42,14 @@ export view Main(state:app.State):View {ui.Column(){ui.IntText(value:state.value
 """)
                     val oldCapture = api.capturesContent()
                     try {
-                        api.capture(true)
+                        fun inspect(): ApplicationProtocol = ApplicationProtocol(ctx, Embedding(ctx,
+                            CapabilityRegistry(ctx, CapabilityDiscovery(ctx){false}, emptyList()), model,
+                            EmbeddingConfig("experience", emptyList(), "inspect-reader-${UUID.randomUUID()}")))
+                        inspect().use { reader ->
+                            reader.capture(true)
+                            check(api.capturesContent()) { "Inspect capture did not reach active protocol" }
+                        }
+                        check(api.capturesContent()) { "Closing Inspect reset capture" }
                         val experience = api.load("Inspection fixture",source)
                         val session = api.run(experience)
                         val initial = api.next(session,"")
@@ -77,7 +84,8 @@ export view Main(state:app.State):View {ui.Column(){ui.IntText(value:state.value
                         val after=api.retainedEvents().inspection(experiences=setOf(experience.id)).events
                         check(after.count{it.optString("stage")=="snapshot" && it.optString("outcome")=="produced"}==snapshots.size) { "Idle turns duplicated capture" }
                         check(after.any{it.optString("stage")=="snapshot" && it.optString("outcome")=="published" && it.optString("artifact").isEmpty()})
-                        api.capture(false)
+                        inspect().use { reader -> reader.capture(false); check(!api.capturesContent()) }
+                        check(!api.capturesContent())
                         api.dispatch(session,action(changed.snapshot.tree)!!,null)
                         val uncaptured=api.next(session,changed.cursor)
                         EmbeddingLog.flush(ctx)

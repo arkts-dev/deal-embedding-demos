@@ -12,11 +12,15 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.*
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import dev.deal.embedding.DealRenderer
 import dev.deal.shell.*
 import org.json.JSONObject
 
-/** State and periods come from the requirement. The user never selects an execution route. */
+private fun equipmentInstruction(budget: String, preferences: String) = "Frozen request: $budget EUR; $preferences"
+private fun validBudget(value: String): Boolean = value.isBlank() || value.replace(',', '.').toBigDecimalOrNull()?.let {
+    it.signum() >= 0 && it.scale() <= 2 && it <= java.math.BigDecimal("1000")
+} == true
+
+/** Frozen presentation fixture used only by the test APK; not a production entrance. */
 @Composable fun RequestSheet(
     title: String,
     requirements: List<Requirement>,

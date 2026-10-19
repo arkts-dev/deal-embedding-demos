@@ -14,7 +14,21 @@ object Connections {
         return packages.isNotEmpty() && packages.all { it in apps } &&
             context.packageManager.checkSignatures(uid, context.applicationInfo.uid) == PackageManager.SIGNATURE_MATCH
     }
-    fun settings(context: Context) = context.getSharedPreferences("hive", 0)
+    fun settings(context: Context): SharedPreferences {
+        val prefs = context.getSharedPreferences("hive", 0)
+        if (context.packageName.endsWith(".calendar")) {
+            val legacy = context.getSharedPreferences("preparation", 0)
+            if (legacy.contains("opportunity") || legacy.contains("generation")) {
+                val editor = prefs.edit()
+                // Existing shared choices win, including an explicit OFF.
+                if (!prefs.contains("discovery")) editor.putBoolean("discovery", legacy.getBoolean("opportunity", true))
+                if (!prefs.contains("generation")) editor.putBoolean("generation", legacy.getBoolean("generation", false))
+                check(editor.commit())
+                check(legacy.edit().remove("opportunity").remove("generation").commit())
+            }
+        }
+        return prefs
+    }
     fun apply(context: Context, api: ApplicationProtocol): List<String> {
         val settings = settings(context)
         val modules = api.refresh().map { it.module }

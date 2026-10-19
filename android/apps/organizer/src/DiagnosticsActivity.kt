@@ -97,7 +97,7 @@ class DiagnosticsActivity : ComponentActivity() {
                             Text("Newest exchange first · request, reply and check feedback in order. Latest 100 retained exchanges; missing events/artifacts may be omitted or evicted.", style = MaterialTheme.typography.bodySmall)
                             val exchanges = dialogueExchanges(scoped)
                             LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                if (exchanges.isEmpty()) item { Text("No retained model exchange in this scope. Enable capture before Find options to inspect full requests and replies. Reopening saved options does not call AI.") }
+                                if (exchanges.isEmpty()) item { Text("No retained model exchange in this scope. Enable capture before Open to inspect full requests and replies. Reopening saved options does not call AI.") }
                                 items(exchanges, key = { it.key }) { exchange ->
                                     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                                         Text("Exchange · " + dateTimeLabel(exchange.events.first().getString("time").toLong(), java.time.ZoneId.systemDefault()) + " · " + exchange.events.first().optString("trace").take(8), style = MaterialTheme.typography.labelMedium)
@@ -113,9 +113,11 @@ class DiagnosticsActivity : ComponentActivity() {
                                 }
                             }
                         }
-                        "Workspaces" -> WorkspaceShelf(workspaces().sortedWith(compareBy<Experience> { it.id != workspace }.thenBy { it.title }), "", onOpen = { id ->
-                            setResult(RESULT_OK, android.content.Intent().putExtra("openWorkspace", id)); finish()
-                        }, onForget = { id -> setResult(RESULT_OK, android.content.Intent().putExtra("deleteWorkspace", id)); finish() }, enabled = !busy)
+                        "Workspaces" -> LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            items(workspaces(), key = { it.id }) { experience ->
+                                OutlinedButton(onClick = { selectedSource = "deal"; source = embedding.source(experience).deal }) { Text("${experience.title} · source") }
+                            }
+                        }
                         "Source" -> Column(Modifier.weight(1f).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                             if (workspace.isNotEmpty()) {
                                 Text("Workspace $workspace", style = MaterialTheme.typography.titleSmall)
