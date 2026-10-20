@@ -22,7 +22,10 @@ assert {p.name for p in (library/'android/src/discovery').glob('*.kt')} == {'Dis
 assert not (root/'android/apps/development').exists()
 assert not (library/'android/src/bindings/PublicProtocolBinding.kt').exists()
 for app in ('organizer','calendar','todo','vehicle','rental','pizza','shared-ui'):
-    for path in (root/f'android/apps/{app}/src').glob('*.kt'):
+    source = root / f'android/apps/{app}'
+    if app != 'shared-ui':
+        source = source / 'src'
+    for path in source.glob('*.kt'):
         text=path.read_text()
         assert '.poll(' not in text and 'scheduleWithFixedDelay' not in text and 'newSingleThreadScheduledExecutor' not in text, path
         assert '.inSession(' not in text, path

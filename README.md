@@ -16,7 +16,7 @@ Embedding's compiled `core/generation.deal` owns orchestration, fallback, bounde
 
 The embedding library's [`ui/`](dependencies/deal-embedding/ui/README.md) owns the pack, composition guidance and checked source examples. Apps retain the `./platform.dealui-pack` import and use the same ExperienceSurface; no consumer-specific Kotlin widgets are needed. Adaptive Row, semantic headings/captions/actions and labeled Money/Metric/Comparison extend the legacy vocabulary. DEAL owns arithmetic, validation and explicit comparison status; the native backend formats values and lays them out.
 
-Host conformance: `python3 tools/verify-toolkit.py`. Android sandbox: `ToolkitInstrumentation`. Native gallery/interaction/force-stop retention: `ANDROID_SERIAL=<device> python3 tools/verify-toolkit-device.py`. Optional `ToolkitLiveInstrumentation -e live true` performs repeated fresh budget generation with independent initial/edit/reopen checks, not Nano discovery or cross-app semantic acceptance. Visual review remains separate; a compilation or fixture pass is not visual approval or trustworthy fresh assistance.
+Host conformance: `python3 tools/verify-toolkit.py`. Android sandbox: `ToolkitInstrumentation`. Internal native fixture interaction/force-stop retention: `ANDROID_SERIAL=<device> python3 tools/verify-toolkit-device.py`. Optional `ToolkitLiveInstrumentation -e live true` performs repeated fresh budget generation with independent initial/edit/reopen checks, not Nano discovery or cross-app semantic acceptance. Visual review remains separate; a compilation or fixture pass is not visual approval or trustworthy fresh assistance.
 
 ## Build and development services
 

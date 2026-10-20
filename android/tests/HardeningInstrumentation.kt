@@ -65,6 +65,23 @@ export view Main(state:app.State):View {ui.Column(){ui.IntText(value:state.value
             val latest=api.next(session,first.cursor);check(latest.snapshot.tree.toString().contains("\"intValue\":50"))
             check(runCatching{api.next(session,UpdateCursor().issue(0))}.exceptionOrNull().let{it is ProtocolFailure&&it.code=="INVALID_CURSOR"})
             api.close(session)
+            // A received update can precede recomposition. A callback from the last
+            // published (still visible) frame must not lose a rapid second edit.
+            val typing=ExperienceSurface(api,experience)
+            typing.activate{throw AssertionError("Surface failed",it)}
+            until{typing.snapshot!=null}
+            val rendered=checkNotNull(typing.snapshot)
+            typing.accepted(rendered)
+            api.dispatch(api.run(experience),slot,null)
+            typing.activate{throw AssertionError("Surface failed",it)}
+            until{typing.snapshot!==rendered}
+            val beforeRapid=api.next(api.run(experience),"").snapshot.version
+            typing.event(rendered,slot,null)
+            until{api.next(api.run(experience),"").snapshot.version>beforeRapid}
+            typing.close()
+            var staleAccepted=false
+            typing.event(rendered,slot,null){staleAccepted=true}
+            check(!staleAccepted){"Closed surface accepted stale callback"}
             val labelTree=JSONObject().put("component","Text").put("props",JSONArray().put(JSONObject().put("name","value").put("stringValue","original"))).put("children",JSONArray())
             check(displayText(labelTree){"shown"}.toString().contains("shown"));check(labelTree.toString().contains("original"))
             val inputTree=JSONObject(labelTree.toString()).put("component","TextInput")

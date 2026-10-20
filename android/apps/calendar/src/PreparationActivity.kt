@@ -70,12 +70,14 @@ class PreparationActivity : ComponentActivity() {
             Scaffold(topBar = { TopAppBar(title = { Text(eventUi?.title ?: "Preparation", maxLines = 1) }, navigationIcon = {
                 IconButton(onClick = { finish() }) { Icon(Icons.AutoMirrored.Outlined.ArrowBack, "Back") }
             }, actions = {
-                if (surface != null) IntelligenceMark("AI-built")
                 TextButton(onClick = { startActivity(Intent(this@PreparationActivity, PreparationInspectActivity::class.java)) }) { Text("Inspect") }
-                AssistanceSettingsButton(storageName = "preparation-opportunity")
                 Box {
                     IconButton(onClick = { menu = true }) { Icon(Icons.Outlined.MoreVert, "More options") }
                     DropdownMenu(menu, { menu = false }) {
+                        DropdownMenuItem(text = { Text("Suggestions, tools & sharing") }, onClick = {
+                            menu = false
+                            startActivity(Intent(this@PreparationActivity, AssistanceSettingsActivity::class.java).putExtra("storage", "preparation-opportunity"))
+                        })
                         DropdownMenuItem(text = { Text("Event details") }, onClick = {
                             menu = false
                             startActivity(Intent(this@PreparationActivity, EventDetailsActivity::class.java).putExtra("eventId", eventId).putExtra("day", day.toString()))

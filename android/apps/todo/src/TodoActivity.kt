@@ -73,7 +73,7 @@ class TodoActivity : ComponentActivity() {
                                 adding -> TaskEditor(null) { created -> commit(tasks + created); adding = false }
                                 open != null -> AssistedTask(listOf(DiscoveryFact("task", open!!.let { task ->
                                     "Synthetic demo task ${task.id}: ${task.title}. Assigned to ${task.assignee}. Due ${Instant.ofEpochMilli(task.due)} in Europe/Berlin. Location: ${task.location}. Show: ${task.show}. Instructions: ${task.instructions}. Checks: ${task.checklist.joinToString { it.text + if (it.done) " (done)" else " (open)" }}. Complete: ${task.complete}."
-                                }))) {
+                                })), title = open!!.title) {
                                     TaskDetail(open!!) { updated ->
                                         val next = if (updated == null) tasks.filterNot { it.id == open!!.id } else tasks.map { if (it.id == updated.id) updated else it }
                                         commit(next); open = updated

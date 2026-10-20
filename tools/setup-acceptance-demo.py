@@ -52,11 +52,12 @@ def food(tasks):
     return tasks
 
 
-update('organizer', 'organizer', 'show', equipment)
-update('todo', 'provider', 'tasks', food)
-# Additive Calendar fixture setup via the test APK, not production scenario branches.
-receipt = shell('am', 'instrument', '--user', '0', '-w',
-                'dev.deal.connectors.tests/.AcceptanceFactsInstrumentation')
-if 'INSTRUMENTATION_CODE: 0' not in receipt or 'INSTRUMENTATION_RESULT: failure' in receipt:
-    raise RuntimeError('Calendar acceptance fixture setup failed: ' + receipt)
-print('Acceptance facts added. Existing records, saved tools, grants and sharing choices preserved.')
+if __name__ == '__main__':
+    update('organizer', 'organizer', 'show', equipment)
+    update('todo', 'provider', 'tasks', food)
+    # Additive Calendar fixture setup via the test APK, not production scenario branches.
+    receipt = shell('am', 'instrument', '--user', '0', '-w',
+                    'dev.deal.connectors.tests/.AcceptanceFactsInstrumentation')
+    if 'INSTRUMENTATION_CODE: 0' not in receipt or 'INSTRUMENTATION_RESULT: failure' in receipt:
+        raise RuntimeError('Calendar acceptance fixture setup failed: ' + receipt)
+    print('Acceptance facts added. Existing records, saved tools, grants and sharing choices preserved.')

@@ -82,7 +82,8 @@ try:
     r = capture('values-light')
     for text in ['Package', 'Separate items', 'Refundable deposit', '€12.00', '€13.00', '€50.00', 'Travel', 'Latest departure']:
         label(text, r)
-    assert bounds(label('Package', r))[1] == bounds(label('Separate items', r))[1], 'Normal width comparison should have columns'
+    assert bounds(label('Separate items', r))[1] > bounds(label('Package', r))[1], 'Phone comparison should use aligned label/value rows'
+    assert bounds(label('€12.00', r))[2] == bounds(label('€13.00', r))[2], 'Comparison amount column must align'
     shell('wm', 'size', '840x1885')
     shell('settings', 'put', 'system', 'font_scale', '1.6')
     launch('values', retain=False)
@@ -92,7 +93,7 @@ try:
         if n.get('text') in ['Package', 'Separate items', '€12.00', '€13.00', 'Refundable deposit', '€50.00']:
             x1,y1,x2,y2=bounds(n)
             assert 0 <= x1 < x2 <= 840, (n.get('text'), n.get('bounds'))
-    results.append('Normal-width columns wrap at narrow width / 1.6 font scale; visible essential value bounds stay on screen')
+    results.append('Phone comparison amounts align; narrow width / 1.6 font scale stacks values with visible essential bounds on screen')
     shell('wm', 'size', 'reset'); shell('settings', 'put', 'system', 'font_scale', '1.0')
     shell('cmd', 'uimode', 'night', 'yes')
     launch(); capture('budget-dark')

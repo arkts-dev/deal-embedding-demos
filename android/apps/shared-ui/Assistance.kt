@@ -155,6 +155,7 @@ internal class TaskHelp(private val context: Context, private val facts: () -> L
 @Composable fun AssistedTask(
     facts: List<DiscoveryFact>,
     storageName: String = "assistance",
+    title: String = "",
     protocolFactory: (Context) -> ApplicationProtocol = { assistanceProtocol(it, storageName) },
     review: @Composable (Experience) -> Unit = {},
     content: @Composable () -> Unit,
@@ -176,8 +177,8 @@ internal class TaskHelp(private val context: Context, private val facts: () -> L
     }
     Column(Modifier.fillMaxSize()) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
-            if (help.surface != null) IntelligenceMark("AI-built")
-            Spacer(Modifier.weight(1f))
+            if (title.isNotEmpty()) Text(title, modifier = Modifier.weight(1f).padding(vertical = 12.dp),
+                style = MaterialTheme.typography.titleMedium) else Spacer(Modifier.weight(1f))
             TextButton(onClick = { context.startActivity(Intent(context, AssistanceInspectActivity::class.java)
                 .putExtra("experience", help.surface?.experience?.id.orEmpty()).putExtra("trace", help.trace)
                 .putExtra("since", help.since).putExtra("storage", storageName)) }) { Text("Inspect") }
