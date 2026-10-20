@@ -55,7 +55,8 @@ class RentalStore(private val context: Context) {
         reservations().filter { !it.cancelled && it.from < until && from < it.until }.forEach { reservation ->
             reservation.lines.forEach { line -> consumed(line.itemId, line.quantity).forEach { (id, count) -> used[id] = (used[id] ?: 0) + count } }
         }
-        return catalogue.associate { it.id to ((it.quantity - (used[it.id] ?: 0)).coerceAtLeast(0)) }
+        val remaining = catalogue.associate { it.id to ((it.quantity - (used[it.id] ?: 0)).coerceAtLeast(0)) }
+        return remaining + ("package" to minOf(remaining.getValue("package"), remaining.getValue("stand"), remaining.getValue("cable10")))
     }
 
     private fun lines(o: JSONObject): List<QuoteLine> {

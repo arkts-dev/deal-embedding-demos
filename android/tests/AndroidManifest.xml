@@ -12,6 +12,7 @@
   <service android:name=".RemoteProbeService" android:exported="true" android:process=":provider"><intent-filter><action android:name="dev.deal.embedding.CAPABILITIES_V1" /></intent-filter></service>
  </application>
  <instrumentation android:name=".DiscoveryLiveInstrumentation" android:targetPackage="dev.deal.connectors.tests" />
+ <instrumentation android:name=".RentalReadInstrumentation" android:targetPackage="dev.deal.connectors.tests" />
  <instrumentation android:name=".DiscoveryInstrumentation" android:targetPackage="dev.deal.connectors.tests" />
  <instrumentation android:name=".DiscoveryCalendarInstrumentation" android:targetPackage="dev.deal.connectors.tests" />
  <instrumentation android:name=".GenerationGatewayInstrumentation" android:targetPackage="dev.deal.connectors.tests" />

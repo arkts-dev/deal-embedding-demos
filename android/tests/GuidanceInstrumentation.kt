@@ -18,11 +18,11 @@ class GuidanceInstrumentation : Instrumentation() {
             var fail = false
             val sample = NativeCapabilities(CapabilityContract("host/sample", "Example-only read fixture", listOf(CapabilityFunction("value", "Read fixture value", emptyList(), CapabilityType.IntType))), mapOf("value" to { _ -> calls++; if (fail) throw ProtocolFailure("UNAVAILABLE", "Fixture failure"); 42 }))
             val model = object : ModelClient { override fun complete(input: String, previous: String, diagnostics: String, cancellation: GenerationCancellation, log: EmbeddingLog): String = error("Unexpected inference") }
-            ApplicationProtocol(ctx, Embedding(ctx, CapabilityRegistry(ctx, CapabilityDiscovery(ctx) { false }, listOf(sample)), model, EmbeddingConfig("experience", emptyList(), "guidance-${UUID.randomUUID()}"))).use { api ->
+            ApplicationProtocol(ctx, Embedding(ctx, CapabilityRegistry(ctx, CapabilityDiscovery(ctx) { false }, listOf(sample)), model, EmbeddingConfig("experience", emptyList(), "guidance-${UUID.randomUUID()}", retainState = true))).use { api ->
                 api.refresh(); api.grant("host/sample")
                 val source = Source(ctx.assets.open("guidance-example/generation-example.deal").bufferedReader().use { it.readText() }, ctx.assets.open("guidance-example/generation-example.dealui").bufferedReader().use { it.readText() })
                 api.withPreparation(api.load("Guidance example", source)) { experience ->
-                    val session = api.run(experience)
+                    var session = api.run(experience)
                     fun tree() = api.next(session, "").snapshot.tree
                     fun action(node: JSONObject): Int? {
                         val props = node.getJSONArray("props")
@@ -40,6 +40,8 @@ class GuidanceInstrumentation : Instrumentation() {
                     }
                     check(calls == 0) { "Example read without explicit action" }
                     read(); await("\"intValue\":42"); check(calls == 1)
+                    api.close(session); session = api.run(experience)
+                    check(tree().toString().contains("\"intValue\":42")) { "Settled effect result was not retained" }
                     fail = true; read(); await("Check access and try again"); check(calls == 2)
                     fail = false; read()
                     val end = System.currentTimeMillis() + 10000
@@ -67,7 +69,44 @@ export view Main(state:app.State):View {ui.Column(){ui.Text(value:state.amount)}
                 check(api.source(experience) == source)
                 api.forget(experience)
             }
-            receipt.putString("guidance", "exact authored example compiled; no init read; explicit success/failure/retry; no inference")
+            // Cold protocol reconstruction with an independent Inspect-style reader. Neither
+            // reader closure nor bootstrap may overwrite another controller's settled draft.
+            val retention = "cold-draft-${UUID.randomUUID()}"
+            fun draftApi() = ApplicationProtocol(ctx, Embedding(ctx,
+                CapabilityRegistry(ctx, CapabilityDiscovery(ctx) { false }, emptyList()), model,
+                EmbeddingConfig("experience", emptyList(), retention, retainState = true)))
+            val draftSource = Source("""export class State { value:int=18000; }
+export class Change { value:int=0; }
+export function initialState():State {return {};}
+// @ui-update
+export function change(state:State,action:Change):State {return {value:action.value};}
+""", """import * as app from "./experience";
+import * as ui from "./platform.dealui-pack";
+// @ui-root
+export view Main(state:app.State):View {ui.Column(){ui.IntField(value:state.value,label:"Budget",onChange:action app.Change {value:payload})}}
+""")
+            var draftId = ""
+            repeat(4) { cycle ->
+                draftApi().use { api ->
+                    val experience = if (cycle == 0) api.load("Cold draft", draftSource).also { draftId = it.id }
+                        else api.saved().single { it.id == draftId }
+                    val session = api.run(experience)
+                    val tree = api.next(session, "").snapshot.tree
+                    check(tree.toString().contains("\"intValue\":${18000 + cycle}")) { "Cold draft lost at cycle $cycle: $tree" }
+                    val field = tree.getJSONArray("children").getJSONObject(0)
+                    val props = field.getJSONArray("props")
+                    val slot = (0 until props.length()).map { props.getJSONObject(it) }.single { it.optString("kind") == "action" }.getInt("actionSlot")
+                    api.dispatch(session, slot, (18001 + cycle).toString())
+                    draftApi().use { reader ->
+                        check(reader.source(reader.saved().single { it.id == draftId }) == draftSource)
+                        reader.retainedEvents()
+                    }
+                    check(api.next(session, "").snapshot.tree.toString().contains("\"intValue\":${18001 + cycle}"))
+                    api.close(session)
+                    if (cycle == 3) api.forget(experience)
+                }
+            }
+            receipt.putString("guidance", "PASS exact example async success/failure/retry, settled reopen, Unicode, four cold draft cycles with independent Inspect reader; no inference")
             finish(0, receipt)
         } catch (error: Throwable) { receipt.putString("failure", android.util.Log.getStackTraceString(error)); finish(1, receipt) }
     }
