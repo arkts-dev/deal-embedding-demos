@@ -79,17 +79,6 @@ val LocalAccent = staticCompositionLocalOf { Accent.Organizer }
     }
 }
 
-@Composable fun Page(eyebrow: String, title: String, subtitle: String, content: @Composable ColumnScope.() -> Unit) {
-    Surface(color = MaterialTheme.colorScheme.background) {
-        Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).statusBarsPadding().navigationBarsPadding().padding(horizontal = 24.dp, vertical = 24.dp), verticalArrangement = Arrangement.spacedBy(20.dp)) {
-            Text(eyebrow, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
-            Text(title, style = MaterialTheme.typography.displayMedium)
-            Text(subtitle, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            content()
-        }
-    }
-}
-
 @Composable fun Section(title: String, trailing: (@Composable () -> Unit)? = null, content: @Composable ColumnScope.() -> Unit) {
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
@@ -182,7 +171,6 @@ object Art {
         drawCircle(cheese, size.toPx() * .36f, Offset(size.toPx() * .5f, size.toPx() * .5f))
         listOf(Offset(.38f, .38f), Offset(.62f, .44f), Offset(.46f, .62f), Offset(.64f, .66f), Offset(.34f, .54f)).forEach { drawCircle(sauce, size.toPx() * .055f, Offset(size.toPx() * it.x, size.toPx() * it.y)) }
     }
-    @Composable fun Leaf(size: androidx.compose.ui.unit.Dp = 22.dp) = Canvas(Modifier.size(size)) { drawCircle(Color(0xff3f9d63), size.toPx() * .42f) }
     @Composable fun Stage(size: androidx.compose.ui.unit.Dp = 150.dp) = Canvas(Modifier.size(size)) {
         val ink = Color(0xff2b2f36)
         drawRoundRect(ink.copy(alpha = .12f), Offset(0f, size.toPx() * .72f), Size(size.toPx(), size.toPx() * .1f))

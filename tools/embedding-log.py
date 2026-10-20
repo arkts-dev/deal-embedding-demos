@@ -7,16 +7,12 @@ p.add_argument('--follow',action='store_true')
 p.add_argument('--json',action='store_true')
 p.add_argument('--trace')
 p.add_argument('--artifact')
-p.add_argument('--capture',choices=['on','off'])
 a=p.parse_args()
 adb=[str(pathlib.Path.home()/'Android/Sdk/platform-tools/adb')]
 if os.environ.get('ANDROID_SERIAL'): adb+=['-s',os.environ['ANDROID_SERIAL']]
 def read(name):
  r=subprocess.run(adb+['shell','run-as',a.package,'cat','files/embedding-log/'+name],capture_output=True,text=True,timeout=15)
  return r.stdout if r.returncode==0 else ''
-if a.capture:
- subprocess.run(adb+['shell','am','broadcast','-n',a.package+'/.DiagnosticsReceiver','--ez','capture',str(a.capture=='on').lower()],check=True)
- raise SystemExit
 if a.artifact:
  import re
  if not re.fullmatch('[a-f0-9-]{36}',a.artifact):p.error('Invalid artifact identity')

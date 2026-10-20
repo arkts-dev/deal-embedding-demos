@@ -45,8 +45,9 @@ class AssistanceShellInstrumentation : Instrumentation() {
                     EmbeddingConfig("experience", emptyList(), name, retainState = true)))
                 val source = Source(targetContext.assets.open("ui/comparison.deal").bufferedReader().use { it.readText() },
                     targetContext.assets.open("ui/comparison.dealui").bufferedReader().use { it.readText() })
-                val historical = AssistanceShell.stores(context).last()
-                api(historical).use { p -> val old = p.load("Historical reset fixture", source); p.run(old) }
+                check(AssistanceShell.stores(context) == listOf(store))
+                val staged = context.getSharedPreferences("prepared", 0)
+                check(staged.edit().putString("operations", "generated proposal").commit())
                 val ownerApi = api(store)
                 val experience = ownerApi.load("Reset fixture", source)
                 val owner = ExperienceSurface(ownerApi, experience)
@@ -70,7 +71,7 @@ class AssistanceShellInstrumentation : Instrumentation() {
                     check(it.capturesContent() == captured)
                     check(it.retainedEvents().events.map { event -> event.toString() }.toSet().containsAll(retainedEvents))
                 }
-                api(historical).use { check(it.saved().isEmpty()) }
+                if (app == "organizer") check(staged.all.isEmpty())
                 check(provider.all == before)
                 check(!hive.getBoolean("generation", true) && !hive.getBoolean("discovery", true))
                 check(hive.getBoolean("grant.host/probe", false))

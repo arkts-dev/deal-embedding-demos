@@ -22,19 +22,10 @@ class CleanlinessInstrumentation : Instrumentation() {
         }
         var help: TaskHelp? = null
         try {
-            val old = ctx.getSharedPreferences("preparation", 0)
-            val shared = ctx.getSharedPreferences("hive", 0)
-            check(old.edit().putBoolean("opportunity", false).putBoolean("generation", true).commit())
-            check(shared.edit().putBoolean("generation", false).commit())
-            val migrated = Connections.settings(ctx)
-            check(!migrated.getBoolean("discovery", true))
-            check(!migrated.getBoolean("generation", true)) { "Legacy ON overrode explicit shared OFF" }
-            check(!old.contains("generation") && !old.contains("opportunity"))
-            Connections.settings(ctx)
-            check(!migrated.getBoolean("generation", true))
-            check(shared.edit().clear().commit())
-            check(old.edit().putBoolean("generation", true).commit())
-            check(Connections.settings(ctx).getBoolean("generation", false))
+            val shared = Connections.settings(ctx)
+            check(shared.edit().putBoolean("generation", false).putBoolean("discovery", false).commit())
+            check(!Connections.settings(ctx).getBoolean("generation", true))
+            check(!Connections.settings(ctx).getBoolean("discovery", true))
             val attempts = AtomicInteger()
             runOnMainSync {
                 help = TaskHelp(targetContext, { listOf(DiscoveryFact("fixture", "Synthetic policy fixture")) }, {
@@ -59,12 +50,12 @@ class CleanlinessInstrumentation : Instrumentation() {
             dev.deal.shell.AssistanceShell.reset(ctx, emptyList())
             runOnMainSync { check(!help!!.failed && !help!!.busy); help!!.resume() }
             awaitFailure(); check(attempts.get() == 3) { "Confirmed reset did not release failed in-memory attempt" }
-            result.putString("cleanliness", "PASS consent migration preserves explicit OFF; failed assistance survives pause/resume without retry; explicit retry runs once; explicit shell reset releases in-memory failure")
+            result.putString("cleanliness", "PASS shared settings preserve explicit OFF; failed assistance survives pause/resume without retry; explicit retry runs once; explicit shell reset releases in-memory failure")
             finish(0, result)
         } catch (error: Throwable) { result.putString("failure", android.util.Log.getStackTraceString(error)); finish(1, result) }
         finally {
             runOnMainSync { help?.close() }
-            listOf("preparation", "hive").forEach { targetContext.deleteSharedPreferences(prefix + it) }
+            listOf("hive").forEach { targetContext.deleteSharedPreferences(prefix + it) }
         }
     }
 }

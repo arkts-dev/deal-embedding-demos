@@ -9,7 +9,7 @@
   <activity android:name="dev.deal.shell.AssistanceInspectActivity" android:exported="false" />
   <activity android:name="dev.deal.shell.AssistanceSettingsActivity" android:exported="false" />
   <activity android:name=".AssistanceFailureActivity" android:exported="true" />
-  <activity android:name=".WorkspaceClarityActivity" android:exported="true" />
+  <activity android:name=".RendererDefaultsActivity" android:exported="true" />
   <activity android:name=".ToolkitActivity" android:exported="true" />
   <service android:name=".ToolkitReadingService" android:exported="true" android:process=":reading"><intent-filter><action android:name="dev.deal.embedding.CAPABILITIES_V1" /></intent-filter></service>
   <service android:name=".RemoteProbeService" android:exported="true" android:process=":provider"><intent-filter><action android:name="dev.deal.embedding.CAPABILITIES_V1" /></intent-filter></service>

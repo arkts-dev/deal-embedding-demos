@@ -43,7 +43,7 @@ def received(value):
 
 try:
     for screen in ('omitted', 'enabled', 'disabled'):
-        shell('am', 'start', '-S', '-W', '--user', '0', '-n', 'dev.deal.connectors.tests/.WorkspaceClarityActivity', '--es', 'screen', 'renderer-' + screen)
+        shell('am', 'start', '-S', '-W', '--user', '0', '-n', 'dev.deal.connectors.tests/.RendererDefaultsActivity', '--es', 'screen', 'renderer-' + screen)
         time.sleep(1)
         enabled = screen != 'disabled'
         for label in ('Fixture button', 'Fixture option', 'Fixture quantity decrease', 'Fixture quantity increase', 'Default bounds increase', 'Default bounds decrease', 'Fixture text', 'Fixture search'):

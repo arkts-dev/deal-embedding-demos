@@ -37,14 +37,8 @@ object AssistanceShell {
             val task = FutureTask { block() }; Handler(Looper.getMainLooper()).post(task); task.get()
         }
     }
-    // App-owned current and retired bootstrap namespaces. Do not decode embedding's
-    // private source/draft keys to discover workspaces; enumerate via saved()/forget().
-    fun stores(context: Context): List<String> = (listOf(storage(context), "assistance") + when (context.packageName.substringAfterLast('.')) {
-        "calendar" -> listOf("calendar-protocol", "preparation-plan")
-        "organizer" -> listOf("organizer-experience", "workspace-verification", "catalogue-test", "editable-rental",
-            "protocol-instrumentation", "protocol-policy-catalogue", "protocol-controller-fault", "protocol-controller-capability")
-        else -> emptyList()
-    }).distinct()
+    // One current app-owned namespace. Retired test/production stores were explicitly purged.
+    fun stores(context: Context): List<String> = listOf(storage(context))
 
     /** Explicit reset only. Stop owners before forgetting, never erase observations or domain data.
      * Failed cleanup leaves links intact and the failure visible; reset is not retried automatically. */
@@ -65,6 +59,9 @@ object AssistanceShell {
             val edit = settings.edit()
             settings.all.keys.filter { it.startsWith("saved.") || it.startsWith("dismissed.") }.forEach(edit::remove)
             check(edit.commit())
+            if (context.packageName.endsWith(".organizer")) {
+                check(context.getSharedPreferences("prepared", 0).edit().clear().commit())
+            }
             if (context.packageName.endsWith(".calendar")) {
                 check(context.getSharedPreferences("preparation-discovery-dismissals", 0).edit().clear().commit())
                 val records = context.getSharedPreferences("preparation-records", 0)

@@ -148,9 +148,6 @@ export view Main(state:app.State):View {ui.Column(){ui.IntText(value:state.value
             check(dialogueExchanges(events).single().events.size==2)
             check(dialogueExchanges(listOf(events[1])).single().events.size==1)
             check(api.retainedEvents(maximum=1).incomplete)
-            for((code,title) in listOf("GENERATION_ATTEMPT_LIMIT" to "Couldn’t prepare options","GENERATION_REPEATED_RESPONSE" to "Couldn’t prepare options","GENERATION_TEMPLATE_CHECK" to "Options unavailable","AUDIT_LIMIT" to "Demo connection needs attention","MODEL_TIMEOUT" to "AI took too long","GATEWAY_UNREACHABLE" to "AI connection unavailable")){
-                check(dev.deal.apps.organizer.generationProblem(ProtocolFailure(code,"fixture")).title==title)
-            }
             api.forget(experience)
             result.putString("hardening","10000 authenticated revisions/constant retained cursor state; 309 direct admissions/buffer limit; 50 detach cycles/no callbacks or pending waits; real mount/context rejection preserves healthy session; retained cleanup failure/reclamation; provider and generation codes; shared observation")
             finish(0,result)

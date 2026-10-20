@@ -37,10 +37,3 @@ fun organizerCapabilities(context: Context, invokingWorkspace: () -> String?): N
         "staged" to { _ -> JSONArray(context.getSharedPreferences("prepared", 0).getString("operations", "[]")) },
     ))
 }
-
-fun preparedOperations(context: Context): List<JSONObject> {
-    val array = JSONArray(context.getSharedPreferences("prepared", 0).getString("operations", "[]"))
-    return (0 until array.length()).map { array.getJSONObject(it) }
-}
-
-fun clearPrepared(context: Context) { context.getSharedPreferences("prepared", 0).edit().clear().commit() }

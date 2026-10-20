@@ -44,7 +44,7 @@ assert 'nextId <= 128' not in (library/'android/src/capabilities/CapabilityRegis
 assert 'issued:MutableMap' not in (library/'android/src/Embedding.kt').read_text()
 assert not (root/'android/apps/organizer/src/InspectionPresentation.kt').exists()
 assert 'cursor=' not in inspect
-assert 'GenerationRejected' not in (root/'android/apps/organizer/src/WorkspacePresentation.kt').read_text()
+assert not (root/'android/apps/organizer/src/WorkspacePresentation.kt').exists()
 protocol=(library/'android/assets/embedding/bindings/public-protocol.js').read_text()
 assert "case 'poll'" not in protocol and "control(name,args);result=null;break;" not in protocol
 assert 'private val grants' not in (library/'android/src/capabilities/CapabilityRegistry.kt').read_text()

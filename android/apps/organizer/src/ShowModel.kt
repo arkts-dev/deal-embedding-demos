@@ -7,7 +7,6 @@ import java.util.UUID
 /** Amounts are whole cents; instants are epoch milliseconds resolved against the show zone. */
 val SHOW_ZONE: ZoneId = ZoneId.of("Europe/Berlin")
 
-fun zoneOffsetMillis(epochMillis: Long): Int = SHOW_ZONE.rules.getOffset(Instant.ofEpochMilli(epochMillis)).totalSeconds * 1000
 
 data class Money(val cents: Int) { val text: String get() = "€%.2f".format(cents / 100.0) }
 
@@ -108,7 +107,6 @@ class ShowState(
     }
     fun requirement(id: String): Requirement? = requirements.firstOrNull { it.id == id }
     fun resource(id: String): Resource? = resources.firstOrNull { it.id == id }
-    fun itemsFor(requirementId: String): List<FulfilmentItem> = items.filter { it.requirementId == requirementId }
     fun update(id: String, transform: (Requirement) -> Requirement): ShowState {
         requirements = requirements.map { if (it.id == id) transform(it) else it }
         return this
