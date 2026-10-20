@@ -46,7 +46,7 @@ try:
         shell('am', 'start', '-S', '-W', '--user', '0', '-n', 'dev.deal.connectors.tests/.WorkspaceClarityActivity', '--es', 'screen', 'renderer-' + screen)
         time.sleep(1)
         enabled = screen != 'disabled'
-        for label in ('Fixture button', 'Fixture option', 'Fixture quantity decrease', 'Fixture quantity increase', 'Fixture text', 'Fixture search'):
+        for label in ('Fixture button', 'Fixture option', 'Fixture quantity decrease', 'Fixture quantity increase', 'Default bounds increase', 'Default bounds decrease', 'Fixture text', 'Fixture search'):
             assert (control(label).get('enabled') == 'true') == enabled, (screen, label)
         tap('Fixture button')
         received('Received 1: click' if enabled else 'No action received')
@@ -54,6 +54,8 @@ try:
             tap('Fixture option'); received('Received 2: fixture')
             tap('Fixture quantity increase'); received('Received 3: 3')
             tap('Fixture quantity decrease'); received('Received 3: 1')
+            tap('Default bounds increase'); received('Received 6: 3')
+            tap('Default bounds decrease'); received('Received 6: 1')
             tap('Fixture text'); shell('input', 'text', 'x'); received('Received 4: x')
             shell('input', 'keyevent', '4')
             tap('Fixture search'); shell('input', 'text', 'y'); received('Received 5: y')

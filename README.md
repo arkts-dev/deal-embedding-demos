@@ -1,6 +1,8 @@
 # Native DEAL embedding demo
 
-Organizer's ordinary Kotlin/Compose screens, plan storage and native review host checked DEAL + Deal UI assistance. Calendar uses the same protocol for on-device discovery and generated preparation tools. Todo, Vehicle and Rental are independently owned native providers. No WebView or on-device APK generation is involved.
+Six native apps — Organizer, Todo, Calendar, Rental, Pizza and Vehicle — publish capabilities and host checked DEAL + Deal UI assistance through the same protocol. Nano discovers a tip; accepting **Open** requests Cerebras source generation and on-device checking/execution. No WebView or on-device APK generation is involved.
+
+See [Delivery status](delivery.md) for the four read-only scenarios, verified plumbing, known semantic failures, build/test commands and replay entry points. This is not blanket product acceptance.
 
 ## Protocol and ownership
 
@@ -13,7 +15,7 @@ Embedding's compiled `core/generation.deal` owns orchestration, fallback, bounde
 ## Build and development services
 
 ```sh
-JAVA_OPTS='-Xmx768m' tools/build.sh organizer rental calendar todo vehicle tests
+JAVA_OPTS='-Xmx768m' DEAL_GENERATION_BACKEND=cerebras tools/build.sh organizer rental calendar todo pizza vehicle tests
 adb install --user 0 -r build/organizer.apk
 adb install --user 0 -r build/rental.apk
 python3 tools/generation-gateway.py --chooser jev --counts build/demo-model-counts.json
@@ -36,19 +38,13 @@ Calendar and Organizer supply endpoint/backend configuration to embedding's gate
 
 Default gateway mode is demo, without autonomous audit ceilings. Explicit verification mode requires `--audit --counts <new-file> --choice-limit N --source-limit N`. Never leave an exhausted audit process serving the delivered app. DEAL permits at most three source attempts per request. Cancellation stops acceptance/waiting, not necessarily remote cost. Health reports configuration/mode, not successful inference.
 
-## Ordinary Organizer demonstration
+## Ordinary Organizer assistance
 
-Enable **Organizer access** in Rental. Keep the gateway and USB forwarding running.
+Keep the gateway and USB forwarding running. Consumer grants and Rental's provider sharing are independent explicit choices in **Suggestions, tools & sharing**; merely seeing a capability is not authorization.
 
-1. Open Organizer → **Riders → Boom stand**.
-2. Tap **Find equipment**, or **View equipment options → Change request → Continue** for a retained request.
-3. Leave budget/preferences empty for comparison; for editable assistance, enter budget **18** and preferences requesting editable quantity, budget and search. Tap **Find options** once.
-4. Wait for the actual choice/check/source workflow. Several minutes may be required. Cancel and Inspect remain available. Failure offers deliberate retry; no automatic restart.
-5. Tap **Load options**. Generation/mounting does not read stock.
-6. Select **Boom microphone stand**, tap the source's preparation button, then **Review selection**. Native review says **Not booked**. Quantity 2 within €18 gives €16 when this source/stock supports it.
-7. Return to the requirement; options stay retained. Cold reopening checks accepted source without fresh inference or automatic inventory refresh.
+Open **Overview → Review requirement**, or select a requirement in **Riders**. The requirement has one assistance entrance: discovery → smart tip → **Open** → generated checked UI. Use its explicit read action to fetch provider data. Generation/checking/mounting do not fetch stock. Edit generated controls and cold reopen the requirement to verify source-bound retention without inference. **Inspect** exposes actual source and exchanges, including failures; returning from Inspect does not retry inference.
 
-These are inputs, not forced routes or canned results. Source and actual exchanges in Inspect establish which route occurred. Name/specification matching is a shortlist, not suitability proof. Review does not reserve, write Rental data, establish agreement or mark coverage. Calendar's native confirmation remains its separate provider-write authority.
+Outputs vary and compiler admission does not prove suitability. Current equipment output reads real Rental data but omits the required package alternative; do not treat it as an accepted comparison. The present four-scenario scope is read-only planning, with no bookings, orders or proposal confirmation.
 
 ## Inspect
 

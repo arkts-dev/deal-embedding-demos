@@ -16,6 +16,8 @@
  <instrumentation android:name=".DiscoveryInstrumentation" android:targetPackage="dev.deal.connectors.tests" />
  <instrumentation android:name=".DiscoveryCalendarInstrumentation" android:targetPackage="dev.deal.connectors.tests" />
  <instrumentation android:name=".GenerationGatewayInstrumentation" android:targetPackage="dev.deal.connectors.tests" />
+ <instrumentation android:name=".AcceptanceFactsInstrumentation" android:targetPackage="dev.deal.apps.calendar" />
+ <instrumentation android:name=".ColdDraftInstrumentation" android:targetPackage="dev.deal.connectors.tests" />
  <instrumentation android:name=".GuidanceInstrumentation" android:targetPackage="dev.deal.connectors.tests" />
  <instrumentation android:name=".CleanlinessInstrumentation" android:targetPackage="dev.deal.connectors.tests" />
  <instrumentation android:name=".InspectionInstrumentation" android:targetPackage="dev.deal.connectors.tests" />

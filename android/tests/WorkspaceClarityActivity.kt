@@ -73,6 +73,7 @@ private fun rendererDefaultsFixture(enabled: Boolean?): JSONObject {
         component("Button", 1, "onClick", "text" to "Fixture button", "accessibilityLabel" to "Fixture button"),
         component("Option", 2, "onSelect", "title" to "Fixture option", "value" to "fixture", "accessibilityLabel" to "Fixture option"),
         component("IntField", 3, "onChange", "label" to "Fixture quantity", "accessibilityLabel" to "Fixture quantity", "value" to 2, "minimum" to 1, "maximum" to 4, "step" to 1),
+        component("IntField", 6, "onChange", "label" to "Default bounds", "accessibilityLabel" to "Default bounds", "value" to 2),
         component("TextField", 4, "onChange", "label" to "Fixture text", "accessibilityLabel" to "Fixture text", "value" to ""),
         component("SearchField", 5, "onChange", "label" to "Fixture search", "accessibilityLabel" to "Fixture search", "value" to "")
     )))

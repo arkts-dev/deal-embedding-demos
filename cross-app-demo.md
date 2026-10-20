@@ -1,5 +1,7 @@
 # Cross-app demo
 
+> Historical broader proposal. Current delivery is the six-app, four-scenario read-only scope in [delivery.md](delivery.md); the write flows and extra scenarios below are not current acceptance requirements or completion claims.
+
 Five apps. The Gig Organizer hosts DEAL generation and execution. Todo, Calendar, Equipment Rental and Pizza publish capabilities; none needs model access.
 
 Organizer stores the riders, venue inventory, matching, allocations and fulfilment links. It never relies on a connected app to compute coverage.
