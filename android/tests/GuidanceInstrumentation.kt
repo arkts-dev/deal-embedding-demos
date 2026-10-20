@@ -20,7 +20,7 @@ class GuidanceInstrumentation : Instrumentation() {
             val model = object : ModelClient { override fun complete(input: String, previous: String, diagnostics: String, cancellation: GenerationCancellation, log: EmbeddingLog): String = error("Unexpected inference") }
             ApplicationProtocol(ctx, Embedding(ctx, CapabilityRegistry(ctx, CapabilityDiscovery(ctx) { false }, listOf(sample)), model, EmbeddingConfig("experience", emptyList(), "guidance-${UUID.randomUUID()}", retainState = true))).use { api ->
                 api.refresh(); api.grant("host/sample")
-                val source = Source(ctx.assets.open("guidance-example/generation-example.deal").bufferedReader().use { it.readText() }, ctx.assets.open("guidance-example/generation-example.dealui").bufferedReader().use { it.readText() })
+                val source = Source(ctx.assets.open("ui/generation-example.deal").bufferedReader().use { it.readText() }, ctx.assets.open("ui/generation-example.dealui").bufferedReader().use { it.readText() })
                 api.withPreparation(api.load("Guidance example", source)) { experience ->
                     var session = api.run(experience)
                     fun tree() = api.next(session, "").snapshot.tree

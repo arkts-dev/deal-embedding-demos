@@ -9,6 +9,8 @@
   <activity android:name="dev.deal.shell.AssistanceInspectActivity" android:exported="false" />
   <activity android:name=".AssistanceFailureActivity" android:exported="true" />
   <activity android:name=".WorkspaceClarityActivity" android:exported="true" />
+  <activity android:name=".ToolkitActivity" android:exported="true" />
+  <service android:name=".ToolkitReadingService" android:exported="true" android:process=":reading"><intent-filter><action android:name="dev.deal.embedding.CAPABILITIES_V1" /></intent-filter></service>
   <service android:name=".RemoteProbeService" android:exported="true" android:process=":provider"><intent-filter><action android:name="dev.deal.embedding.CAPABILITIES_V1" /></intent-filter></service>
  </application>
  <instrumentation android:name=".DiscoveryLiveInstrumentation" android:targetPackage="dev.deal.connectors.tests" />
@@ -19,6 +21,8 @@
  <instrumentation android:name=".AcceptanceFactsInstrumentation" android:targetPackage="dev.deal.apps.calendar" />
  <instrumentation android:name=".ColdDraftInstrumentation" android:targetPackage="dev.deal.connectors.tests" />
  <instrumentation android:name=".GuidanceInstrumentation" android:targetPackage="dev.deal.connectors.tests" />
+ <instrumentation android:name=".ToolkitInstrumentation" android:targetPackage="dev.deal.connectors.tests" />
+ <instrumentation android:name=".ToolkitLiveInstrumentation" android:targetPackage="dev.deal.connectors.tests" />
  <instrumentation android:name=".CleanlinessInstrumentation" android:targetPackage="dev.deal.connectors.tests" />
  <instrumentation android:name=".InspectionInstrumentation" android:targetPackage="dev.deal.connectors.tests" />
  <instrumentation android:name=".DiagnosticInstrumentation" android:targetPackage="dev.deal.connectors.tests" />

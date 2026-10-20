@@ -13,6 +13,21 @@
 
 No booking/order/proposal writes were exercised for acceptance. Known failures are retained, not patched out of accepted generated source. No automatic live-inference retry or silent backend fallback was introduced. Semantic admission beyond compilation remains missing.
 
+## Portable toolkit enrichment
+
+The library's `ui/` now owns the pack, composition guidance and checked examples. The existing `./platform.dealui-pack` import, public protocol, legacy props/defaults/events/capabilities and native app themes are preserved. Obsolete maintained pack/guidance/example locations were removed. Adaptive Row, Heading/Caption, primary/secondary actions and labeled Money/Metric/Comparison are available through the existing framework surface; DEAL still owns arithmetic, validation and explicit status.
+
+Verified separately:
+
+- Real compiler/production JS session: exact packaged inputs; required props and typed children through conditions/keyed loops; comparison transitions, explicit numeric bounds, action payloads/reset, restored state and async empty/pending/success/failure/retry.
+- Compatibility: all legacy pack contracts compared against embedding revision `0e54a5760f25bd29a9d5602eb8f75befe53a1a68`. Three private saved source/state pairs produced identical baseline/current restored trees and states. Four other saved attempts were already baseline-invalid; they remain rejected evidence, not compatibility passes. Parsed preferences in all six consuming apps were unchanged immediately after upgrade.
+- Android: real sandbox sources/actions, localized signed money (including zero-/three-decimal currencies), published acceptance, native controls, Inspect/back, actual force-stop retention, narrow-width/1.6× text wrapping, inherited light/dark themes, and async pending/disabled/failure/retry/success with a separate fixture-provider process. Pixel review is a separate result, not implied by these checks.
+- Fresh generation: repeated explicit Cerebras budget cases (over/under/equal, two trials each), independent checks of initial difference/status, both input facts/bounds, edits to both inputs and settled reopen. In the final six-case run, five requests compiled on their first candidate; one needed the existing explicit compiler-feedback repair for `UI1012 Unsupported escape` and compiled on candidate two. The failed candidate/feedback is retained. There was no new-request retry or provider fallback. These are narrow, example-guided generation checks without discovery or cross-app providers; they are not proof of general semantic completion or actual process-boundary live-source reopening.
+
+**Visual approval remains outstanding.** Screenshot reviews found readable, unclipped results but criticized grouping, hierarchy, spacing and pending-state presentation. No domain color/status inference or palette unification was added to satisfy a reviewer. The four scenario failures above are not repaired by replacing saved sources or declared accepted by toolkit tests.
+
+Reproduce with `python3 tools/verify-toolkit.py`, `ToolkitInstrumentation`, `GuidanceInstrumentation` and `ANDROID_SERIAL=<device> python3 tools/verify-toolkit-device.py` after building/installing tests. `ToolkitLiveInstrumentation` requires explicit `-e live true`, foreground operation and the configured gateway; every outcome is retained, with no automatic new request on failure. Private sources, exact hashes/revisions, build/install records, attempts and screenshots remain under ignored `build/toolkit/`.
+
 ## Fixed mechanisms
 
 - DEAL emits valid else-if chains without a final else.
