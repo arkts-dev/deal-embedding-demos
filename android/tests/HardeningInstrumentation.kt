@@ -142,8 +142,8 @@ export view Main(state:app.State):View {ui.Column(){ui.IntText(value:state.value
                     check(runCatching{other.generate(r)}.exceptionOrNull().let{it is ProtocolFailure&&it.code==expected})
                 }
             }
-            check(dev.deal.apps.organizer.activitySummary(JSONObject().put("stage","source").put("outcome","started"))=="source · started ")
-            check(dev.deal.apps.organizer.activitySummary(JSONObject().put("summary","retained exact summary"))=="retained exact summary")
+            check(dev.deal.embedding.activitySummary(JSONObject().put("stage","source").put("outcome","started"))=="source · started ")
+            check(dev.deal.embedding.activitySummary(JSONObject().put("summary","retained exact summary"))=="retained exact summary")
             val events=listOf(JSONObject().put("trace","t").put("span","s").put("stage","source").put("outcome","started").put("time","1"),JSONObject().put("trace","t").put("span","r").put("parent","s").put("stage","source").put("outcome","response").put("time","2"))
             check(dialogueExchanges(events).single().events.size==2)
             check(dialogueExchanges(listOf(events[1])).single().events.size==1)

@@ -31,18 +31,19 @@ for app in ('organizer','calendar','todo','vehicle','rental','pizza','shared-ui'
         assert '.inSession(' not in text, path
         assert not any(call in text for call in ('.run(','.next(','.dispatch(','.published(','.observe(','DealRenderer(')), path
 assert (library/'android/src/rendering/ExperienceSurface.kt').exists()
-for app, screen in [('calendar','PreparationInspectActivity.kt'), ('organizer','DiagnosticsActivity.kt')]:
-    text=(root/f'android/apps/{app}/src'/screen).read_text()
-    assert '.inspection(' in text
-    assert 'opportunity-handoff' not in text and 'val traces =' not in text and 'optString("workspace")' not in text
+inspect = (root/'android/apps/shared-ui/AssistanceInspectActivity.kt').read_text()
+assert '.inspection(' in inspect
+assert 'opportunity-handoff' not in inspect and 'val traces =' not in inspect
+for obsolete in ['calendar/src/PreparationInspectActivity.kt', 'organizer/src/DiagnosticsActivity.kt']:
+    assert not (root/'android/apps'/obsolete).exists()
 for app, screen in [('calendar','PreparationActivity.kt'), ('organizer','OrganizerActivity.kt')]:
     text=(root/f'android/apps/{app}/src'/screen).read_text()
     assert 'workspace-snapshot.json' not in text and 'preparation-ui.json' not in text
 assert 'workspace-snapshot.json' not in (root/'tools/verify-demo-reproduction.py').read_text()
 assert 'nextId <= 128' not in (library/'android/src/capabilities/CapabilityRegistry.kt').read_text()
 assert 'issued:MutableMap' not in (library/'android/src/Embedding.kt').read_text()
-assert 'dialogueExchanges' not in (root/'android/apps/organizer/src/InspectionPresentation.kt').read_text()
-assert 'cursor=' not in (root/'android/apps/organizer/src/DiagnosticsActivity.kt').read_text()
+assert not (root/'android/apps/organizer/src/InspectionPresentation.kt').exists()
+assert 'cursor=' not in inspect
 assert 'GenerationRejected' not in (root/'android/apps/organizer/src/WorkspacePresentation.kt').read_text()
 protocol=(library/'android/assets/embedding/bindings/public-protocol.js').read_text()
 assert "case 'poll'" not in protocol and "control(name,args);result=null;break;" not in protocol
@@ -101,7 +102,7 @@ with zipfile.ZipFile(os.environ.get('EMBEDDING_AAR', root / 'build/embedding-lib
         assert 'assets/embedding/bindings/protocol-contracts.js' in app.namelist()
         for declaration in ['embedding.d.deal','catalogue-policy.d.deal']:
             assert (library/'api'/declaration).read_bytes()==(library/'core/host'/declaration).read_bytes()
-        assert 'getSharedPreferences' not in (root/'android/apps/organizer/src/DiagnosticsActivity.kt').read_text()
+        assert 'getSharedPreferences' not in inspect
         for module in ['candidate-check', 'generation-guidance', 'source-literals']:
             assert f'assets/generation/{module}.js' in app.namelist()
         assert not any(n.startswith('assets/deal-backend/') for n in app.namelist())

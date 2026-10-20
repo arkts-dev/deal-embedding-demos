@@ -23,7 +23,7 @@ def adb(*args):
     return subprocess.check_output(['adb', *args], timeout=30)
 
 activity = adb('shell', 'dumpsys', 'activity', 'activities').decode()
-expected = '.PreparationInspectActivity' if a.state == 'inspect' else '.PreparationActivity'
+expected = 'dev.deal.shell.AssistanceInspectActivity' if a.state == 'inspect' else '.PreparationActivity'
 assert any(expected in line for line in activity.splitlines() if 'topResumedActivity=' in line), 'Open the expected Calendar screen first'
 adb('shell', 'uiautomator', 'dump', '/sdcard/preparation-presentation.xml')
 xml = adb('shell', 'cat', '/sdcard/preparation-presentation.xml')

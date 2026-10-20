@@ -25,7 +25,6 @@ class PizzaActivity : ComponentActivity() {
     private val store by lazy { PizzaStore(this) }
     override fun onCreate(state: Bundle?) {
         super.onCreate(state)
-        var consent by mutableStateOf(store.consent())
         var tab by mutableStateOf(0)
         var filter by mutableStateOf("All")
         var basket by mutableStateOf<Map<String, Int>>(emptyMap())
@@ -48,7 +47,7 @@ class PizzaActivity : ComponentActivity() {
                         NavigationBar(containerColor = MaterialTheme.colorScheme.surface) {
                             NavigationBarItem(selected = tab == 0, onClick = { tab = 0 }, icon = { Icon(Icons.Outlined.LocalPizza, null) }, label = { Text("Menu") })
                             NavigationBarItem(selected = tab == 1, onClick = { tab = 1 }, icon = { Icon(Icons.Outlined.Receipt, null) }, label = { Text("Orders") })
-                            NavigationBarItem(selected = tab == 2, onClick = { tab = 2 }, icon = { Icon(Icons.Outlined.Shield, null) }, label = { Text("Access") })
+                            NavigationBarItem(selected = tab == 2, onClick = { tab = 2 }, icon = { Icon(Icons.Outlined.Shield, null) }, label = { Text("Review") })
                         }
                     }) { padding ->
                         Box(Modifier.padding(padding)) {
@@ -67,7 +66,6 @@ class PizzaActivity : ComponentActivity() {
                                         store.saveOrders(store.orders() + order); orders = store.orders()
                                         org.json.JSONObject().put("state", "confirmed").put("orderId", id).put("detail", "Demo order saved after native confirmation; no real purchase")
                                     }
-                                    ProviderAccess(consent, { consent = it; store.setConsent(it) }, "Connected apps", "Demo apps may read the menu and delivery windows and submit order proposals. Orders still need native confirmation. Revoking keeps existing orders.")
                                 }
                                 tab == 1 -> Orders(orders, onOpen = { openOrder = it })
                                 openOrder != null -> OrderDetail(openOrder!!, store) { updated ->

@@ -67,7 +67,5 @@ class PizzaStore(private val context: Context) {
         }
         prefs.edit().putString("orders", array.toString()).commit()
     }
-    fun consent() = context.getSharedPreferences("provider", 0).getBoolean("allowed", false)
-    fun setConsent(value: Boolean) { context.getSharedPreferences("provider", 0).edit().putBoolean("allowed", value).commit() }
     fun newOrderId() = UUID.randomUUID().toString()
 }

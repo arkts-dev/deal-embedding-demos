@@ -36,7 +36,6 @@ class TodoActivity : ComponentActivity() {
         var filter by mutableStateOf("Open")
         var open by mutableStateOf<Task?>(null)
         var adding by mutableStateOf(false)
-        var consent by mutableStateOf(store.consent())
         var access by mutableStateOf(false)
         fun commit(value: List<Task>) { store.save(value); tasks = value }
         setContent {
@@ -45,12 +44,12 @@ class TodoActivity : ComponentActivity() {
                 Surface(Modifier.fillMaxSize()) {
                     Scaffold(topBar = {
                         TopAppBar(title = {
-                            Column { Text(if (access) "Extensions" else "Tasks", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold); Text(if (access) "Connected apps" else "Your tasks", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                            Column { Text(if (access) "Review" else "Tasks", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold); Text(if (access) "Task proposals" else "Your tasks", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant) }
                         }, actions = { AssistanceSettingsButton(); IconButton(onClick = { access = false; adding = true }) { Icon(Icons.Outlined.Add, "Add task") } })
                     }, bottomBar = {
                         NavigationBar(containerColor = MaterialTheme.colorScheme.surface) {
                             NavigationBarItem(selected = !access && open == null && !adding, onClick = { open = null; adding = false; access = false }, icon = { Icon(Icons.Outlined.Checklist, null) }, label = { Text("Tasks") })
-                            NavigationBarItem(selected = access, onClick = { access = true; open = null; adding = false }, icon = { Icon(Icons.Outlined.Shield, null) }, label = { Text("Extensions") })
+                            NavigationBarItem(selected = access, onClick = { access = true; open = null; adding = false }, icon = { Icon(Icons.Outlined.Shield, null) }, label = { Text("Review") })
                         }
                     }) { padding ->
                         Box(Modifier.padding(padding)) {
@@ -62,12 +61,6 @@ class TodoActivity : ComponentActivity() {
                                         commit(tasks + Task(id, proposal.getString("title"), proposal.getString("assignee"), Instant.parse(proposal.getString("due")).toEpochMilli(),
                                             proposal.getString("location"), proposal.getString("instructions"), checklist = (0 until checks.length()).map { ChecklistItem(checks.getString(it)) }))
                                         org.json.JSONObject().put("state", "confirmed").put("taskId", id).put("detail", "Task saved after native confirmation")
-                                    }
-                                    Text("Task sharing", style = MaterialTheme.typography.titleLarge)
-                                    Text("Connected demo apps can read shared tasks and propose new tasks for your review. Changes are never automatic.")
-                                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                                        Text("Allow connected apps", modifier = Modifier.weight(1f))
-                                        Switch(consent, { consent = it; store.setConsent(it) })
                                     }
                                 }
                                 adding -> TaskEditor(null) { created -> commit(tasks + created); adding = false }

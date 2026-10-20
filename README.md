@@ -4,6 +4,8 @@ Six native apps — Organizer, Todo, Calendar, Rental, Pizza and Vehicle — pub
 
 See [Delivery status](delivery.md) for the four read-only scenarios, verified plumbing, known semantic failures, build/test commands and replay entry points. This is not blanket product acceptance.
 
+All six apps share **Settings** for assistance disclosure, sharing and tool access, and one **Inspect** UI (Activity / Dialogue / Source) with native themes and app/request/experience scope. **Settings → Delete all generated experiences** asks for confirmation before deleting generated tools, retained edits, links and dismissals; domain records, permissions, access choices and retained diagnostic evidence stay unchanged. Native proposal review remains separate. This is behaviorally tested, not visual approval; see `delivery.md`.
+
 ## Protocol and ownership
 
 `dependencies/deal-embedding/api/embedding.d.deal` is the public Source → Experience → Session protocol. Its app-linked catalogue contract is `catalogue-policy.d.deal`; behavioral rules are documented alongside it. Native bootstrap supplies compiler, executor, inference, storage, authenticated transport, renderer and observation mechanisms. `ExperienceRuntime` is internal, not a compatibility API.

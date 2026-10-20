@@ -52,6 +52,21 @@ internal class TaskHelp(private val context: Context, private val facts: () -> L
         private set
     var since by mutableLongStateOf(0L)
         private set
+    init { AssistanceShell.register(this) { reset() } }
+    private fun reset() {
+        AssistanceShell.onMain { pause() }
+        if (worker.isShutdown) {
+            check(worker.awaitTermination(30, java.util.concurrent.TimeUnit.SECONDS)) { "Assistance cleanup still pending" }
+            teardown({ finder?.close() }, { owner?.close() }, { api?.close() })
+            AssistanceShell.unregister(this)
+            return
+        }
+        worker.submit {
+            teardown({ finder?.close() }, { owner?.close() }, { api?.close() })
+            finder = null; owner = null; api = null; ownerInput = null; input = null; request = null
+        }.get(30, java.util.concurrent.TimeUnit.SECONDS)
+        AssistanceShell.onMain { failed = false; status = ""; trace = ""; since = 0 }
+    }
     private fun post(version: Long, action: () -> Unit) { main.post { if (foreground && version == epoch) action() } }
     fun pause() {
         foreground = false; epoch++; finder?.cancel(); suggestion = null; surface = null; busy = false
@@ -60,7 +75,7 @@ internal class TaskHelp(private val context: Context, private val facts: () -> L
         api?.let { protocol -> modules.forEach(protocol::revoke) }
     }
     fun resume() {
-        if (foreground) return
+        if (foreground || AssistanceShell.resetting) return
         foreground = true
         val version = ++epoch
         if (!failed) status = "Looking ahead…"
@@ -71,7 +86,10 @@ internal class TaskHelp(private val context: Context, private val facts: () -> L
                 val sameInput = input?.identity == current.identity
                 input = current
                 // Returning from Inspect/Settings must not silently rerun a failed attempt.
-                if (sameInput && failed) { post(version) { busy = false }; return@execute }
+                if (sameInput && failed) {
+                    api?.let { modules = Connections.apply(context, it) }
+                    post(version) { busy = false }; return@execute
+                }
                 val protocol = api ?: protocolFactory(context).also { api = it }
                 modules = Connections.apply(context, protocol)
                 check(foreground && version == epoch)
@@ -117,6 +135,7 @@ internal class TaskHelp(private val context: Context, private val facts: () -> L
                 protocol.withPreparation(protocol.generate(admitted)) { experience ->
                     check(foreground && version == epoch && DiscoveryInput(facts()).identity == captured.identity)
                     activate(protocol, experience, version); ownerInput = captured.identity
+                    check(foreground && version == epoch) { "Assistance changed before saving link" }
                     check(Connections.settings(context).edit().putString("saved.${captured.identity}", experience.id).commit())
                 }
                 post(version) { busy = false; status = "" }
@@ -137,7 +156,10 @@ internal class TaskHelp(private val context: Context, private val facts: () -> L
     }
     override fun close() {
         pause()
-        worker.execute { try { teardown({ finder?.close() }, { owner?.close() }, { api?.close() }) } catch (error: Throwable) { android.util.Log.e("Assistance", "Cleanup failed", error) } }
+        worker.execute { try {
+            teardown({ finder?.close() }, { owner?.close() }, { api?.close() })
+            AssistanceShell.unregister(this)
+        } catch (error: Throwable) { android.util.Log.e("Assistance", "Cleanup failed", error) } }
         worker.shutdown()
     }
 }
@@ -179,9 +201,8 @@ internal class TaskHelp(private val context: Context, private val facts: () -> L
         Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
             if (title.isNotEmpty()) Text(title, modifier = Modifier.weight(1f).padding(vertical = 12.dp),
                 style = MaterialTheme.typography.titleMedium) else Spacer(Modifier.weight(1f))
-            TextButton(onClick = { context.startActivity(Intent(context, AssistanceInspectActivity::class.java)
-                .putExtra("experience", help.surface?.experience?.id.orEmpty()).putExtra("trace", help.trace)
-                .putExtra("since", help.since).putExtra("storage", storageName)) }) { Text("Inspect") }
+            TextButton(onClick = { context.startActivity(AssistanceShell.inspect(context, help.surface?.experience?.id.orEmpty(), help.trace, help.since)
+                .putExtra("storage", storageName)) }) { Text("Inspect") }
         }
         if (help.failed) Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
             Text(help.status, Modifier.weight(1f), color = MaterialTheme.colorScheme.error)

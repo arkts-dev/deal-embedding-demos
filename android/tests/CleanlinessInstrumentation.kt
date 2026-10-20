@@ -56,7 +56,10 @@ class CleanlinessInstrumentation : Instrumentation() {
             awaitFailure(); check(attempts.get() == 1) { "Returning from Inspect silently retried failure" }
             runOnMainSync { help!!.retry() }
             awaitFailure(); check(attempts.get() == 2) { "Explicit retry did not run exactly once" }
-            result.putString("cleanliness", "PASS consent migration preserves explicit OFF; failed assistance survives pause/resume without retry; explicit retry runs once")
+            dev.deal.shell.AssistanceShell.reset(ctx, emptyList())
+            runOnMainSync { check(!help!!.failed && !help!!.busy); help!!.resume() }
+            awaitFailure(); check(attempts.get() == 3) { "Confirmed reset did not release failed in-memory attempt" }
+            result.putString("cleanliness", "PASS consent migration preserves explicit OFF; failed assistance survives pause/resume without retry; explicit retry runs once; explicit shell reset releases in-memory failure")
             finish(0, result)
         } catch (error: Throwable) { result.putString("failure", android.util.Log.getStackTraceString(error)); finish(1, result) }
         finally {

@@ -18,9 +18,4 @@ object PreparationRecords {
         val capabilities = registry ?: dev.deal.embedding.capabilities.CapabilityRegistry(context, dev.deal.embedding.capabilities.CapabilityDiscovery(context) { false }, emptyList())
         return ApplicationProtocol(context, Embedding(context, capabilities, GenerationBuild.gateway(), EmbeddingConfig("experience", emptyList(), "preparation-opportunity", retainState = true)))
     }
-    fun clear(context: Context) {
-        opportunityApi(context).use { api -> api.saved().forEach(api::forget) }
-        check(context.getSharedPreferences("preparation-discovery-dismissals", 0).edit().clear().commit())
-        check(prefs(context).edit().clear().commit())
-    }
 }

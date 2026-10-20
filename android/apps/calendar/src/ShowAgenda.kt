@@ -148,10 +148,8 @@ data class ShowEvent(val id: Long, val title: String, val from: Long, val until:
 @OptIn(ExperimentalMaterial3Api::class)
 class AgendaActivity : ComponentActivity() {
     private val agenda by lazy { ShowAgenda(this) }
-    private val worker = java.util.concurrent.Executors.newSingleThreadExecutor()
     private var resumeVersion by mutableStateOf(0)
     override fun onResume() { super.onResume(); resumeVersion++ }
-    override fun onDestroy() { worker.shutdown(); super.onDestroy() }
     override fun onCreate(state: Bundle?) {
         super.onCreate(state)
         if (intent.hasExtra("demoEvent") && checkSelfPermission(android.Manifest.permission.WRITE_CALENDAR) == android.content.pm.PackageManager.PERMISSION_GRANTED) {
@@ -164,9 +162,6 @@ class AgendaActivity : ComponentActivity() {
                 var adding by remember { mutableStateOf(false) }
                 var granted by remember { mutableStateOf(checkSelfPermission(android.Manifest.permission.READ_CALENDAR) == android.content.pm.PackageManager.PERMISSION_GRANTED && checkSelfPermission(android.Manifest.permission.WRITE_CALENDAR) == android.content.pm.PackageManager.PERMISSION_GRANTED) }
                 var error by remember { mutableStateOf("") }
-                var access by remember { mutableStateOf(false) }
-                var clearing by remember { mutableStateOf(false) }
-                var clearConfirm by remember { mutableStateOf(false) }
                 val permissionRequest = androidx.activity.compose.rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
                     granted = checkSelfPermission(android.Manifest.permission.READ_CALENDAR) == android.content.pm.PackageManager.PERMISSION_GRANTED && checkSelfPermission(android.Manifest.permission.WRITE_CALENDAR) == android.content.pm.PackageManager.PERMISSION_GRANTED
                 }
@@ -176,33 +171,24 @@ class AgendaActivity : ComponentActivity() {
                 LaunchedEffect(date, granted, resumeVersion) {
                     if (granted) { runCatching { agenda.seedSchedule(showDate()) }; refresh() }
                 }
-                BackHandler(enabled = adding || access) { adding = false; access = false }
+                BackHandler(enabled = adding) { adding = false }
                 Scaffold(topBar = {
                     TopAppBar(title = {
                         Column {
-                            Text(if (access) "Extensions" else "Calendar", style = MaterialTheme.typography.titleLarge)
-                            if (!access) Text(date.format(DateTimeFormatter.ofPattern("MMMM yyyy", Locale.getDefault())), style = MaterialTheme.typography.bodyMedium)
+                            Text("Calendar", style = MaterialTheme.typography.titleLarge)
+                            Text(date.format(DateTimeFormatter.ofPattern("MMMM yyyy", Locale.getDefault())), style = MaterialTheme.typography.bodyMedium)
                         }
-                    }, navigationIcon = {
-                        if (access) IconButton(onClick = { access = false }) { Icon(Icons.Outlined.ArrowBack, "Back") }
                     }, actions = {
-                        if (!access) {
+                        run {
                             TextButton(onClick = { date = LocalDate.now(AGENDA_ZONE); adding = false }) { Text("Today") }
                             IconButton(onClick = { adding = true }, enabled = granted) { Icon(Icons.Outlined.Add, "Add event") }
-                            IconButton(onClick = { access = true }) { Icon(Icons.Outlined.Settings, "Extensions") }
+                            IconButton(onClick = { startActivity(AssistanceShell.settings(this@AgendaActivity)) }) { Icon(Icons.Outlined.Settings, "Settings") }
                         }
                     })
                 }) { padding ->
                     Column(Modifier.padding(padding).fillMaxSize()) {
-                        if (!adding && !access) WeekStrip(date) { date = it }
+                        if (!adding) WeekStrip(date) { date = it }
                         when {
-                            access -> Column(Modifier.padding(20.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                                Text("Assistance", style = MaterialTheme.typography.titleLarge)
-                                Button(onClick = { startActivity(Intent(this@AgendaActivity, AssistanceSettingsActivity::class.java).putExtra("storage", "preparation-opportunity")) }) { Text("Suggestions, tools & sharing") }
-                                Text("Saved assistance", style = MaterialTheme.typography.titleMedium)
-                                ListItem(headlineContent = { Text("Inspect") }, supportingContent = { Text("Activity, model exchanges and checked source") }, trailingContent = { Icon(Icons.Outlined.ChevronRight, null) }, modifier = Modifier.clickable { startActivity(Intent(this@AgendaActivity, PreparationInspectActivity::class.java)) })
-                                ListItem(headlineContent = { Text("Clear saved assistance", color = MaterialTheme.colorScheme.error) }, supportingContent = { Text("Keep permissions, appointments and tasks") }, trailingContent = { Icon(Icons.Outlined.DeleteOutline, null, tint = MaterialTheme.colorScheme.error) }, modifier = Modifier.clickable(enabled = !clearing) { clearConfirm = true })
-                            }
                             !granted -> Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                                 Text("Connect Calendar to view and manage events.")
                                 Button(onClick = { permissionRequest.launch(arrayOf(android.Manifest.permission.READ_CALENDAR, android.Manifest.permission.WRITE_CALENDAR)) }) { Text("Connect calendar") }
@@ -215,10 +201,6 @@ class AgendaActivity : ComponentActivity() {
                         }
                     }
                 }
-                if (clearConfirm) AlertDialog(onDismissRequest = { clearConfirm = false }, title = { Text("Clear saved assistance?") }, text = { Text("Remove saved plans and discovery history. Permissions, appointments and tasks stay unchanged.") }, confirmButton = { TextButton(onClick = {
-                    clearConfirm = false; clearing = true
-                    worker.execute { try { PreparationRecords.clear(applicationContext) } finally { runOnUiThread { clearing = false } } }
-                }) { Text("Clear", color = MaterialTheme.colorScheme.error) } }, dismissButton = { TextButton(onClick = { clearConfirm = false }) { Text("Cancel") } })
             }
         }
     }

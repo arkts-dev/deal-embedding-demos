@@ -28,7 +28,6 @@ class RentalActivity : ComponentActivity() {
     private val store by lazy { RentalStore(this) }
     override fun onCreate(state: Bundle?) {
         super.onCreate(state)
-        var consent by mutableStateOf(store.consent())
         var tab by mutableStateOf(0)
         var category by mutableStateOf("All")
         var basket by mutableStateOf<Map<String, Int>>(emptyMap())
@@ -58,7 +57,7 @@ class RentalActivity : ComponentActivity() {
                         NavigationBar(containerColor = MaterialTheme.colorScheme.surface) {
                             NavigationBarItem(selected = tab == 0, onClick = { tab = 0 }, icon = { Icon(Icons.Outlined.Storefront, null) }, label = { Text("Catalogue") })
                             NavigationBarItem(selected = tab == 1, onClick = { tab = 1 }, icon = { Icon(Icons.Outlined.EventAvailable, null) }, label = { Text("Reservations") })
-                            NavigationBarItem(selected = tab == 2, onClick = { tab = 2 }, icon = { Icon(Icons.Outlined.Shield, null) }, label = { Text("Access") })
+                            NavigationBarItem(selected = tab == 2, onClick = { tab = 2 }, icon = { Icon(Icons.Outlined.Shield, null) }, label = { Text("Review") })
                         }
                     }) { padding ->
                         Box(Modifier.padding(padding)) {
@@ -77,7 +76,6 @@ class RentalActivity : ComponentActivity() {
                                         store.saveReservations(store.reservations() + reservation); reservations = store.reservations()
                                         org.json.JSONObject().put("state", "confirmed").put("reservationId", id).put("detail", "Demo reservation saved after native confirmation")
                                     }
-                                    ProviderAccess(consent, { consent = it; store.setConsent(it) }, "Connected apps", "Demo apps may read the catalogue and availability, request quotes and submit reservation proposals. Reservations still need native confirmation. Revoking keeps existing reservations.")
                                 }
                                 tab == 1 -> ReservationList(reservations, onOpen = { openReservation = it })
                                 openReservation != null -> ReservationDetail(openReservation!!, availability) { updated ->

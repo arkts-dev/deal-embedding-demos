@@ -147,17 +147,6 @@ enum class Tone { Neutral, Attention, Progress, Settled }
     }
 }
 
-@Composable fun ProviderAccess(allowed: Boolean, onChange: (Boolean) -> Unit, title: String = "Connected apps", body: String = "You control access. Revoking cancels pending requests but keeps existing records.") {
-    Panel {
-        Text(title, style = MaterialTheme.typography.titleLarge)
-        Text(body, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-            Text(if (allowed) "Sharing enabled" else "Private by default", modifier = Modifier.padding(top = 12.dp))
-            Switch(checked = allowed, onCheckedChange = onChange)
-        }
-    }
-}
-
 /** Code-drawn artwork. No binary assets, crisp at every density. */
 object Art {
     @Composable fun Microphone(size: androidx.compose.ui.unit.Dp = 120.dp) = Canvas(Modifier.size(size)) {
@@ -208,6 +197,3 @@ object Art {
         drawCircle(ink, size.toPx() * .12f, Offset(size.toPx() * .8f, size.toPx() * .7f))
     }
 }
-
-@Composable fun Consent(allowed: Boolean, onChange: (Boolean) -> Unit) =
-    ProviderAccess(allowed, onChange, "Connected to Calendar", "You control access. Revoking also cancels pending requests.")

@@ -56,8 +56,6 @@ class TaskStore(private val context: Context) {
         }
         prefs.edit().putString("tasks", array.toString()).commit()
     }
-    fun consent() = prefs.getBoolean("allowed", false)
-    fun setConsent(value: Boolean) { prefs.edit().putBoolean("allowed", value).commit() }
     fun newId() = UUID.randomUUID().toString()
 
     companion object {

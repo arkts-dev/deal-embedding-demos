@@ -23,7 +23,7 @@ import org.json.JSONObject
 class AssistanceInspectActivity : ComponentActivity() {
     override fun onCreate(state: Bundle?) {
         super.onCreate(state)
-        val storageName = intent.getStringExtra("storage") ?: "assistance"
+        val storageName = intent.getStringExtra("storage") ?: AssistanceShell.storage(this)
         val trace = intent.getStringExtra("trace").orEmpty()
         val since = intent.getLongExtra("since", 0L)
         setContent { AppTheme(appAccent(packageName)) {
@@ -38,11 +38,13 @@ class AssistanceInspectActivity : ComponentActivity() {
             var detail by remember { mutableStateOf<String?>(null) }
             var selected by remember { mutableStateOf<JSONObject?>(null) }
             var error by remember { mutableStateOf("") }
+            var appRecords by remember { mutableStateOf<List<JSONObject>>(emptyList()) }
             LaunchedEffect(captureChange) { withContext(Dispatchers.IO) {
                 runCatching { assistanceProtocol(this@AssistanceInspectActivity, storageName).use { api ->
                     captureChange?.let(api::capture)
                     page = api.retainedEvents(); capture = api.capturesContent()
                     sources = api.saved().map { it to api.source(it) }
+                    appRecords = AssistanceShell.records(this@AssistanceInspectActivity)
                 } }.onFailure { error = "Evidence unavailable; nothing was retried." }
             } }
             LaunchedEffect(selected) { selected?.let { event ->
@@ -89,6 +91,14 @@ class AssistanceInspectActivity : ComponentActivity() {
                                 } }
                             }
                             else -> {
+                                if (scope.isEmpty() && !requestScope) items(appRecords) { record ->
+                                    OutlinedCard(onClick = { detail = record.toString(2) }, modifier = Modifier.fillMaxWidth()) {
+                                        Column(Modifier.padding(12.dp)) {
+                                            Text("App decision · ${record.optString("stage")} · ${record.optString("status")}", style = MaterialTheme.typography.titleSmall)
+                                            Text(dateTimeLabel(record.optLong("at"), java.time.ZoneId.systemDefault()), style = MaterialTheme.typography.bodySmall)
+                                        }
+                                    }
+                                }
                                 if (events.isEmpty()) item { Text("No retained activity.") }
                                 items(events.take(200)) { entry -> EvidenceEntry(activitySummary(entry), entry) { selected = entry } }
                             }
@@ -105,6 +115,7 @@ class AssistanceInspectActivity : ComponentActivity() {
 @Composable private fun EvidenceEntry(title: String, event: JSONObject, open: () -> Unit) {
     OutlinedCard(onClick = open, modifier = Modifier.fillMaxWidth()) { Column(Modifier.padding(12.dp)) {
         Text(title, style = MaterialTheme.typography.titleSmall)
-        Text("${event.optString("outcome")} · ${event.optString("code")} · ${event.optLong("durationMs")}ms", style = MaterialTheme.typography.bodySmall)
+        Text(dateTimeLabel(event.optString("time").toLongOrNull() ?: 0, java.time.ZoneId.systemDefault()) +
+            " · ${event.optString("outcome")} · ${event.optString("code")} · ${event.optLong("durationMs")}ms", style = MaterialTheme.typography.bodySmall)
     } }
 }

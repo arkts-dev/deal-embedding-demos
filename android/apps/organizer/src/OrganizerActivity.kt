@@ -52,7 +52,7 @@ class OrganizerActivity : ComponentActivity() {
                         topBar = {
                             Column {
                                 OrganizerTopBar(show, onInitialize = { show = store.initialize() }, onInspect = if (selectedRequirement != null) null else ({
-                                    startActivity(android.content.Intent(this@OrganizerActivity, DiagnosticsActivity::class.java))
+                                    startActivity(AssistanceShell.inspect(this@OrganizerActivity))
                                 }))
                             }
                         },

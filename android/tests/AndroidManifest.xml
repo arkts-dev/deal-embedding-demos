@@ -7,6 +7,7 @@
  <application android:debuggable="true" android:theme="@android:style/Theme.Material.Light.NoActionBar" android:usesCleartextTraffic="true">
   <activity android:name="dev.deal.apps.calendar.AgendaActivity" android:exported="false" />
   <activity android:name="dev.deal.shell.AssistanceInspectActivity" android:exported="false" />
+  <activity android:name="dev.deal.shell.AssistanceSettingsActivity" android:exported="false" />
   <activity android:name=".AssistanceFailureActivity" android:exported="true" />
   <activity android:name=".WorkspaceClarityActivity" android:exported="true" />
   <activity android:name=".ToolkitActivity" android:exported="true" />
@@ -23,6 +24,7 @@
  <instrumentation android:name=".GuidanceInstrumentation" android:targetPackage="dev.deal.connectors.tests" />
  <instrumentation android:name=".ToolkitInstrumentation" android:targetPackage="dev.deal.connectors.tests" />
  <instrumentation android:name=".ToolkitLiveInstrumentation" android:targetPackage="dev.deal.connectors.tests" />
+ <instrumentation android:name=".AssistanceShellInstrumentation" android:targetPackage="dev.deal.connectors.tests" />
  <instrumentation android:name=".CleanlinessInstrumentation" android:targetPackage="dev.deal.connectors.tests" />
  <instrumentation android:name=".InspectionInstrumentation" android:targetPackage="dev.deal.connectors.tests" />
  <instrumentation android:name=".DiagnosticInstrumentation" android:targetPackage="dev.deal.connectors.tests" />

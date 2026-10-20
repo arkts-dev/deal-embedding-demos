@@ -45,7 +45,6 @@ class PreparationActivity : ComponentActivity() {
     private var failed = false
     private var connected by mutableStateOf(false)
     private var menu by mutableStateOf(false)
-    private var access by mutableStateOf(false)
     private var proposal by mutableStateOf<Int?>(null)
     private var confirm by mutableStateOf(false)
     private var eventUi by mutableStateOf<ShowEvent?>(null)
@@ -53,6 +52,8 @@ class PreparationActivity : ComponentActivity() {
     @Volatile private var foreground = false
     @Volatile private var revision = 0L
     @Volatile private var request: GenerationRequest? = null
+    private var requestTrace = ""
+    private var requestSince = 0L
     private var eventId = -1L
     private lateinit var day: LocalDate
     @Volatile private var current: DiscoveryInput? = null
@@ -66,23 +67,37 @@ class PreparationActivity : ComponentActivity() {
         require(eventId >= 0) { "Missing demo event" }
         day = LocalDate.parse(intent.getStringExtra("day") ?: error("Missing demo day"))
         contentResolver.registerContentObserver(CalendarContract.CONTENT_URI, true, observer)
+        AssistanceShell.register(this) {
+            AssistanceShell.onMain { invalidate() }
+            if (generationWorker.isShutdown) {
+                check(generationWorker.awaitTermination(30, java.util.concurrent.TimeUnit.SECONDS)) { "Generation cleanup still pending" }
+            } else generationWorker.submit {}.get(30, java.util.concurrent.TimeUnit.SECONDS)
+            if (worker.isShutdown) {
+                check(worker.awaitTermination(30, java.util.concurrent.TimeUnit.SECONDS)) { "Preparation cleanup still pending" }
+                teardown({ discovery?.close() }, { owner?.close() }, { api?.close() })
+                AssistanceShell.unregister(this)
+            } else worker.submit {
+                teardown({ discovery?.close() }, { owner?.close() }, { api?.close() })
+                discovery = null; owner = null; api = null; activeInput = null; activeEvent = null; current = null; request = null
+            }.get(30, java.util.concurrent.TimeUnit.SECONDS)
+            AssistanceShell.onMain { failed = false; message = ""; generating = false; requestTrace = ""; requestSince = 0 }
+        }
         setContent { AppTheme(Accent.Calendar) {
             Scaffold(topBar = { TopAppBar(title = { Text(eventUi?.title ?: "Preparation", maxLines = 1) }, navigationIcon = {
                 IconButton(onClick = { finish() }) { Icon(Icons.AutoMirrored.Outlined.ArrowBack, "Back") }
             }, actions = {
-                TextButton(onClick = { startActivity(Intent(this@PreparationActivity, PreparationInspectActivity::class.java)) }) { Text("Inspect") }
+                TextButton(onClick = { startActivity(AssistanceShell.inspect(this@PreparationActivity, surface?.experience?.id.orEmpty(), requestTrace, requestSince)) }) { Text("Inspect") }
                 Box {
                     IconButton(onClick = { menu = true }) { Icon(Icons.Outlined.MoreVert, "More options") }
                     DropdownMenu(menu, { menu = false }) {
                         DropdownMenuItem(text = { Text("Suggestions, tools & sharing") }, onClick = {
                             menu = false
-                            startActivity(Intent(this@PreparationActivity, AssistanceSettingsActivity::class.java).putExtra("storage", "preparation-opportunity"))
+                            startActivity(AssistanceShell.settings(this@PreparationActivity))
                         })
                         DropdownMenuItem(text = { Text("Event details") }, onClick = {
                             menu = false
                             startActivity(Intent(this@PreparationActivity, EventDetailsActivity::class.java).putExtra("eventId", eventId).putExtra("day", day.toString()))
                         })
-                        DropdownMenuItem(text = { Text("Calendar access") }, onClick = { menu = false; access = true })
                     }
                 }
             }) }) { padding ->
@@ -119,17 +134,6 @@ class PreparationActivity : ComponentActivity() {
                     }
                 }
             }
-            if (access) AlertDialog(onDismissRequest = { access = false }, title = { Text("Calendar access") },
-                text = { Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Text("Allow this tool to read the selected event and suggest a reminder. Saving still needs your confirmation.")
-                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                        Text("Selected event", Modifier.weight(1f))
-                        Switch(connected, { value ->
-                            if (value) api?.grant("host/calendar") else api?.revoke("host/calendar")
-                            connected = value; proposal = null; confirm = false
-                        }, enabled = api != null)
-                    }
-                } }, confirmButton = { TextButton(onClick = { access = false }) { Text("Done") } })
             if (confirm) AlertDialog(onDismissRequest = { confirm = false }, title = { Text("Confirm Calendar change") }, text = { Text("Add a reminder at %02d:%02d?".format((proposal ?: 0) / 60, (proposal ?: 0) % 60)) },
                 confirmButton = { TextButton(onClick = {
                     confirm = false
@@ -151,7 +155,7 @@ class PreparationActivity : ComponentActivity() {
         synchronized(ownerLock) { revision++ }; discovery?.cancel(); suggestion = null; checking = false
         api?.let { protocol -> connectedModules.forEach(protocol::revoke); protocol.revoke("host/calendar") }; connected = false; observed = null; surface = null
         request?.let { runCatching { api?.cancel(it) } }
-        proposal = null; confirm = false; access = false; menu = false
+        proposal = null; confirm = false; menu = false
     }
     private fun failure(stage: String, label: String, error: Throwable) {
         PreparationRecords.record(this, stage, JSONObject().put("status", "failed").put("reason", android.util.Log.getStackTraceString(error)))
@@ -162,6 +166,7 @@ class PreparationActivity : ComponentActivity() {
         DiscoveryFact("event", "Gig Demo event ${e.id}: ${e.title}. Starts ${Instant.ofEpochMilli(e.from).atZone(AGENDA_ZONE)}; ends ${Instant.ofEpochMilli(e.until).atZone(AGENDA_ZONE)}. Location: ${e.location}. Start minute ${Instant.ofEpochMilli(e.from).atZone(AGENDA_ZONE).let { it.hour * 60 + it.minute }}. Notes: ${e.notes.removePrefix("Preparation demo · ")}")
     ))
     private fun refresh() {
+        if (AssistanceShell.resetting) return
         invalidate()
         val epoch = revision
         worker.execute {
@@ -177,6 +182,8 @@ class PreparationActivity : ComponentActivity() {
                     val previous = synchronized(ownerLock) { owner.also { owner = null; activeInput = null } }; previous?.close()
                     runOnUiThread { surface = null; connected = false }
                 }
+                connected = Connections.settings(this).getBoolean("grant.host/calendar", false)
+                if (connected) protocol.grant("host/calendar") else protocol.revoke("host/calendar")
                 val sameInput = current?.identity == facts.identity
                 if (!sameInput) failed = false
                 current = facts; event = e
@@ -193,7 +200,7 @@ class PreparationActivity : ComponentActivity() {
                     if (activeInput == facts.identity) { surface = synchronized(ownerLock) { owner }; message = ""; return@runOnUiThread }
                     if (!Connections.settings(this).getBoolean("discovery", true)) { message = "Suggestions are off"; return@runOnUiThread }
                     if (getSharedPreferences("preparation-discovery-dismissals", 0).getBoolean(facts.identity, false)) { message = "No suggestions"; return@runOnUiThread }
-                    checking = true; message = ""
+                    checking = true; message = ""; requestSince = System.currentTimeMillis(); requestTrace = ""
                     finder.discover(facts).whenComplete { tip, error -> runOnUiThread {
                         if (!foreground || epoch != revision) return@runOnUiThread
                         checking = false; failed = error != null
@@ -245,12 +252,14 @@ class PreparationActivity : ComponentActivity() {
                 val fresh = input(readEvent())
                 check(fresh.identity == facts.identity)
                 val admitted = checkNotNull(discovery).request(tip, fresh); request = admitted
+                requestTrace = protocol.requestTrace(admitted)
                 activeEvent = event
                 PreparationRecords.record(this, "opportunity-generation", JSONObject().put("status", "started").put("model", GenerationBuild.label).put("trace", protocol.requestTrace(admitted)).put("input", facts.identity).put("brief", tip.brief))
                 if (!foreground || epoch != revision) protocol.cancel(admitted)
                 protocol.withPreparation(protocol.generate(admitted)) { experience ->
                     check(foreground && epoch == revision && readEvent() == event) { "Facts changed during generation" }
                     activate(protocol, experience, event!!, facts.identity, epoch)
+                    check(foreground && epoch == revision) { "Assistance changed before saving link" }
                     check(PreparationRecords.prefs(this).edit().putString("opportunity.$eventId", JSONObject().put("input", facts.identity).put("experience", experience.id).toString()).commit())
                     PreparationRecords.record(this, "opportunity-generation", JSONObject().put("status", "activated").put("experience", experience.id).put("trace", protocol.requestTrace(admitted)).put("attempts", experience.attempts).put("elapsedMs", android.os.SystemClock.elapsedRealtime() - started).put("brief", tip.brief))
                 }
@@ -263,7 +272,10 @@ class PreparationActivity : ComponentActivity() {
     override fun onDestroy() {
         foreground = false; invalidate(); contentResolver.unregisterContentObserver(observer)
         generationWorker.shutdown()
-        worker.execute { teardown({ discovery?.close() }, { check(generationWorker.awaitTermination(15, java.util.concurrent.TimeUnit.SECONDS)) { "Generation worker did not terminate" } }, { synchronized(ownerLock) { owner }?.close() }, { api?.close() }) }
+        worker.execute { try {
+            teardown({ discovery?.close() }, { check(generationWorker.awaitTermination(15, java.util.concurrent.TimeUnit.SECONDS)) { "Generation worker did not terminate" } }, { synchronized(ownerLock) { owner }?.close() }, { api?.close() })
+            AssistanceShell.unregister(this)
+        } catch (error: Throwable) { android.util.Log.e("Preparation", "Cleanup failed", error) } }
         worker.shutdown(); super.onDestroy()
     }
 }
