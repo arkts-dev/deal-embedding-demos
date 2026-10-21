@@ -45,7 +45,7 @@ def compile_pair(name, deal, ui, expected=None, pack_source=None):
         assert result.returncode == 0, (name, result.stdout, result.stderr)
 
 
-for name in ('comparison', 'values', 'generation-example'):
+for name in ('comparison', 'values', 'generation-example', 'rows'):
     compile_pair(name, (LIB / 'ui' / (name + '.deal')).read_text(), (LIB / 'ui' / (name + '.dealui')).read_text())
 values = (LIB / 'ui/values.dealui').read_text()
 source = (LIB / 'ui/values.deal').read_text()

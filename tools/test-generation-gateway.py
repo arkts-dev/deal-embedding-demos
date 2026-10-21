@@ -71,7 +71,7 @@ class GatewayTest(unittest.TestCase):
         tree=ast.parse(pathlib.Path('tools/generation-gateway.py').read_text())
         infer=next(n for n in tree.body if isinstance(n,ast.FunctionDef) and n.name=='infer')
         headers_seen=[]
-        response={'choices':[{'message':{'content':'{"deal":"x","dealui":"y"}'},'finish_reason':'stop'}],'usage':{'prompt_tokens':10}}
+        response={'choices':[{'message':{'content':'{"deal":"x","dealui":"y"}'},'finish_reason':'stop'}],'usage':{'prompt_tokens':10,'completion_tokens':100,'completion_tokens_details':{'reasoning_tokens':70}}}
         seen=[]
         class Reply:
             def __enter__(self):return self
@@ -91,6 +91,9 @@ class GatewayTest(unittest.TestCase):
         self.assertNotIn('request',omitted);self.assertNotIn('response',omitted)
         self.assertNotIn('prompt',json.dumps(omitted));self.assertEqual(omitted['metadata']['in'],10)
         self.assertEqual(omitted['metadata']['finish'],'stop')
+        self.assertEqual(omitted['metadata']['out'],100)
+        self.assertEqual(omitted['metadata']['reasoning'],70)
+        self.assertNotIn('reasoning_content',json.dumps(omitted))
         body['backend']='cerebras'
         cerebras=json.loads(namespace['infer'](body))
         self.assertEqual(cerebras['model'],'qwen-3.8-27b')

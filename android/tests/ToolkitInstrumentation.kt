@@ -84,6 +84,21 @@ class ToolkitInstrumentation : Instrumentation() {
                 reject(values.dealui.replace("ui.Money(label: \"Refundable deposit\", minorUnits: 5000)","ui.Money(minorUnits: 5000)"),"UI2028")
                 reject(values.dealui.replace("ui.Metric(label: \"Travel\", value: \"29\", unit: \"min\")","ui.Metric(label: \"Travel\", value: \"29\", format: \"money\")"),"UI2029")
             }
+            api().use { p ->
+                val e=p.load("Rows",source("rows")); val s=p.run(e)
+                fun tree()=p.next(s,"").snapshot.tree
+                fun quantities()=ToolkitNodes.all(tree()).filter { it.optString("component").endsWith(".IntField") }.map { ToolkitNodes.string(it,"label") to ToolkitNodes.integer(it,"value") }
+                val a=ToolkitNodes.slot(tree(),"a"); val b=ToolkitNodes.slot(tree(),"b")
+                check(a!=b)
+                p.dispatch(s,a,"7");check(quantities()==listOf("a" to 7,"b" to 2))
+                check(runCatching { p.dispatch(s,b,"9") }.isFailure)
+                p.dispatch(s,ToolkitNodes.slot(tree(),"Reverse rows"),null);check(quantities()==listOf("b" to 2,"a" to 7))
+                p.dispatch(s,ToolkitNodes.slot(tree(),"b"),"8");check(quantities()==listOf("b" to 8,"a" to 7))
+                val removed=ToolkitNodes.slot(tree(),"a")
+                p.dispatch(s,ToolkitNodes.slot(tree(),"Remove a"),null);check(quantities()==listOf("b" to 8))
+                check(runCatching { p.dispatch(s,removed,"11") }.isFailure)
+                p.close(s);p.forget(e)
+            }
             check(formatMoney(1750,"EUR",Locale.US)=="€17.50")
             check(formatMoney(-1750,"EUR",Locale.US)=="-€17.50")
             check(formatMoney(Int.MIN_VALUE,"EUR",Locale.US)=="-€21,474,836.48")

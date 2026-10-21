@@ -30,6 +30,8 @@ async function instruction(previous,diagnostics,operational=false){
  const diagnostic=JSON.stringify([{code:'UI2051',file:'experience.dealui',line:2}]);
  const result=await instruction(previous,diagnostic);
  assert(result.includes('immutable'));assert(result.includes('ui.Toggle(value: true'));assert(result.includes('Exact renderer component contract'));assert(result.includes('Toggle'));assert(result.includes('string'));
+ const call=await instruction(previous,JSON.stringify([{code:'UI1016',file:'experience.dealui',line:2}]));assert(call.includes('cannot call functions'));assert(!call.includes('DEAL equality'));
+ const generic=await instruction(previous,JSON.stringify([{code:'UI1009',file:'experience.dealui',line:2,message:"Expected ')'"}]));assert(!generic.includes('Use ==='));assert(!generic.includes('namespace imports'));
  assert(!(await instruction('not JSON',diagnostic)).includes('Exact reported source line'));
  let rejected=false;try{await instruction(previous,diagnostic,true)}catch(e){rejected=e.code==='STORAGE_FAILED'}assert(rejected,'operational parse failure must propagate');
  console.log('PASS compiled generation guidance: authored example; bounded source/pack feedback; invalid JSON safe; operational parser failure propagates');
