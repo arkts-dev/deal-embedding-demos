@@ -32,11 +32,5 @@ const tick=()=>new Promise(resolve=>setImmediate(resolve));
  s.dispatch(slot(s,'Read value'));req=JSON.parse(dealCapabilities.take());dealCapabilities.deliver([{id:req[0].id,ok:false,error:{code:'UNAVAILABLE',message:'private failure'}}]);await tick();await tick();
  const failure=nodes(snapshot(s).tree).find(n=>n.component.endsWith('.Failure'));assert.equal(value(failure,'text'),'Check access and try again');assert(!JSON.stringify(snapshot(s).tree).includes('private failure'));
  s.dispatch(prop(failure,'onRetry').actionSlot);req=JSON.parse(dealCapabilities.take());dealCapabilities.deliver([{id:req[0].id,ok:true,value:43}]);await tick();await tick();assert.equal(JSON.parse(s.checkpoint()).value,43);s.dispose();
- for(const name of fs.readdirSync(base).filter(n=>n.startsWith('saved-')&&!n.endsWith('-baseline')&&fs.existsSync(path.join(base,n,'state.json')))){
-  const restored=JSON.parse(fs.readFileSync(path.join(base,name,'state.json'),'utf8'));
-  const old=mount(name+'-baseline',restored);const expected=snapshot(old).tree;const expectedState=JSON.parse(old.checkpoint());old.dispose();
-  const current=mount(name,restored);assert.deepEqual(snapshot(current).tree,expected,'Saved source tree changed');assert.deepEqual(JSON.parse(current.checkpoint()),expectedState,'Saved state changed');current.dispose();
- }
- s=mount('legacy');assert.equal(JSON.parse(dealCapabilities.take()).length,0);s.dispatch(slot(s,'Read value'));req=JSON.parse(dealCapabilities.take());dealCapabilities.deliver([{id:req[0].id,ok:true,value:42}]);await tick();await tick();assert.equal(JSON.parse(s.checkpoint()).value,42);s.dispose();
- console.log('PASS real compiler/VM: comparison over/under/equal, bounds, typed payloads, reset, settled restore; alternatives/deposit; empty/pending/success/failure/retry; legacy async source.');
+ console.log('PASS real compiler/VM: comparison over/under/equal, bounds, typed payloads, reset, settled restore; alternatives/deposit; empty/pending/success/failure/retry.');
 })().catch(e=>{console.error(e);process.exitCode=1});

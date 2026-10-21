@@ -23,7 +23,7 @@ async function instruction(previous,diagnostics,operational=false){
 }
 (async()=>{
  const text=vm.runInContext('guidance.guidance.$f()',ctx);
- assert(text.includes('literal Unicode character'));assert(text.includes('DEAL preserves unsupported escapes'));
+ assert(text.includes('literal Unicode character'));assert(text.includes('DEAL does not support Unicode escape sequences'));assert(text.includes('record["from"]'));assert(!text.includes('String-key indexing like'));
  assert(text.includes('required props: label, minorUnits'));assert(text.includes('requires children of types Money|Metric'));assert(text.includes('CHECKED LOCAL COMPARISON EXAMPLE'));assert(text.includes('backend never calculates a winner'));
  assert(text.includes('CHECKED ASYNC EXAMPLE'));assert(text.includes('host/sample'));assert(text.includes('not an available capability'));
  const previous=JSON.stringify({deal:'export class State {}',dealui:'ui.Column() {\nui.Toggle(value: true, checked: false)\n}'});
