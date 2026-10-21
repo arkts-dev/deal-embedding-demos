@@ -2,6 +2,7 @@
 """Loopback development gateway. Reads Pi credentials in memory; never logs provider data."""
 import argparse, concurrent.futures, http.server, json, os, pathlib, subprocess, time, urllib.request, urllib.error
 from jev_chooser import infer as infer_jev
+from gateway_transport import stable_messages, read_stream, prefix_fingerprint
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 # Credentials are loaded only for enabled backends, never packaged in an APK.
 BACKENDS = {}
@@ -24,7 +25,14 @@ parser.add_argument('--enable-cortex', action='store_true', help='Also serve Cor
 parser.add_argument('--enable-cerebras', action='store_true', help='Also serve Cerebras when Cortex is the default')
 parser.add_argument('--discovery-backend', choices=('disabled', 'deepseek-flash'), default='disabled', help='Explicit remote discovery; credential comes only from DEXTER_DEEPSEEK_API_KEY')
 parser.add_argument('--cerebras-key-file', type=pathlib.Path, default=pathlib.Path.home()/'cerebras.key')
+parser.add_argument('--initial-reasoning', choices=('none','low','medium','high'), default='low')
+parser.add_argument('--repair-reasoning', choices=('none','low','medium','high'), default='low')
+parser.add_argument('--initial-max-tokens', type=int, default=32768)
+parser.add_argument('--repair-max-tokens', type=int, default=32768)
+parser.add_argument('--stream-source', action=argparse.BooleanOptionalAction, default=True, help='Measure Cerebras stream phases; partial output never leaves gateway')
 options = parser.parse_args()
+if not (1 <= options.initial_max_tokens <= 32768 and 1 <= options.repair_max_tokens <= 32768):
+    parser.error('Source completion limits must be 1..32768')
 if options.backend == 'cortex' or options.enable_cortex:
     config = json.loads((pathlib.Path.home()/'.pi/agent/models.json').read_text())['providers']['devagent']
     key = config['apiKey']
@@ -79,23 +87,28 @@ def infer(body):
     admit(body)
     if not discovery and options.chooser == 'jev' and '\n\nISSUED OPTIONS\n' in body['input']:
         return infer_jev(body, JEV_KEY, options.jev_model)
-    messages=[{'role':'user','content':body['input']}]
-    if body.get('previous'):
-        messages.append({'role':'assistant','content':body['previous']})
-    if body.get('diagnostics') or body.get('previous'):
-        instruction = 'Return only the exact-source-patch-v1 edits requested in the input; preserve unaffected source.' if 'REPAIR PROTOCOL exact-source-patch-v1' in body['input'] else 'Generate or repair both source files using these diagnostics. Preserve the requested behavior. Return the complete JSON envelope.'
-        messages.append({'role':'user','content':instruction+'\n'+body['diagnostics']})
+    messages=stable_messages(body)
+    repairing=bool(body.get('previous')) or '\nSOURCE OPERATION\nrepair\n' in body['input']
+    operation='discovery' if discovery else 'repair' if repairing else 'initial'
     provider = DISCOVERY if discovery else BACKENDS[backend]
     payload={'model':provider['model'],'messages':messages,'max_tokens':8192,'temperature':0.2,'stream':False}
     if backend == 'cerebras':
-        payload.update(max_tokens=32768, temperature=1, top_p=0.95, reasoning_effort='low', response_format={'type':'json_object'})
+        effort=getattr(options,'repair_reasoning','low') if repairing else getattr(options,'initial_reasoning','low')
+        limit=getattr(options,'repair_max_tokens',32768) if repairing else getattr(options,'initial_max_tokens',32768)
+        payload.update(max_tokens=limit, temperature=1, top_p=0.95, reasoning_effort=effort, response_format={'type':'json_object'}, clear_thinking=True)
+        if getattr(options,'stream_source',False):
+            payload.update(stream=True, stream_options={'include_usage':True})
     if discovery:
         # Discovery can return literal null; JSON-object mode would change the existing contract.
         payload.update(max_tokens=4096, temperature=0, thinking={'type':'disabled'})
     # Cerebras rejects urllib's default User-Agent; explicit identity is required.
     request=urllib.request.Request(provider['endpoint'],data=json.dumps(payload).encode(),headers={'Content-Type':'application/json','Authorization':'Bearer '+provider['key'],'User-Agent':'deal-embed-development/1.0'})
+    started=time.monotonic()
+    phases=None
     with urllib.request.urlopen(request,timeout=420) as response:
-        data=json.loads(response.read(2*1024*1024))
+        if payload['stream']: data,phases=read_stream(response,started)
+        else: data=json.loads(response.read(2*1024*1024))
+    total_ms=(time.monotonic()-started)*1000
     content=data['choices'][0]['message']['content']
     if not isinstance(content,str): raise ValueError('No text result')
     if len(content.encode()) > 256*1024: raise ValueError('Model content limit')
@@ -108,7 +121,10 @@ def infer(body):
               'temperature':payload['temperature'], 'max_tokens':payload['max_tokens'],
               'reasoning':count((usage.get('completion_tokens_details') or {}).get('reasoning_tokens'))}
     if discovery: metadata['thinking'] = 'disabled'
-    if backend == 'cerebras': metadata['reasoning_effort'] = 'low'
+    metadata.update(operation=operation,totalMs=total_ms,prefixSha256=prefix_fingerprint(messages))
+    if phases is not None: metadata['phases']=phases
+    if isinstance(data.get('time_info'),dict): metadata['providerTime']=data['time_info']
+    if backend == 'cerebras': metadata['reasoning_effort'] = payload['reasoning_effort']
     result={'content':content, 'model':provider['model'], 'metadata':metadata}
     if body['capture']: result.update(request=payload, response=data)
     encoded=json.dumps(result).encode()

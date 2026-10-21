@@ -68,6 +68,20 @@ import * as ui from "./platform.dealui-pack";
 // @ui-root
 export view Main(state:app.State):View {ui.Column(){ui.IntText(value:state.value) ui.Button(text:"Increment",onClick:action app.Increment {})}}
 """)
+            // Canonical catalogues preserve field names/positional parameters while sorting inventories.
+            val intType=CapabilityType("int")
+            val fields=linkedMapOf("optionalFields" to intType,"alpha" to intType)
+            fun catalog(reverse:Boolean,parameters:List<CapabilityParameter>):String {
+                val keys=if(reverse)fields.entries.reversed().associate { it.toPair() } else fields
+                val type=CapabilityType("record",fields=keys,optionalFields=if(reverse)linkedSetOf("alpha","optionalFields") else linkedSetOf("optionalFields","alpha"))
+                val functions=listOf(CapabilityFunction("read","Read",parameters,type),CapabilityFunction("other","Other",emptyList(),intType))
+                val contracts=listOf(CapabilityContract("host/beta","Beta",if(reverse)functions.reversed() else functions),CapabilityContract("host/alpha","Alpha",listOf(functions.last())))
+                val config=EmbeddingConfig("experience",if(reverse)contracts.reversed() else contracts,"canonical-fixture")
+                return Class.forName("dev.deal.embedding.ExperienceGeneratorKt").getDeclaredMethod("canonicalCatalog",EmbeddingConfig::class.java).invoke(null,config) as String
+            }
+            val parameters=listOf(CapabilityParameter("first",intType),CapabilityParameter("second",intType))
+            check(catalog(false,parameters)==catalog(true,parameters))
+            check(catalog(false,parameters)!=catalog(true,parameters.reversed()))
             val registry = CapabilityRegistry(targetContext, CapabilityDiscovery(targetContext) { false }, emptyList())
             val pair = JSONObject().put("deal", source.deal).put("dealui", source.dealui).toString()
             EmbeddingLog.capture(targetContext, true)
@@ -116,6 +130,28 @@ export view Main(state:app.State):View {ui.Column(){ui.IntText(value:state.value
                     check(provider.any { it.optString("outcome") == "completed" && it.optString("target").contains("fixture-model") })
                     for (outcome in listOf("request", "response")) check(provider.any { it.optString("outcome") == outcome && it.optString("artifact").isNotEmpty() })
                 }
+            }
+            // Actual compiled delta orchestration, source windows and exact revision-bound patch.
+            val broken=Source(source.deal.replace("value:state.value+1","value:state.value+"),source.dealui)
+            var repairCalls=0
+            val patchModel=object:ModelClient {
+                override fun complete(input:String,previous:String,diagnostics:String,cancellation:GenerationCancellation,log:EmbeddingLog):String {
+                    repairCalls++
+                    if(repairCalls==1) { check(input.contains("SOURCE OPERATION\ninitial"));return JSONObject().put("deal",broken.deal).put("dealui",broken.dealui).toString() }
+                    check(repairCalls==2 && input.contains("SOURCE OPERATION\nrepair"))
+                    check(input.contains("smallest rejected source region") && input.contains("Exact reported source line"))
+                    check(!input.contains("return both complete source strings"))
+                    val digestText="${broken.deal.length}:${broken.deal}${broken.dealui.length}:${broken.dealui}"
+                    val digest=java.security.MessageDigest.getInstance("SHA-256").digest(digestText.toByteArray()).joinToString("") { "%02x".format(it) }
+                    return JSONObject().put("baseDigest",digest).put("edits",org.json.JSONArray().put(JSONObject().put("file","deal").put("search","value:state.value+").put("replacement","value:state.value+1"))).toString()
+                }
+            }
+            ApplicationProtocol(targetContext,Embedding(targetContext,CapabilityRegistry(targetContext,CapabilityDiscovery(targetContext){false},emptyList()),patchModel,EmbeddingConfig("experience",emptyList(),"patch-${UUID.randomUUID()}",repairStrategy="delta"))).use { api ->
+                val request=api.request("Patch fixture","Editable counter",api.snapshot(WireType("record"),"{}"))
+                val e=api.generate(request);check(repairCalls==2 && api.source(e)==source)
+                val s=api.run(e);val tree=api.next(s,"").snapshot.tree
+                val action=tree.getJSONArray("children").getJSONObject(1).getJSONArray("props").let { props -> (0 until props.length()).map { props.getJSONObject(it) }.first { it.optString("kind")=="action" }.getInt("actionSlot") }
+                api.dispatch(s,action,null);check(api.next(s,"").snapshot.tree.toString().contains("\"intValue\":8"));api.close(s);api.forget(e)
             }
             // Remote discovery uses the same transport but the unchanged strict discovery/admission path.
             val discoveryRegistry = CapabilityRegistry(targetContext, CapabilityDiscovery(targetContext) { false }, emptyList())

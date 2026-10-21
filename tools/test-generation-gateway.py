@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """No credentials loaded, no network: exact provider exchange envelope contract."""
-import ast, json, pathlib, types, unittest, tempfile, http.server, urllib.request, urllib.error, concurrent.futures, threading
+import ast, json, pathlib, types, unittest, tempfile, http.server, urllib.request, urllib.error, concurrent.futures, threading, time
+from gateway_transport import stable_messages, read_stream, prefix_fingerprint
 
 class GatewayTest(unittest.TestCase):
     def test_budget(self):
@@ -79,7 +80,7 @@ class GatewayTest(unittest.TestCase):
             def read(self,limit):return json.dumps(response).encode()
         def request(url,data,headers):
             seen.append(json.loads(data));headers_seen.append(headers);return object()
-        namespace={'options':types.SimpleNamespace(chooser='jev',backend='cortex'),'GatewayFailure':ValueError,'BACKENDS':{'cortex':{'model':'fixture','endpoint':'unused','key':'private-key'},'cerebras':{'model':'qwen-3.8-27b','endpoint':'cerebras','key':'private-key'}},'admit': lambda body: None, 'json':json,'urllib':types.SimpleNamespace(request=types.SimpleNamespace(Request=request,urlopen=lambda *a,**k:Reply()))}
+        namespace={'options':types.SimpleNamespace(chooser='jev',backend='cortex'),'GatewayFailure':ValueError,'BACKENDS':{'cortex':{'model':'fixture','endpoint':'unused','key':'private-key'},'cerebras':{'model':'qwen-3.8-27b','endpoint':'cerebras','key':'private-key'}},'admit': lambda body: None, 'time':time, 'stable_messages':stable_messages, 'prefix_fingerprint':prefix_fingerprint, 'read_stream':read_stream, 'json':json,'urllib':types.SimpleNamespace(request=types.SimpleNamespace(Request=request,urlopen=lambda *a,**k:Reply()))}
         exec(compile(ast.Module(body=[infer],type_ignores=[]),'gateway','exec'),namespace)
         body={'input':'prompt','previous':'prior','diagnostics':'E3003','capture':True}
         result=json.loads(namespace['infer'](body))
@@ -102,6 +103,14 @@ class GatewayTest(unittest.TestCase):
         self.assertEqual(seen[-1]['response_format'],{'type':'json_object'})
         self.assertEqual(headers_seen[-1]['User-Agent'],'deal-embed-development/1.0')
         self.assertEqual(seen[-1]['messages'],seen[0]['messages'])
+        namespace['options'].initial_reasoning='medium';namespace['options'].repair_reasoning='none'
+        namespace['options'].initial_max_tokens=16000;namespace['options'].repair_max_tokens=4096
+        body.update(input='rules\nSOURCE OPERATION\ninitial\n',previous='',diagnostics='')
+        initial=json.loads(namespace['infer'](body))
+        self.assertEqual(initial['metadata']['operation'],'initial');self.assertEqual(seen[-1]['reasoning_effort'],'medium');self.assertEqual(seen[-1]['max_tokens'],16000)
+        body.update(input='rules\nSOURCE OPERATION\nrepair\n',diagnostics='INVALID_ENVELOPE')
+        repair=json.loads(namespace['infer'](body))
+        self.assertEqual(repair['metadata']['operation'],'repair');self.assertEqual(seen[-1]['reasoning_effort'],'none');self.assertEqual(seen[-1]['max_tokens'],4096)
         namespace['DISCOVERY']={'model':'deepseek-flash','endpoint':'deepseek','key':'private-deepseek-key'}
         body.update(backend='deepseek-flash',discovery=True,previous='',diagnostics='',capture=True)
         response['choices'][0]['message']['content']='null'

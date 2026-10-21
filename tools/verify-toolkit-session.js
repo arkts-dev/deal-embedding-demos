@@ -32,6 +32,7 @@ const tick=()=>new Promise(resolve=>setImmediate(resolve));
  s.dispatch(slot(s,'Read value'));req=JSON.parse(dealCapabilities.take());dealCapabilities.deliver([{id:req[0].id,ok:false,error:{code:'UNAVAILABLE',message:'private failure'}}]);await tick();await tick();
  const failure=nodes(snapshot(s).tree).find(n=>n.component.endsWith('.Failure'));assert.equal(value(failure,'text'),'Check access and try again');assert(!JSON.stringify(snapshot(s).tree).includes('private failure'));
  s.dispatch(prop(failure,'onRetry').actionSlot);req=JSON.parse(dealCapabilities.take());dealCapabilities.deliver([{id:req[0].id,ok:true,value:43}]);await tick();await tick();assert.equal(JSON.parse(s.checkpoint()).value,43);s.dispose();
+ s=mount('primitives');assert.equal(JSON.parse(s.state()).text,'-2147483648|0|15:16||');assert.equal(JSON.parse(s.state()).bounded,true);s.dispose();
  s=mount('rows');
  const rowValues=()=>JSON.parse(s.state()).rows.map(r=>[r.id,r.quantity]);
  const oldA=slot(s,'a'),oldB=slot(s,'b');

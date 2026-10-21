@@ -7,6 +7,8 @@ GENERATION_BACKEND="${DEAL_GENERATION_BACKEND:-cerebras}"
 case "$GENERATION_BACKEND" in cortex|cerebras) ;; *) echo 'DEAL_GENERATION_BACKEND must be cortex or cerebras' >&2; exit 1 ;; esac
 DISCOVERY_BACKEND="${DEAL_DISCOVERY_BACKEND:-nano}"
 case "$DISCOVERY_BACKEND" in nano|deepseek-flash) ;; *) echo 'DEAL_DISCOVERY_BACKEND must be nano or deepseek-flash' >&2; exit 1 ;; esac
+REPAIR_STRATEGY="${DEAL_REPAIR_STRATEGY:-full}"
+case "$REPAIR_STRATEGY" in full|delta) ;; *) echo 'DEAL_REPAIR_STRATEGY must be full or delta' >&2; exit 1 ;; esac
 TARGETS=("$@")
 [[ ${#TARGETS[@]} -eq 0 ]] && TARGETS=(calendar vehicle todo organizer rental pizza tests)
 SDK="${ANDROID_SDK_ROOT:-$HOME/Android/Sdk}"
@@ -207,7 +209,7 @@ for app in "${TARGETS[@]}"; do
             discovery_label='Cloud suggestions · DeepSeek Flash'
             discovery_detail='Send this app’s disclosed content and available action descriptions to DeepSeek Flash to find help. Finding suggestions does not read other apps’ records.'
         fi
-        printf 'package dev.deal.shell\nimport dev.deal.embedding.GenerationGatewayConfig\nobject AssistanceBuild { const val discoveryBackend = "%s"; const val discoveryLabel = "%s"; const val discoveryDetail = "%s"; fun discoveryGateway(): GenerationGatewayConfig? = %s; fun gateway() = GenerationGatewayConfig("http://127.0.0.1:8787/generate", "%s") }\n' "$DISCOVERY_BACKEND" "$discovery_label" "$discovery_detail" "$discovery_config" "$GENERATION_BACKEND" > "build/$app/AssistanceBuild.kt"
+        printf 'package dev.deal.shell\nimport dev.deal.embedding.GenerationGatewayConfig\nobject AssistanceBuild { const val repairStrategy = "%s"; const val discoveryBackend = "%s"; const val discoveryLabel = "%s"; const val discoveryDetail = "%s"; fun discoveryGateway(): GenerationGatewayConfig? = %s; fun gateway() = GenerationGatewayConfig("http://127.0.0.1:8787/generate", "%s") }\n' "$REPAIR_STRATEGY" "$DISCOVERY_BACKEND" "$discovery_label" "$discovery_detail" "$discovery_config" "$GENERATION_BACKEND" > "build/$app/AssistanceBuild.kt"
         printf 'Discovery backend (%s): %s\n' "$app" "$DISCOVERY_BACKEND"
         sources+=("build/$app/AssistanceBuild.kt")
         printf 'Generation backend (%s): %s\n' "$app" "$GENERATION_BACKEND"

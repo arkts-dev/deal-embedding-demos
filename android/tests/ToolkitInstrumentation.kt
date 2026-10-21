@@ -99,6 +99,11 @@ class ToolkitInstrumentation : Instrumentation() {
                 check(runCatching { p.dispatch(s,removed,"11") }.isFailure)
                 p.close(s);p.forget(e)
             }
+            api().use { p ->
+                val e=p.load("Primitives",source("primitives"));val s=p.run(e)
+                check(p.next(s,"").snapshot.tree.toString().contains("-2147483648|0|15:16||"))
+                p.close(s);p.forget(e)
+            }
             check(formatMoney(1750,"EUR",Locale.US)=="€17.50")
             check(formatMoney(-1750,"EUR",Locale.US)=="-€17.50")
             check(formatMoney(Int.MIN_VALUE,"EUR",Locale.US)=="-€21,474,836.48")
