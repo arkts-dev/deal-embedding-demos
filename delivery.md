@@ -1,5 +1,13 @@
 # Four-scenario delivery
 
+## Build-selected discovery and fresh Flash measurement
+
+`DEAL_DISCOVERY_BACKEND=nano` retains local discovery as the default; `deepseek-flash` selects the library-owned bounded/cancellable gateway transport. Source generation remains independently build-selected Cerebras. Cloud discovery has a separate OFF-by-default disclosure switch, not inherited local consent. The external gateway alone reads `DEXTER_DEEPSEEK_API_KEY`; no credentials enter APKs or logged requests. No automatic retries/fallback; unchanged strict reply validation, authorized catalogue, freshness and single-use admission.
+
+After archiving and purging all installed generated experiences in six apps, four ordinary fresh discoveries took 2.193 / 2.042 / 1.860 / 1.411 seconds (equipment / food / departure / budget), versus earlier Nano 33.257 / 35.422 / 39.664 / 20.082. One sample per scenario, not a repeated causal benchmark. All old `build/fresh-four/` files were hash-verified unchanged; new private prompts, responses, source/check failures, toolchain timings, runtime reads and purge receipts are separate in `build/flash-four/`.
+
+Equipment executed real catalogue and package/separate quotes: EUR12 versus EUR13 hire, each EUR50 refundable deposit, correct editable budget arithmetic on the tested catalogue; weak matching/expiry handling remain. Food exhausted two repairs (E1015, E1034, UI2050) and never mounted. Departure displayed correct simulated arithmetic and edits but computed the disclosed formula locally without Vehicle execution and mislabeled Berlin daylight time CET; not a successful cross-app journey. Budget arithmetic/edits and force-stop retention passed. These results establish faster observed discovery, not semantic reliability or visual approval. Full private timing/semantic report: `build/flash-four/REPORT.md`.
+
 ## Explicit historical purge
 
 At the user's explicit request, all six installed apps were force-stopped and their historical assistance data purged: generated source/drafts, old workspace/test preference stores, generated links/dismissals, staged generated Organizer proposals, candidate/distribution directories, diagnostic logs, snapshots and experiment leftovers. Domain records and current access/disclosure choices were retained; no `pm clear` was used. Private pre-purge evidence was archived outside the apps under ignored `build/purge/`. This deliberate one-time purge is broader than the ordinary evidence-preserving Settings reset.

@@ -22,6 +22,7 @@ parser.add_argument('--jev-model', default='jev-latest')
 parser.add_argument('--backend', choices=('cortex', 'cerebras'), default='cortex', help='Default backend for tooling without an app build-selection header')
 parser.add_argument('--enable-cortex', action='store_true', help='Also serve Cortex when Cerebras is the default')
 parser.add_argument('--enable-cerebras', action='store_true', help='Also serve Cerebras when Cortex is the default')
+parser.add_argument('--discovery-backend', choices=('disabled', 'deepseek-flash'), default='disabled', help='Explicit remote discovery; credential comes only from DEXTER_DEEPSEEK_API_KEY')
 parser.add_argument('--cerebras-key-file', type=pathlib.Path, default=pathlib.Path.home()/'cerebras.key')
 options = parser.parse_args()
 if options.backend == 'cortex' or options.enable_cortex:
@@ -33,6 +34,11 @@ if options.backend == 'cerebras' or options.enable_cerebras:
     key = options.cerebras_key_file.read_text().strip()
     if not key or any(c.isspace() for c in key): parser.error('Cerebras credential must be a nonempty single token')
     BACKENDS['cerebras'] = {'key': key, 'model': 'qwen-3.8-27b', 'endpoint': 'https://api.cerebras.ai/v1/chat/completions'}
+DISCOVERY = None
+if options.discovery_backend == 'deepseek-flash':
+    key = os.environ.get('DEXTER_DEEPSEEK_API_KEY', '')
+    if not key or any(c.isspace() for c in key): parser.error('DEXTER_DEEPSEEK_API_KEY must be a nonempty single token')
+    DISCOVERY = {'key':key, 'model':'deepseek-flash', 'endpoint':'https://api.deepseek.com/chat/completions'}
 JEV_KEY = options.jev_key_file.read_text().strip() if options.chooser == 'jev' else ''
 if options.chooser == 'jev' and (not JEV_KEY or any(c.isspace() for c in JEV_KEY)):
     parser.error('Jev credential must be a nonempty single token')
@@ -52,7 +58,9 @@ def admit(body):
     path = pathlib.Path(COUNTS_PATH)
     counts = json.loads(path.read_text()) if path.exists() else {'choice': 0, 'source': 0}
     kind = 'choice' if '\n\nISSUED OPTIONS\n' in body['input'] else 'source'
-    limit = SOURCE_LIMIT if kind == 'source' else CHOICE_LIMIT
+    if body.get('discovery'): kind = 'discovery'
+    counts.setdefault(kind, 0)
+    limit = SOURCE_LIMIT if kind in ('source', 'discovery') else CHOICE_LIMIT
     if limit is not None and counts[kind] >= limit:
         raise GatewayFailure('AUDIT_LIMIT', 'Explicit audit call ceiling exhausted; start the gateway in demo mode for user demonstrations.')
     counts[kind] += 1
@@ -62,10 +70,14 @@ def admit(body):
 # Return provider request/response to the caller's unified private logger; no parallel logs.
 def infer(body):
     backend = body.get('backend', options.backend)
-    if backend not in BACKENDS:
+    discovery = body.get('discovery', False)
+    if discovery:
+        if DISCOVERY is None or backend != 'deepseek-flash':
+            raise GatewayFailure('BACKEND_UNAVAILABLE', 'Requested discovery backend is not enabled')
+    elif backend not in BACKENDS:
         raise GatewayFailure('BACKEND_UNAVAILABLE', 'Requested build-time backend is not enabled in this gateway')
     admit(body)
-    if options.chooser == 'jev' and '\n\nISSUED OPTIONS\n' in body['input']:
+    if not discovery and options.chooser == 'jev' and '\n\nISSUED OPTIONS\n' in body['input']:
         return infer_jev(body, JEV_KEY, options.jev_model)
     messages=[{'role':'user','content':body['input']}]
     if body.get('previous'):
@@ -73,10 +85,13 @@ def infer(body):
     if body.get('diagnostics') or body.get('previous'):
         instruction = 'Return only the exact-source-patch-v1 edits requested in the input; preserve unaffected source.' if 'REPAIR PROTOCOL exact-source-patch-v1' in body['input'] else 'Generate or repair both source files using these diagnostics. Preserve the requested behavior. Return the complete JSON envelope.'
         messages.append({'role':'user','content':instruction+'\n'+body['diagnostics']})
-    provider = BACKENDS[backend]
+    provider = DISCOVERY if discovery else BACKENDS[backend]
     payload={'model':provider['model'],'messages':messages,'max_tokens':8192,'temperature':0.2,'stream':False}
     if backend == 'cerebras':
         payload.update(max_tokens=32768, temperature=1, top_p=0.95, reasoning_effort='low', response_format={'type':'json_object'})
+    if discovery:
+        # Discovery can return literal null; JSON-object mode would change the existing contract.
+        payload.update(max_tokens=4096, temperature=0, thinking={'type':'disabled'})
     # Cerebras rejects urllib's default User-Agent; explicit identity is required.
     request=urllib.request.Request(provider['endpoint'],data=json.dumps(payload).encode(),headers={'Content-Type':'application/json','Authorization':'Bearer '+provider['key'],'User-Agent':'deal-embed-development/1.0'})
     with urllib.request.urlopen(request,timeout=420) as response:
@@ -90,7 +105,9 @@ def infer(body):
     metadata={'in':count(usage.get('prompt_tokens')), 'out':count(usage.get('completion_tokens')),
               'cached':count((usage.get('prompt_tokens_details') or {}).get('cached_tokens')),
               'finish':finish if finish in ('stop','length','content_filter','tool_calls') else 'unknown',
-              'temperature':payload['temperature'], 'max_tokens':payload['max_tokens']}
+              'temperature':payload['temperature'], 'max_tokens':payload['max_tokens'],
+              'reasoning':count((usage.get('completion_tokens_details') or {}).get('reasoning_tokens'))}
+    if discovery: metadata['thinking'] = 'disabled'
     if backend == 'cerebras': metadata['reasoning_effort'] = 'low'
     result={'content':content, 'model':provider['model'], 'metadata':metadata}
     if body['capture']: result.update(request=payload, response=data)
@@ -108,16 +125,22 @@ class Handler(http.server.BaseHTTPRequestHandler):
     def do_GET(self):
         if self.path != '/health': self.send_error(404); return
         # Readiness of this transport/configuration only, NOT a provider success claim.
-        self.reply(200, {'mode':'audit' if options.audit else 'demo', 'configured':all(bool(p['key']) for p in BACKENDS.values()) and (options.chooser != 'jev' or bool(JEV_KEY)), 'automaticRetries':False, 'chooser':options.chooser, 'defaultBackend':options.backend, 'sourceModels':{name:p['model'] for name,p in BACKENDS.items()}})
+        health = {'mode':'audit' if options.audit else 'demo', 'configured':all(bool(p['key']) for p in BACKENDS.values()) and (options.chooser != 'jev' or bool(JEV_KEY)), 'automaticRetries':False, 'chooser':options.chooser, 'defaultBackend':options.backend, 'sourceModels':{name:p['model'] for name,p in BACKENDS.items()}}
+        if DISCOVERY is not None: health['discoveryModel'] = DISCOVERY['model']
+        self.reply(200, health)
     def do_POST(self):
-        if self.path!='/generate': self.send_error(404); return
+        if self.path not in ('/generate', '/discover'): self.send_error(404); return
         try:
             length=int(self.headers.get('Content-Length','0'))
             if not 0<length<=256*1024: raise ValueError('Request limit')
             body=json.loads(self.rfile.read(length))
             if set(body)!={'input','previous','diagnostics','capture'} or not all(isinstance(body[v],str) for v in ('input','previous','diagnostics')) or type(body['capture']) is not bool: raise ValueError('Invalid request')
             backend = self.headers.get('X-Deal-Generation-Backend', options.backend)
-            if backend not in BACKENDS: raise GatewayFailure('BACKEND_UNAVAILABLE', 'Requested build-time backend is not enabled in this gateway')
+            if self.path == '/discover':
+                if DISCOVERY is None or backend != 'deepseek-flash': raise GatewayFailure('BACKEND_UNAVAILABLE', 'Requested discovery backend is not enabled')
+                if body['previous'] or body['diagnostics']: raise ValueError('Discovery cannot repair or replay')
+                body['discovery'] = True
+            elif backend not in BACKENDS: raise GatewayFailure('BACKEND_UNAVAILABLE', 'Requested build-time backend is not enabled in this gateway')
             body['backend'] = backend
             output=POOL.submit(infer,body).result(timeout=450)
             if len(output)>2*1024*1024: raise ValueError('Output limit')

@@ -30,6 +30,9 @@ fun assistanceProtocol(context: Context, storageName: String = "assistance"): Ap
 }
 
 /** App lifecycle/placement and retention decisions, not an execution driver. */
+internal fun discoveryPreference() = if (AssistanceBuild.discoveryBackend == "nano") "discovery" else "discovery.${AssistanceBuild.discoveryBackend}"
+internal fun discoveryEnabled(context: Context) = Connections.settings(context).getBoolean(discoveryPreference(), AssistanceBuild.discoveryBackend == "nano")
+
 internal class TaskHelp(private val context: Context, private val facts: () -> List<DiscoveryFact>, private val protocolFactory: (Context) -> ApplicationProtocol) : AutoCloseable {
     private val worker = Executors.newSingleThreadExecutor()
     private val main = Handler(Looper.getMainLooper())
@@ -98,10 +101,10 @@ internal class TaskHelp(private val context: Context, private val facts: () -> L
                 val retained = settings.getString("saved.${current.identity}", null)
                 val saved = retained?.let { id -> protocol.saved().firstOrNull { it.id == id } }
                 if (saved != null) { activate(protocol, saved, version); ownerInput = current.identity; post(version) { busy = false; status = "" }; return@execute }
-                if (!settings.getBoolean("discovery", true) || settings.getBoolean("dismissed.${current.identity}", false)) {
+                if (!discoveryEnabled(context) || settings.getBoolean("dismissed.${current.identity}", false)) {
                     post(version) { busy = false; status = "" }; return@execute
                 }
-                val discovery = finder ?: Discovery(context, protocol).also { finder = it }
+                val discovery = finder ?: Discovery(context, protocol, AssistanceBuild.discoveryGateway()).also { finder = it }
                 since = System.currentTimeMillis(); trace = ""
                 discovery.discover(current).whenComplete { tip, error -> post(version) {
                     busy = false; suggestion = tip; failed = error != null

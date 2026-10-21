@@ -5,6 +5,8 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 GENERATION_BACKEND="${DEAL_GENERATION_BACKEND:-cerebras}"
 case "$GENERATION_BACKEND" in cortex|cerebras) ;; *) echo 'DEAL_GENERATION_BACKEND must be cortex or cerebras' >&2; exit 1 ;; esac
+DISCOVERY_BACKEND="${DEAL_DISCOVERY_BACKEND:-nano}"
+case "$DISCOVERY_BACKEND" in nano|deepseek-flash) ;; *) echo 'DEAL_DISCOVERY_BACKEND must be nano or deepseek-flash' >&2; exit 1 ;; esac
 TARGETS=("$@")
 [[ ${#TARGETS[@]} -eq 0 ]] && TARGETS=(calendar vehicle todo organizer rental pizza tests)
 SDK="${ANDROID_SDK_ROOT:-$HOME/Android/Sdk}"
@@ -197,7 +199,16 @@ for app in "${TARGETS[@]}"; do
             printf 'package dev.deal.apps.%s\nimport dev.deal.embedding.GenerationGatewayConfig\nobject GenerationBuild { const val backend = "%s"; const val label = "%s"; fun gateway() = GenerationGatewayConfig("http://127.0.0.1:8787/generate", backend) }\n' "$host" "$GENERATION_BACKEND" "$( [[ "$GENERATION_BACKEND" == cerebras ]] && echo 'Cerebras · qwen-3.8-27b' || echo 'Cortex' )" > "build/$app/${host}-GenerationBuild.kt"
             sources+=("build/$app/${host}-GenerationBuild.kt")
         done
-        printf 'package dev.deal.shell\nimport dev.deal.embedding.GenerationGatewayConfig\nobject AssistanceBuild { fun gateway() = GenerationGatewayConfig("http://127.0.0.1:8787/generate", "%s") }\n' "$GENERATION_BACKEND" > "build/$app/AssistanceBuild.kt"
+        discovery_config='null'
+        discovery_label='On-device suggestions'
+        discovery_detail='Find help locally using this app’s disclosed content and available actions. Finding suggestions does not read other apps’ records.'
+        if [[ "$DISCOVERY_BACKEND" == deepseek-flash ]]; then
+            discovery_config='GenerationGatewayConfig("http://127.0.0.1:8787/discover", "deepseek-flash", readTimeoutMs = 90000)'
+            discovery_label='Cloud suggestions · DeepSeek Flash'
+            discovery_detail='Send this app’s disclosed content and available action descriptions to DeepSeek Flash to find help. Finding suggestions does not read other apps’ records.'
+        fi
+        printf 'package dev.deal.shell\nimport dev.deal.embedding.GenerationGatewayConfig\nobject AssistanceBuild { const val discoveryBackend = "%s"; const val discoveryLabel = "%s"; const val discoveryDetail = "%s"; fun discoveryGateway(): GenerationGatewayConfig? = %s; fun gateway() = GenerationGatewayConfig("http://127.0.0.1:8787/generate", "%s") }\n' "$DISCOVERY_BACKEND" "$discovery_label" "$discovery_detail" "$discovery_config" "$GENERATION_BACKEND" > "build/$app/AssistanceBuild.kt"
+        printf 'Discovery backend (%s): %s\n' "$app" "$DISCOVERY_BACKEND"
         sources+=("build/$app/AssistanceBuild.kt")
         printf 'Generation backend (%s): %s\n' "$app" "$GENERATION_BACKEND"
         rm -rf "build/assets/$app"; mkdir -p "build/assets/$app"

@@ -43,7 +43,7 @@ class AssistanceSettingsActivity : ComponentActivity() {
         setContent { AppTheme(appAccent(packageName)) {
             val settings = remember { Connections.settings(this) }
             val sharing = remember { getSharedPreferences("provider", 0) }
-            var discover by remember { mutableStateOf(settings.getBoolean("discovery", true)) }
+            var discover by remember { mutableStateOf(settings.getBoolean(discoveryPreference(), AssistanceBuild.discoveryBackend == "nano")) }
             var generate by remember { mutableStateOf(settings.getBoolean("generation", false)) }
             var shared by remember { mutableStateOf(sharing.getBoolean("allowed", false)) }
             var contracts by remember { mutableStateOf<List<SharedCapabilityContract>>(emptyList()) }
@@ -62,7 +62,7 @@ class AssistanceSettingsActivity : ComponentActivity() {
                 Column(Modifier.padding(padding).fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
                     TextButton(enabled = !resetting, onClick = { startActivity(AssistanceShell.inspect(this@AssistanceSettingsActivity)) }) { Text("Inspect") }
                     Text("Suggestions", style = MaterialTheme.typography.titleLarge)
-                    SettingSwitch("On-device suggestions", discover, "Find help using this app’s disclosed content and available actions. Finding suggestions does not read other apps’ records.") { discover = it; check(settings.edit().putBoolean("discovery", it).commit()) }
+                    SettingSwitch(AssistanceBuild.discoveryLabel, discover, AssistanceBuild.discoveryDetail) { discover = it; check(settings.edit().putBoolean(discoveryPreference(), it).commit()) }
                     SettingSwitch("Tailored tools", generate, "Open sends the suggestion and supporting content to the configured code service. It does not book or purchase anything.") { generate = it; check(settings.edit().putBoolean("generation", it).commit()) }
                     HorizontalDivider()
                     Text("Sharing", style = MaterialTheme.typography.titleLarge)

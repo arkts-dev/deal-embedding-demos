@@ -176,7 +176,7 @@ class PreparationActivity : ComponentActivity() {
                 val protocol = api ?: createApi().also { api = it }
                 connectedModules = Connections.apply(this, protocol)
                 val facts = input(e)
-                val finder = discovery ?: Discovery(applicationContext, protocol).also { discovery = it }
+                val finder = discovery ?: Discovery(applicationContext, protocol, dev.deal.shell.AssistanceBuild.discoveryGateway()).also { discovery = it }
                 if (current?.identity != facts.identity) {
                     protocol.revoke("host/calendar"); activeEvent = null
                     val previous = synchronized(ownerLock) { owner.also { owner = null; activeInput = null } }; previous?.close()
@@ -198,7 +198,7 @@ class PreparationActivity : ComponentActivity() {
                     eventUi = e
                     if (sameInput && failed) return@runOnUiThread
                     if (activeInput == facts.identity) { surface = synchronized(ownerLock) { owner }; message = ""; return@runOnUiThread }
-                    if (!Connections.settings(this).getBoolean("discovery", true)) { message = "Suggestions are off"; return@runOnUiThread }
+                    if (!dev.deal.shell.discoveryEnabled(this)) { message = "Suggestions are off"; return@runOnUiThread }
                     if (getSharedPreferences("preparation-discovery-dismissals", 0).getBoolean(facts.identity, false)) { message = "No suggestions"; return@runOnUiThread }
                     checking = true; message = ""; requestSince = System.currentTimeMillis(); requestTrace = ""
                     finder.discover(facts).whenComplete { tip, error -> runOnUiThread {

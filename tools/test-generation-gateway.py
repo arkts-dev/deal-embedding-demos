@@ -23,7 +23,7 @@ class GatewayTest(unittest.TestCase):
         tree=ast.parse(pathlib.Path('tools/generation-gateway.py').read_text())
         definitions=[n for n in tree.body if isinstance(n,ast.ClassDef) and n.name in ('GatewayFailure','Handler')]
         namespace={'json':json,'http':types.SimpleNamespace(server=http.server),'urllib':types.SimpleNamespace(error=urllib.error),
-                   'concurrent':types.SimpleNamespace(futures=concurrent.futures),'options':types.SimpleNamespace(audit=False,chooser='llm',backend='cortex'),'BACKENDS':{'cortex':{'key':'private-key','model':'cortex'}}}
+                   'concurrent':types.SimpleNamespace(futures=concurrent.futures),'options':types.SimpleNamespace(audit=False,chooser='llm',backend='cortex'),'BACKENDS':{'cortex':{'key':'private-key','model':'cortex'}},'DISCOVERY':None}
         exec(compile(ast.Module(body=definitions,type_ignores=[]),'safe-handler','exec'),namespace)
         class Failed:
             def result(self,**kwargs):raise namespace['GatewayFailure']('AUDIT_LIMIT','Explicit audit ceiling exhausted')
@@ -42,6 +42,17 @@ class GatewayTest(unittest.TestCase):
             with self.assertRaises(urllib.error.HTTPError) as caught:urllib.request.urlopen(request)
             self.assertEqual(json.load(caught.exception)['error']['code'],'BACKEND_UNAVAILABLE')
             self.assertEqual(len(routed),1,'unavailable backend must not fall back')
+            discovery=urllib.request.Request(base+'/discover',data=json.dumps({'input':'facts','previous':'','diagnostics':'','capture':True}).encode(),headers={'X-Deal-Generation-Backend':'deepseek-flash'})
+            with self.assertRaises(urllib.error.HTTPError) as caught:urllib.request.urlopen(discovery)
+            self.assertEqual(json.load(caught.exception)['error']['code'],'BACKEND_UNAVAILABLE')
+            namespace['DISCOVERY']={'model':'deepseek-flash'}
+            with self.assertRaises(urllib.error.HTTPError):urllib.request.urlopen(discovery)
+            self.assertTrue(routed[-1]['discovery']);self.assertEqual(routed[-1]['backend'],'deepseek-flash')
+            previous=len(routed)
+            bad=urllib.request.Request(base+'/discover',data=json.dumps({'input':'facts','previous':'old source','diagnostics':'','capture':False}).encode(),headers={'X-Deal-Generation-Backend':'deepseek-flash'})
+            with self.assertRaises(urllib.error.HTTPError) as caught:urllib.request.urlopen(bad)
+            self.assertEqual(json.load(caught.exception)['error']['code'],'GATEWAY_FAILURE')
+            self.assertEqual(len(routed),previous,'discovery must not replay source')
         finally:server.shutdown();server.server_close();thread.join()
     def test_jev_routing(self):
         tree=ast.parse(pathlib.Path('tools/generation-gateway.py').read_text())
@@ -88,6 +99,17 @@ class GatewayTest(unittest.TestCase):
         self.assertEqual(seen[-1]['response_format'],{'type':'json_object'})
         self.assertEqual(headers_seen[-1]['User-Agent'],'deal-embed-development/1.0')
         self.assertEqual(seen[-1]['messages'],seen[0]['messages'])
+        namespace['DISCOVERY']={'model':'deepseek-flash','endpoint':'deepseek','key':'private-deepseek-key'}
+        body.update(backend='deepseek-flash',discovery=True,previous='',diagnostics='',capture=True)
+        response['choices'][0]['message']['content']='null'
+        discovery=json.loads(namespace['infer'](body))
+        self.assertEqual(discovery['content'],'null')
+        self.assertEqual(discovery['model'],'deepseek-flash')
+        self.assertEqual(seen[-1]['thinking'],{'type':'disabled'})
+        self.assertEqual(seen[-1]['max_tokens'],4096)
+        self.assertNotIn('response_format',seen[-1])
+        self.assertNotIn('private-deepseek-key',json.dumps(discovery))
+        body.pop('discovery');response['choices'][0]['message']['content']='{"deal":"x","dealui":"y"}'
         body['backend']='unknown'
         with self.assertRaises(ValueError):namespace['infer'](body)
         body['backend']='cortex'

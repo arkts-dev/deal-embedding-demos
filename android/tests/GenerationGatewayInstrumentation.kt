@@ -117,6 +117,34 @@ export view Main(state:app.State):View {ui.Column(){ui.IntText(value:state.value
                     for (outcome in listOf("request", "response")) check(provider.any { it.optString("outcome") == outcome && it.optString("artifact").isNotEmpty() })
                 }
             }
+            // Remote discovery uses the same transport but the unchanged strict discovery/admission path.
+            val discoveryRegistry = CapabilityRegistry(targetContext, CapabilityDiscovery(targetContext) { false }, emptyList())
+            val noDiscoveryGeneration = object : ModelClient {
+                override fun complete(input: String, previous: String, diagnostics: String, cancellation: GenerationCancellation, log: EmbeddingLog): String = error("Discovery must not generate source")
+            }
+            ApplicationProtocol(targetContext, Embedding(targetContext, discoveryRegistry, noDiscoveryGeneration, EmbeddingConfig("experience", emptyList(), "remote-discovery-${UUID.randomUUID()}"))).use { api ->
+                val facts = dev.deal.embedding.discovery.DiscoveryInput(listOf(dev.deal.embedding.discovery.DiscoveryFact("budget", "Compare unfinished budget 18000 and committed 19750 EUR cents.")))
+                val suggestion = """{"title":"Budget","brief":"Editable amounts 18000 and 19750 cents with recomputing difference.","factIds":["budget"],"capabilityIds":[]}"""
+                for (answer in listOf(suggestion, "null", "invalid")) {
+                    Server { client, headers, body ->
+                        check(headers.contains("X-Deal-Generation-Backend: deepseek-flash", true))
+                        check(body.getString("previous").isEmpty() && body.getString("diagnostics").isEmpty())
+                        check(body.getString("input").contains("18000"))
+                        reply(client, envelope(answer))
+                    }.use { server ->
+                        dev.deal.embedding.discovery.Discovery(targetContext, api, GenerationGatewayConfig(server.endpoint, "deepseek-flash")).use { finder ->
+                            if (answer == "invalid") {
+                                val error = runCatching { finder.discover(facts).get(10, TimeUnit.SECONDS) }.exceptionOrNull()
+                                check(error is ExecutionException && error.cause is IllegalArgumentException)
+                            } else {
+                                val tip = finder.discover(facts).get(10, TimeUnit.SECONDS)
+                                if (answer == "null") check(tip == null) else check(finder.request(checkNotNull(tip), facts).id.isNotBlank())
+                            }
+                        }
+                        server.done.get(5, TimeUnit.SECONDS)
+                    }
+                }
+            }
             fun failure(body: String, status: Int, code: String) {
                 Server { client, _, _ -> reply(client, body, status) }.use { server ->
                     val error = runCatching { GatewayModelClient(GenerationGatewayConfig(server.endpoint, "fixture")).complete("input", "previous", "diagnostics", GenerationCancellation(), EmbeddingLog(targetContext)) }.exceptionOrNull()

@@ -18,7 +18,7 @@ assert {p.name for p in (library/'core/host').glob('*.d.deal')} == {'checker.d.d
 assert (library/'android/src/compiler/ExperienceCompiler.kt').exists()
 assert {p.name for p in (library/'android/src/bindings').glob('*.kt')} == {'DealSessionBindings.kt', 'ExperienceGenerator.kt', 'SandboxProgram.kt', 'EmbeddingLog.kt', 'ChoiceProtocol.kt', 'ApplicationProtocol.kt', 'ProtocolController.kt','ObservationPresentation.kt','DiagnosticFiles.kt','FailureEvidence.kt','TrustedProgram.kt'}
 assert {p.name for p in (library/'android/src/inference').glob('*.kt')} == {'ModelClient.kt', 'GenerationGateway.kt'}
-assert {p.name for p in (library/'android/src/discovery').glob('*.kt')} == {'Discovery.kt', 'NanoDiscovery.kt'}
+assert {p.name for p in (library/'android/src/discovery').glob('*.kt')} == {'Discovery.kt', 'NanoDiscovery.kt', 'GatewayDiscovery.kt'}
 assert not (root/'android/apps/development').exists()
 assert not (library/'android/src/bindings/PublicProtocolBinding.kt').exists()
 for app in ('organizer','calendar','todo','vehicle','rental','pizza','shared-ui'):
