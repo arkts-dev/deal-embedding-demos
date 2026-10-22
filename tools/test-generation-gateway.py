@@ -77,7 +77,7 @@ class GatewayTest(unittest.TestCase):
         class Reply:
             def __enter__(self):return self
             def __exit__(self,*args):pass
-            def read(self,limit):return json.dumps(response).encode()
+            def read(self,limit=-1):return json.dumps(response).encode()
         def request(url,data,headers):
             seen.append(json.loads(data));headers_seen.append(headers);return object()
         namespace={'options':types.SimpleNamespace(chooser='jev',backend='cortex'),'GatewayFailure':ValueError,'BACKENDS':{'cortex':{'model':'fixture','endpoint':'unused','key':'private-key'},'cerebras':{'model':'qwen-3.8-27b','endpoint':'cerebras','key':'private-key'}},'admit': lambda body: None, 'time':time, 'stable_messages':stable_messages, 'prefix_fingerprint':prefix_fingerprint, 'read_stream':read_stream, 'json':json,'urllib':types.SimpleNamespace(request=types.SimpleNamespace(Request=request,urlopen=lambda *a,**k:Reply()))}
@@ -98,7 +98,7 @@ class GatewayTest(unittest.TestCase):
         body['backend']='cerebras'
         cerebras=json.loads(namespace['infer'](body))
         self.assertEqual(cerebras['model'],'qwen-3.8-27b')
-        self.assertEqual(seen[-1]['max_tokens'],32768)
+        self.assertNotIn('max_tokens',seen[-1]);self.assertEqual(cerebras['metadata']['max_tokens'],-1)
         self.assertEqual(seen[-1]['reasoning_effort'],'low')
         self.assertEqual(seen[-1]['response_format'],{'type':'json_object'})
         self.assertEqual(headers_seen[-1]['User-Agent'],'deal-embed-development/1.0')
@@ -136,6 +136,6 @@ class GatewayTest(unittest.TestCase):
         self.assertTrue(bounded['captureOmitted']);self.assertNotIn('response',bounded)
         self.assertEqual(bounded['content'],response['choices'][0]['message']['content'])
         response['choices'][0]['message']['content']='x'*(256*1024+1)
-        with self.assertRaises(ValueError): namespace['infer'](body)
+        self.assertGreater(len(json.loads(namespace['infer'](body))['content']),256*1024)
 
 if __name__=='__main__':unittest.main()

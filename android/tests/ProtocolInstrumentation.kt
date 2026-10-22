@@ -54,9 +54,10 @@ export view Main(state: app.State): View { ui.Column() { ui.Text(value: "Protoco
   val fallback=Embedding(context,CapabilityRegistry(context,CapabilityDiscovery(context){false},listOf(probe)),fixtureModel,EmbeddingConfig("experience",emptyList(),"protocol-fallback"))
   try{fallback.refresh();val facts=fallback.snapshot(WireType("record"),"{}");val prepared=fallback.generate(fallback.request("Fallback","An authored test workflow",facts));check(prepared.origin=="generated"&&fixtureCalls==1);fallback.release(prepared)}finally{fallback.shutdown()}
   // No network: source fixture validates absent-policy fallback through real core.
-  val badModel=object:ModelClient{override fun complete(input:String,previous:String,diagnostics:String,cancellation:GenerationCancellation,log:EmbeddingLog):String="not source"}
-  val repeated=Embedding(context,CapabilityRegistry(context,CapabilityDiscovery(context){false},emptyList()),badModel,EmbeddingConfig("experience",emptyList(),"protocol-repeated"))
-  try{repeated.refresh();val c=repeated.snapshot(WireType("record"),"{}");val error=runCatching{repeated.generate(repeated.request("Repeated","Fixture invalid response",c))}.exceptionOrNull();check(error is GenerationRejected&&error.reason==GenerationRejected.Reason.INVALID_CANDIDATE)}finally{repeated.shutdown()}
+  var badCalls=0
+  val badModel=object:ModelClient{override fun complete(input:String,previous:String,diagnostics:String,cancellation:GenerationCancellation,log:EmbeddingLog):String {badCalls++;return if(badCalls<4)"not source" else JSONObject().put("deal",deal).put("dealui",view).toString()}}
+  val repeated=Embedding(context,CapabilityRegistry(context,CapabilityDiscovery(context){false},listOf(probe)),badModel,EmbeddingConfig("experience",emptyList(),"protocol-repeated"))
+  try{repeated.refresh();val c=repeated.snapshot(WireType("record"),"{}");val recovered=repeated.generate(repeated.request("Repeated","Fixture invalid response",c));check(recovered.attempts==4&&badCalls==4);repeated.release(recovered)}finally{repeated.shutdown()}
   // Invoke actual compiled DEAL declarations through the public native linkage.
   ProtocolController(context,host).use { controller ->
    check(controller.call("prepareCapabilities") as Int==1)

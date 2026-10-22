@@ -1,4 +1,4 @@
-"""Bounded provider streaming telemetry. Never persist reasoning text or execute partial output."""
+"""Provider streaming telemetry without a client byte ceiling. Never persist reasoning text or execute partial output."""
 import hashlib
 import json
 import time
@@ -72,13 +72,9 @@ def read_stream(response, started, clock=time.monotonic):
                 content_last = now
                 content.append(text)
                 content_bytes += len(text.encode())
-                if content_bytes > 256 * 1024:
-                    raise ValueError('Model content limit')
 
     for raw in response:
         total += len(raw)
-        if total > 8 * 1024 * 1024:
-            raise ValueError('Provider stream limit')
         line = raw.decode('utf-8').rstrip('\r\n')
         if not line:
             if event:
@@ -92,8 +88,10 @@ def read_stream(response, started, clock=time.monotonic):
         consume(event)
     if not done or finish is None:
         raise ValueError('Incomplete provider stream')
-    if finish != 'stop':
+    if finish not in ('stop','length'):
         raise ValueError('Provider stream did not complete normally')
+    # A provider-limited reply is feedback, not executable source. Core still validates
+    # the complete source envelope and compiler result before accepting anything.
     elapsed = (clock() - started) * 1000
     # Canonical receipt names. Legacy aliases retained for archived consumer compatibility.
     phases = dict(definition='monotonic receipt offsets from provider request start; not transport bytes, prefill or compute',

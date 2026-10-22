@@ -10,7 +10,7 @@ BACKENDS = {}
 # calls the model, so what runs here matches what would run on device.
 # One inference at a time protects the development endpoint; no request bodies are logged.
 POOL = concurrent.futures.ThreadPoolExecutor(max_workers=1)
-# Demo is the default: deliberate requests, with bounded repairs owned by DEAL.
+# Demo is the default: recovery until acceptance/cancellation is owned by DEAL.
 # Audit ceilings require explicit CLI arguments, never inherited environment state.
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument('--counts', type=pathlib.Path, help='Persist admission counts only; no content')
@@ -27,12 +27,12 @@ parser.add_argument('--discovery-backend', choices=('disabled', 'deepseek-flash'
 parser.add_argument('--cerebras-key-file', type=pathlib.Path, default=pathlib.Path.home()/'cerebras.key')
 parser.add_argument('--initial-reasoning', choices=('low','medium','high'), default='low')
 parser.add_argument('--repair-reasoning', choices=('low','medium','high'), default='low')
-parser.add_argument('--initial-max-tokens', type=int, default=32768)
-parser.add_argument('--repair-max-tokens', type=int, default=32768)
+parser.add_argument('--initial-max-tokens', type=int, default=-1)
+parser.add_argument('--repair-max-tokens', type=int, default=-1)
 parser.add_argument('--stream-source', action=argparse.BooleanOptionalAction, default=True, help='Measure Cerebras stream phases; partial output never leaves gateway')
 options = parser.parse_args()
-if not (1 <= options.initial_max_tokens <= 32768 and 1 <= options.repair_max_tokens <= 32768):
-    parser.error('Source completion limits must be 1..32768')
+if any(n != -1 and n <= 0 for n in (options.initial_max_tokens,options.repair_max_tokens)):
+    parser.error('Source completion limits must be -1 (provider maximum) or positive')
 if options.backend == 'cortex' or options.enable_cortex:
     config = json.loads((pathlib.Path.home()/'.pi/agent/models.json').read_text())['providers']['devagent']
     key = config['apiKey']
@@ -94,9 +94,10 @@ def infer(body):
     payload={'model':provider['model'],'messages':messages,'max_tokens':8192,'temperature':0.2,'stream':False}
     if backend == 'cerebras':
         effort=getattr(options,'repair_reasoning','low') if repairing else getattr(options,'initial_reasoning','low')
-        limit=getattr(options,'repair_max_tokens',32768) if repairing else getattr(options,'initial_max_tokens',32768)
+        limit=getattr(options,'repair_max_tokens',-1) if repairing else getattr(options,'initial_max_tokens',-1)
         if effort not in ('low','medium','high'): raise ValueError('Source reasoning must be enabled')
         payload.update(max_tokens=limit, temperature=1, top_p=0.95, reasoning_effort=effort, response_format={'type':'json_object'}, clear_thinking=True)
+        if limit == -1: payload.pop('max_tokens',None)
         if getattr(options,'stream_source',False):
             payload.update(stream=True, stream_options={'include_usage':True})
     if discovery:
@@ -106,20 +107,19 @@ def infer(body):
     request=urllib.request.Request(provider['endpoint'],data=json.dumps(payload).encode(),headers={'Content-Type':'application/json','Authorization':'Bearer '+provider['key'],'User-Agent':'deal-embed-development/1.0'})
     started=time.monotonic()
     phases=None
-    with urllib.request.urlopen(request,timeout=420) as response:
+    with urllib.request.urlopen(request,timeout=None) as response:
         if payload['stream']: data,phases=read_stream(response,started)
-        else: data=json.loads(response.read(2*1024*1024))
+        else: data=json.loads(response.read())
     total_ms=(time.monotonic()-started)*1000
     content=data['choices'][0]['message']['content']
     if not isinstance(content,str): raise ValueError('No text result')
-    if len(content.encode()) > 256*1024: raise ValueError('Model content limit')
     usage=data.get('usage') or {}
     def count(value): return value if type(value) is int and 0<=value<=2147483647 else None
     finish=data['choices'][0].get('finish_reason')
     metadata={'in':count(usage.get('prompt_tokens')), 'out':count(usage.get('completion_tokens')),
               'cached':count((usage.get('prompt_tokens_details') or {}).get('cached_tokens')),
               'finish':finish if finish in ('stop','length','content_filter','tool_calls') else 'unknown',
-              'temperature':payload['temperature'], 'max_tokens':payload['max_tokens'],
+              'temperature':payload['temperature'], 'max_tokens':payload.get('max_tokens',-1),
               'reasoning':count((usage.get('completion_tokens_details') or {}).get('reasoning_tokens'))}
     if discovery: metadata['thinking'] = 'disabled'
     metadata.update(operation=operation,totalMs=total_ms,prefixSha256=prefix_fingerprint(messages))
@@ -149,7 +149,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
         if self.path not in ('/generate', '/discover'): self.send_error(404); return
         try:
             length=int(self.headers.get('Content-Length','0'))
-            if not 0<length<=256*1024: raise ValueError('Request limit')
+            if length<=0: raise ValueError('Empty request')
             body=json.loads(self.rfile.read(length))
             if set(body)!={'input','previous','diagnostics','capture'} or not all(isinstance(body[v],str) for v in ('input','previous','diagnostics')) or type(body['capture']) is not bool: raise ValueError('Invalid request')
             backend = self.headers.get('X-Deal-Generation-Backend', options.backend)
@@ -159,8 +159,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 body['discovery'] = True
             elif backend not in BACKENDS: raise GatewayFailure('BACKEND_UNAVAILABLE', 'Requested build-time backend is not enabled in this gateway')
             body['backend'] = backend
-            output=POOL.submit(infer,body).result(timeout=450)
-            if len(output)>2*1024*1024: raise ValueError('Output limit')
+            output=POOL.submit(infer,body).result()
             self.send_response(200); self.send_header('Content-Type','application/json'); self.send_header('Content-Length',str(len(output))); self.end_headers(); self.wfile.write(output)
         except (BrokenPipeError,ConnectionResetError): pass
         except GatewayFailure as error:

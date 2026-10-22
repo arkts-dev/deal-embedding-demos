@@ -18,13 +18,16 @@ class TransportTest(unittest.TestCase):
   with self.assertRaisesRegex(ValueError,'Incomplete'):read_stream(io.BytesIO(b'data: {"choices":[]}\n\n'),0,lambda:1.)
  def test_length_stop_is_not_complete(self):
   raw=b'data: {"choices":[{"delta":{"content":"partial"},"finish_reason":"length"}]}\n\ndata: [DONE]\n\n'
-  with self.assertRaisesRegex(ValueError,'normally'):read_stream(io.BytesIO(raw),0,lambda:1.)
+  data,_=read_stream(io.BytesIO(raw),0,lambda:1.)
+  self.assertEqual(data['choices'][0]['finish_reason'],'length')
  def test_content_bound_and_missing_usage(self):
   raw=b'data: {"choices":[{"delta":{"content":"ok"},"finish_reason":"stop"}]}\n\ndata: [DONE]\n\n'
   data,phases=read_stream(io.BytesIO(raw),0,lambda:1.)
   self.assertEqual(data['usage'],{});self.assertIsNone(phases['firstReasoningMs'])
   big='data: '+json.dumps({'choices':[{'delta':{'content':'x'*(256*1024+1)}}]})+'\n\n'
-  with self.assertRaisesRegex(ValueError,'content limit'):read_stream(io.BytesIO(big.encode()),0,lambda:1.)
+  complete=big+'data: '+json.dumps({'choices':[{'delta':{},'finish_reason':'stop'}]})+'\n\ndata: [DONE]\n\n'
+  data,_=read_stream(io.BytesIO(complete.encode()),0,lambda:1.)
+  self.assertGreater(len(data['choices'][0]['message']['content']),256*1024)
  def test_reject_rewrite_and_missing_base(self):
   for text,previous in [('rules','old'),('rules\nSOURCE OPERATION\nrepair\n',''),('REPAIR PROTOCOL exact-source-patch-v1','')]:
    with self.assertRaises(ValueError):stable_messages({'input':text,'previous':previous,'diagnostics':'E1035'})

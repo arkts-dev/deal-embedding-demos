@@ -1,0 +1,149 @@
+package dev.deal.connectors.tests
+
+import android.app.Instrumentation
+import android.os.Bundle
+import android.os.SystemClock
+import dev.deal.embedding.*
+import dev.deal.embedding.capabilities.*
+import dev.deal.embedding.discovery.*
+import dev.deal.shell.*
+import org.json.*
+import java.io.File
+
+/** Explicit live, programmatic discovery/generate/test/patch/mount/edit/cold framework journey.
+ * Test expectations enter model feedback only after an actual failed runtime evaluation.
+ */
+class FrameworkE2eInstrumentation: Instrumentation() {
+    private var enabled=false
+    override fun onCreate(arguments:Bundle?){super.onCreate(arguments);enabled=arguments?.getString("live")=="true";start()}
+    private fun nodes(t:JSONObject)=ToolkitNodes.all(t)
+    private fun text(n:JSONObject)=n.getJSONArray("props").let { p -> (0 until p.length()).map { p.getJSONObject(it).optString("stringValue") }.filter { it.isNotEmpty() }.joinToString(" ") }
+    private fun slot(n:JSONObject):Int?=n.getJSONArray("props").let { p -> (0 until p.length()).map { p.getJSONObject(it) }.firstOrNull { it.optString("kind")=="action" }?.getInt("actionSlot") }
+    private fun amount(t:JSONObject,cents:Int)=nodes(t).any { it.optString("component").endsWith(".Money") && ToolkitNodes.integer(it,"minorUnits")==cents } || nodes(t).any { text(it).contains("%.2f".format(java.util.Locale.US,cents/100.0)) }
+    private fun settle(s:CandidateTestSession):JSONObject {
+        var t=s.snapshot();var same=0;var version=-1
+        while(same<20){s.pause();val next=s.snapshot();if(next.optString("fault").isNotEmpty())error("Runtime fault: ${next.optString("fault")}");val pending=nodes(next.getJSONObject("tree")).any { it.optString("component").endsWith(".Progress") || it.optString("component").endsWith(".Spinner") };if(next.getInt("version")==version && !pending)same++ else same=0;version=next.getInt("version");t=next}
+        return t.getJSONObject("tree")
+    }
+    private fun evaluate(name:String,s:CandidateTestSession):String = try {
+        var t=settle(s)
+        if(s.restored) {
+            when(name){
+                "food"->check(amount(t,8100)){"Settled restored food total must remain8100"}
+                "departure"->check(nodes(t).joinToString(" "){text(it)}.contains("15:41")){"Settled restored departure must remain15:41"}
+                "budget"->check(amount(t,1750)){"Restored budget difference1750 missing"}
+                "equipment"->check(amount(t,1200)&&amount(t,1300)&&amount(t,5000)){"Restored quote comparison/deposit missing"}
+            }
+            return ""
+        }
+        // These are runtime actions, never capability reads during discovery/source construction.
+        if(name!="budget") {
+            val actions=nodes(t).filter { slot(it)!=null && it.optString("component").let { c -> c.endsWith(".Button")||c.endsWith(".PrimaryAction")||c.endsWith(".SecondaryAction") } }
+            val load=actions.firstOrNull { text(it).lowercase().let { v -> listOf("load","fetch","check","estimate","find","compare","refresh","compute","calculate").any(v::contains) } }
+            if(load==null)error("No explicit action to read provider data. Observed actionable labels: ${actions.joinToString { text(it) }}")
+            s.dispatch(slot(load)!!,null);t=settle(s)
+        }
+        when(name) {
+            "budget" -> {
+                check(amount(t,1750)){"Expected EUR17.50 difference for180/197.50"}
+                val fields=nodes(t).filter { it.optString("component").endsWith(".IntField") }
+                check(fields.size>=2){"Both budget amounts must be editable"}
+                val a=fields.firstOrNull { ToolkitNodes.integer(it,"value")==18000 } ?: error("Approved18000 cents input missing")
+                s.dispatch(slot(a)!!,"18100");t=settle(s);check(amount(t,1650)){"181/197.50 must yield EUR16.50"}
+                val b=nodes(t).first { it.optString("component").endsWith(".IntField") && ToolkitNodes.integer(it,"value")==19750 }
+                s.dispatch(slot(b)!!,"19850");t=settle(s);check(amount(t,1750)){"181/198.50 must yield EUR17.50"}
+                fun approved(cents:Int){val field=nodes(t).first { it.optString("component").endsWith(".IntField") && text(it).lowercase().let { v -> v.contains("approved")||v.contains("budget") } };s.dispatch(slot(field)!!,cents.toString());t=settle(s)}
+                approved(19850);check(amount(t,0)){"Equal amounts must show zero difference"}
+                approved(20000);check(amount(t,150)){"200/198.50 must show EUR1.50 under budget"}
+                approved(18100)
+            }
+            "departure" -> {
+                val rendered=nodes(t).joinToString(" "){text(it)}
+                check(rendered.contains("15:16") && rendered.contains("15:06")){"Actual Vehicle29min:16:00 minus15 unload minus29 travel gives15:16; inspection10 earlier15:06. Observed:$rendered"}
+                val start=nodes(t).firstOrNull { it.optString("component").endsWith(".IntField") && ToolkitNodes.integer(it,"value")==960 } ?: error("Editable event start minute960 missing")
+                s.dispatch(slot(start)!!,"985");t=settle(s)
+                val changed=nodes(t).joinToString(" "){text(it)}
+                check(changed.contains("15:41")&&changed.contains("15:31")){"Editing start to16:25 must recompute departure15:41/inspection15:31; observed:$changed"}
+            }
+            "food" -> {
+                val loadedText=nodes(t).joinToString(" "){text(it)}
+                check(loadedText.contains("6 of 6") || loadedText.contains("6 / 6") || nodes(t).any { ToolkitNodes.string(it,"label").contains("pizza",true) && ToolkitNodes.string(it,"value")=="6" }){"Initial allocation must contain six pizzas and at least two vegan, not require manual fixing. Observed:$loadedText"}
+                check(!loadedText.contains("Needs 2") && !loadedText.contains("Needs 6")){"Initial allocation must satisfy six/at-least-two-vegan constraints: $loadedText"}
+                // Edit actual keyed rows through their issued action slots; no injected state/source.
+                fun editRow(word:String,value:Int){
+                    val all=nodes(t)
+                    val group=all.filter { n -> nodes(n).any { text(it).contains(word,true) } && nodes(n).any { it.optString("component").endsWith(".IntField") } }.minByOrNull { nodes(it).size } ?: error("Editable $word quantity row missing")
+                    val field=nodes(group).first { it.optString("component").endsWith(".IntField") }
+                    s.dispatch(slot(field)!!,value.toString());t=settle(s)
+                }
+                editRow("Margherita",3);editRow("Garden",3);editRow("Pepperoni",0)
+                check(amount(t,7100)){"3Margherita+3GardenVegan+0Pepperoni at actual30 cm size plus timely delivery500 must total7100 cents. Observed:${nodes(t).joinToString(" "){text(it)}}"}
+                editRow("Margherita",4)
+                check(amount(t,8100)){"Row edit4Margherita+3Garden must total8100 cents"}
+            }
+            "equipment" -> {
+                // Quote both actual returned catalogue options through generated controls.
+                var actions=nodes(t).filter { slot(it)!=null }
+                for(label in if(amount(t,1200)&&amount(t,1300)&&amount(t,5000))emptyList() else listOf("package","stand","cable")) {
+                    val option=actions.firstOrNull { text(it).contains(label,true) && !it.optString("component").endsWith(".IntField") }
+                    if(option!=null){val value=ToolkitNodes.string(option,"value").takeIf { it.isNotEmpty() };s.dispatch(slot(option)!!,value);t=settle(s);actions=nodes(t).filter { slot(it)!=null }}
+                }
+                for(i in 0..1) {
+                    val quote=nodes(t).firstOrNull { slot(it)!=null && text(it).contains("quote",true) }
+                    if(quote!=null){s.dispatch(slot(quote)!!,null);t=settle(s)}
+                }
+                check(amount(t,1200)&&amount(t,1300)&&amount(t,5000)){"Comparison must show actual package1200,separate stand+cable1300 and separate refundable deposit5000 cents, using actual catalogue/quotes, not unavailable or assumed adapter. Observed:${nodes(t).joinToString(" "){text(it)}}"}
+                val budget=nodes(t).firstOrNull { it.optString("component").endsWith(".IntField") && ToolkitNodes.integer(it,"value")==2000 } ?: error("Editable EUR20 rental budget missing")
+                s.dispatch(slot(budget)!!,"1100");t=settle(s)
+                check(nodes(t).joinToString(" "){text(it)}.contains("over",true)){"Rental hire1200/1300 must be over edited1100 budget; refundable deposit is separate"}
+                val edited=nodes(t).first { it.optString("component").endsWith(".IntField") && ToolkitNodes.integer(it,"value")==1100 };s.dispatch(slot(edited)!!,"2000");t=settle(s)
+            }
+        }
+        ""
+    } catch(e:ProtocolFailure){throw e} catch(e:Exception){e.message ?: e.javaClass.simpleName}
+    override fun onStart(){val result=Bundle();val receipts=JSONArray();val ctx=targetContext
+        try {
+            check(enabled){"Requires -e live true"}
+            val cases=listOf(
+                "equipment" to "Vocal kit hire at The Foundry,stage centre,23October2026 16:15–22:30 Europe/Berlin (14:15Z–20:30Z). Need one adjustable boom stand including clip adapter and balanced XLR female-to-male cable minimum10m. Compare package and separate hire via Rental catalogue/quotes. Editable EUR20 budget; refundable deposit separate. Read-only,no booking.",
+                "food" to "Crew dinner,23October2026,The Foundry stage entrance. Plan six30 cm pizzas,at least two vegan,EUR80 including delivery before18:30. Load Pizza menu/delivery,editable quantities and budget,recompute feasibility. No ordering.",
+                "departure" to "Equipment collection,The Foundry,23October2026 16:00–17:00 Europe/Berlin. Distance12km; use actual Vehicle travel estimate. Need15min unloading before start and10min inspection before departure. Editable start,distance,buffers,recompute departure and inspection. No booking.",
+                "budget" to "Budget reconciliation,23October2026. Compare approved18000 EUR cents with committed19750 EUR cents. Editable amounts,show over/under/equal and difference. Local arithmetic,no external reads."
+            )
+            for((name,fact) in cases.sortedBy { listOf("budget","departure","food","equipment").indexOf(it.first) }){
+                val row=JSONObject().put("scenario",name);receipts.put(row);val started=SystemClock.elapsedRealtime()
+                val storage="framework-e2e-$name-${java.util.UUID.randomUUID()}"
+                fun open(test:Boolean):ApplicationProtocol {
+                    val registry=CapabilityRegistry(ctx,CapabilityDiscovery(ctx){uid->Connections.trusted(ctx,uid)},emptyList())
+                    val config=EmbeddingConfig("experience",emptyList(),storage,retainState=true,candidateTest=if(test)({ s -> val feedback=evaluate(name,s);row.put("evaluations",row.optInt("evaluations")+1);row.put("lastFeedback",feedback);File(ctx.filesDir,"framework-e2e-results.json").writeText(receipts.toString(2));feedback }) else null)
+                    return ApplicationProtocol(ctx,Embedding(ctx,registry,AssistanceBuild.gateway(),config))
+                }
+                var id=""
+                open(true).use { api ->
+                    api.capture(true);Connections.apply(ctx,api)
+                    // Explicit live-test host authority for the requested read-only provider cases.
+                    val module=when(name){"food"->"host/pizza";"departure"->"host/trip";"equipment"->"host/rental";else->""}
+                    if(module.isNotEmpty())api.grant(module)
+                    val facts=DiscoveryInput(listOf(DiscoveryFact("task",fact)))
+                    val request=Discovery(ctx,api,AssistanceBuild.discoveryGateway()).use { finder ->
+                        var tip=finder.discover(facts).get()
+                        while(tip==null){tip=finder.discover(facts).get()}
+                        row.put("discoveryMs",SystemClock.elapsedRealtime()-started);finder.request(tip,facts)
+                    }
+                    row.put("trace",api.requestTrace(request))
+                    val e=api.generate(request);id=e.id;row.put("attempts",e.attempts).put("checkedMs",SystemClock.elapsedRealtime()-started)
+                    val session=api.run(e);val snapshot=api.next(session,"").snapshot;check(snapshot.fault.isEmpty());api.published(session,snapshot.version)
+                    row.put("mountedPublishedMs",SystemClock.elapsedRealtime()-started);api.close(session)
+                }
+                open(false).use { api ->
+                    Connections.apply(ctx,api)
+                    val module=when(name){"food"->"host/pizza";"departure"->"host/trip";"equipment"->"host/rental";else->""};if(module.isNotEmpty())api.grant(module)
+                    val e=api.saved().single{it.id==id};val s=api.run(e);check(api.next(s,"").snapshot.fault.isEmpty());api.close(s)
+                }
+                row.put("status","passed_explicit_tests_and_cold_mount").put("totalMs",SystemClock.elapsedRealtime()-started)
+                File(ctx.filesDir,"framework-e2e-results.json").writeText(receipts.toString(2));sendStatus(2,Bundle().apply{putString("scenario",row.toString())})
+            }
+            result.putString("e2e",receipts.toString());finish(0,result)
+        }catch(e:Throwable){result.putString("failure",android.util.Log.getStackTraceString(e));result.putString("receipts",receipts.toString());File(ctx.filesDir,"framework-e2e-results.json").writeText(receipts.toString(2));finish(1,result)}
+    }
+}

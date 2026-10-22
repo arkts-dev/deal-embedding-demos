@@ -197,18 +197,18 @@ export view Main(state:app.State):View {ui.Column(){ui.IntText(value:state.value
                     check(summary.getInt("initialCalls")==1 && !summary.getBoolean("sourceChecked") && summary.isNull("mountMs"))
                 }
             }
-            // Invalid envelopes have no patch base and must stop without a replacement-source call.
+            // Invalid initial envelopes recover inside the same request without a user retry.
             var invalidCalls=0
             val invalidModel=object:ModelClient {
-                override fun complete(input:String,previous:String,diagnostics:String,cancellation:GenerationCancellation,log:EmbeddingLog):String { invalidCalls++;return "{\"deal\":\"missing view\"}" }
+                override fun complete(input:String,previous:String,diagnostics:String,cancellation:GenerationCancellation,log:EmbeddingLog):String { invalidCalls++;if(invalidCalls==1)return "{\"deal\":\"missing view\"}";check(previous.isEmpty() && input.contains("INITIAL ENVELOPE RECOVERY"));return pair }
             }
             ApplicationProtocol(targetContext,Embedding(targetContext,CapabilityRegistry(targetContext,CapabilityDiscovery(targetContext){false},emptyList()),invalidModel,EmbeddingConfig("experience",emptyList(),"invalid-${UUID.randomUUID()}"))).use { api ->
                 val request=api.request("Invalid fixture","Counter",api.snapshot(WireType("record"),"{}"))
-                val failure=runCatching { api.generate(request) }.exceptionOrNull()
-                check(invalidCalls==1 && failure is ProtocolFailure && failure.code=="GENERATION_INVALID_CANDIDATE") { "Invalid envelope admission: calls=$invalidCalls failure=$failure" }
+                val recovered=api.generate(request)
+                check(invalidCalls==2 && api.source(recovered)==source)
                 EmbeddingLog.flush(targetContext)
                 val summary=api.retainedEvents().events.last { it.optString("trace")==api.requestTrace(request) && it.optString("stage")=="request-summary" }.let { JSONObject(it.getString("target")) }
-                check(summary.getString("outcome")=="failed" && !summary.getBoolean("sourceChecked") && summary.isNull("mountMs") && summary.getString("testedBehavior")=="not_tested")
+                check(summary.getString("outcome")=="source_checked" && summary.getBoolean("sourceChecked") && summary.isNull("mountMs") && summary.getString("testedBehavior")=="not_tested")
             }
             // Remote discovery uses the same transport but the unchanged strict discovery/admission path.
             val discoveryRegistry = CapabilityRegistry(targetContext, CapabilityDiscovery(targetContext) { false }, emptyList())
@@ -250,7 +250,7 @@ export view Main(state:app.State):View {ui.Column(){ui.IntText(value:state.value
             failure("redirect", 302, "HTTP_302")
             failure("not json", 200, "GATEWAY_FAILURE")
             failure("{\"content\":42}", 200, "GATEWAY_FAILURE")
-            failure(envelope("x".repeat(256 * 1024 + 1)), 200, "GATEWAY_FAILURE")
+            // No artificial source/HTTP byte ceilings; invalid JSON still rejects structurally.
             failure("x".repeat(2 * 1024 * 1024 + 1), 200, "GATEWAY_FAILURE")
             Server { client, _, body ->
                 check(body.getString("previous") == "previous" && body.getString("diagnostics") == "diagnostics")
@@ -261,7 +261,7 @@ export view Main(state:app.State):View {ui.Column(){ui.IntText(value:state.value
             }
             val cancelled = GenerationCancellation().apply { cancel() }
             check(runCatching { GatewayModelClient(GenerationGatewayConfig("http://127.0.0.1:1/generate", "fixture")).complete("input", "", "", cancelled, EmbeddingLog(targetContext)) }.exceptionOrNull() is CancellationException)
-            check(runCatching { GatewayModelClient(GenerationGatewayConfig("http://127.0.0.1:1/generate", "fixture")).complete("x".repeat(256 * 1024), "", "", GenerationCancellation(), EmbeddingLog(targetContext)) }.exceptionOrNull() is IllegalArgumentException)
+            check(runCatching { GatewayModelClient(GenerationGatewayConfig("http://127.0.0.1:1/generate", "fixture")).complete("x".repeat(256 * 1024), "", "", GenerationCancellation(), EmbeddingLog(targetContext)) }.exceptionOrNull() is ProtocolFailure)
             EmbeddingLog.capture(targetContext, false)
             val uncaptured = EmbeddingLog(targetContext)
             Server { client, _, body -> check(!body.getBoolean("capture")); reply(client, envelope("uncaptured")) }.use { server ->

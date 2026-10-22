@@ -23,6 +23,7 @@
  <instrumentation android:name=".ColdDraftInstrumentation" android:targetPackage="dev.deal.connectors.tests" />
  <instrumentation android:name=".GuidanceInstrumentation" android:targetPackage="dev.deal.connectors.tests" />
  <instrumentation android:name=".ToolkitInstrumentation" android:targetPackage="dev.deal.connectors.tests" />
+ <instrumentation android:name=".FrameworkE2eInstrumentation" android:targetPackage="dev.deal.apps.organizer" />
  <instrumentation android:name=".ToolkitLiveInstrumentation" android:targetPackage="dev.deal.connectors.tests" />
  <instrumentation android:name=".AssistanceShellInstrumentation" android:targetPackage="dev.deal.connectors.tests" />
  <instrumentation android:name=".CleanlinessInstrumentation" android:targetPackage="dev.deal.connectors.tests" />
