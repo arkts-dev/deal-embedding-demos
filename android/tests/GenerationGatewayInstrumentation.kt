@@ -138,20 +138,33 @@ export view Main(state:app.State):View {ui.Column(){ui.IntText(value:state.value
                 override fun complete(input:String,previous:String,diagnostics:String,cancellation:GenerationCancellation,log:EmbeddingLog):String {
                     repairCalls++
                     if(repairCalls==1) { check(input.contains("SOURCE OPERATION\ninitial"));return JSONObject().put("deal",broken.deal).put("dealui",broken.dealui).toString() }
-                    check(repairCalls==2 && input.contains("SOURCE OPERATION\nrepair"))
-                    check(input.contains("smallest rejected source region") && input.contains("Exact reported source line"))
+                    check(repairCalls in 2..3 && input.contains("SOURCE OPERATION\nrepair")) { "Patch operation marker/call bound" }
+                    check(input.contains("smallest rejected source region") && input.contains("Exact reported source line")) { "Patch diagnostic window missing at call $repairCalls" }
+                    check(JSONObject(previous).getString("deal")==broken.deal) { "Rejected patch changed base" }
+                    if(repairCalls==2)return "{\"baseDigest\":\"wrong revision\",\"edits\":[]}"
+                    check(input.contains("PATCH_BASE") && diagnostics.isNotBlank()) { "Patch failure or original diagnostics missing" }
                     check(!input.contains("return both complete source strings"))
                     val digestText="${broken.deal.length}:${broken.deal}${broken.dealui.length}:${broken.dealui}"
                     val digest=java.security.MessageDigest.getInstance("SHA-256").digest(digestText.toByteArray()).joinToString("") { "%02x".format(it) }
                     return JSONObject().put("baseDigest",digest).put("edits",org.json.JSONArray().put(JSONObject().put("file","deal").put("search","value:state.value+").put("replacement","value:state.value+1"))).toString()
                 }
             }
-            ApplicationProtocol(targetContext,Embedding(targetContext,CapabilityRegistry(targetContext,CapabilityDiscovery(targetContext){false},emptyList()),patchModel,EmbeddingConfig("experience",emptyList(),"patch-${UUID.randomUUID()}",repairStrategy="delta"))).use { api ->
+            ApplicationProtocol(targetContext,Embedding(targetContext,CapabilityRegistry(targetContext,CapabilityDiscovery(targetContext){false},emptyList()),patchModel,EmbeddingConfig("experience",emptyList(),"patch-${UUID.randomUUID()}"))).use { api ->
                 val request=api.request("Patch fixture","Editable counter",api.snapshot(WireType("record"),"{}"))
-                val e=api.generate(request);check(repairCalls==2 && api.source(e)==source)
+                val e=api.generate(request);check(repairCalls==3 && api.source(e)==source)
                 val s=api.run(e);val tree=api.next(s,"").snapshot.tree
                 val action=tree.getJSONArray("children").getJSONObject(1).getJSONArray("props").let { props -> (0 until props.length()).map { props.getJSONObject(it) }.first { it.optString("kind")=="action" }.getInt("actionSlot") }
                 api.dispatch(s,action,null);check(api.next(s,"").snapshot.tree.toString().contains("\"intValue\":8"));api.close(s);api.forget(e)
+            }
+            // Invalid envelopes have no patch base and must stop without a replacement-source call.
+            var invalidCalls=0
+            val invalidModel=object:ModelClient {
+                override fun complete(input:String,previous:String,diagnostics:String,cancellation:GenerationCancellation,log:EmbeddingLog):String { invalidCalls++;return "{\"deal\":\"missing view\"}" }
+            }
+            ApplicationProtocol(targetContext,Embedding(targetContext,CapabilityRegistry(targetContext,CapabilityDiscovery(targetContext){false},emptyList()),invalidModel,EmbeddingConfig("experience",emptyList(),"invalid-${UUID.randomUUID()}"))).use { api ->
+                val request=api.request("Invalid fixture","Counter",api.snapshot(WireType("record"),"{}"))
+                val failure=runCatching { api.generate(request) }.exceptionOrNull()
+                check(invalidCalls==1 && failure is ProtocolFailure && failure.code=="GENERATION_INVALID_CANDIDATE") { "Invalid envelope admission: calls=$invalidCalls failure=$failure" }
             }
             // Remote discovery uses the same transport but the unchanged strict discovery/admission path.
             val discoveryRegistry = CapabilityRegistry(targetContext, CapabilityDiscovery(targetContext) { false }, emptyList())

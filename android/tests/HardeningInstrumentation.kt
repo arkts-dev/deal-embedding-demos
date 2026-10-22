@@ -124,13 +124,15 @@ export view Main(state:app.State):View {ui.Column(){ui.IntText(value:state.value
             api.close(closeSession);check(StagingReclamation.pending(context)==0);api.forget(closeFailure)
             val request=api.request("Provider failure","Fixture request",api.snapshot(WireType("record"),"{}"))
             check(runCatching{api.generate(request)}.exceptionOrNull().let{it is ProtocolFailure&&it.code=="AUDIT_LIMIT"})
-            val repeatedModel=object:ModelClient{override fun complete(input:String,previous:String,diagnostics:String,cancellation:GenerationCancellation,log:EmbeddingLog):String="invalid fixture"}
+            val rejectedPair=JSONObject().put("deal",source.deal+"\nlet broken: int = ;").put("dealui",source.dealui).toString()
+            var repeatCalls=0
+            val repeatedModel=object:ModelClient{override fun complete(input:String,previous:String,diagnostics:String,cancellation:GenerationCancellation,log:EmbeddingLog):String { repeatCalls++;return if(repeatCalls==1)rejectedPair else "invalid patch" }}
             ApplicationProtocol(context,Embedding(context,CapabilityRegistry(context,CapabilityDiscovery(context){false},emptyList()),repeatedModel,EmbeddingConfig("experience",emptyList(),"repeated-${java.util.UUID.randomUUID()}"))).use{other->
                 val r=other.request("Repeated","Fixture request",other.snapshot(WireType("record"),"{}"))
                 check(runCatching{other.generate(r)}.exceptionOrNull().let{it is ProtocolFailure&&it.code=="GENERATION_REPEATED_RESPONSE"})
             }
             val distinct=java.util.concurrent.atomic.AtomicInteger()
-            val exhaustedModel=object:ModelClient{override fun complete(input:String,previous:String,diagnostics:String,cancellation:GenerationCancellation,log:EmbeddingLog):String="invalid fixture ${distinct.incrementAndGet()}"}
+            val exhaustedModel=object:ModelClient{override fun complete(input:String,previous:String,diagnostics:String,cancellation:GenerationCancellation,log:EmbeddingLog):String=if(distinct.incrementAndGet()==1)rejectedPair else "invalid patch ${distinct.get()}"}
             ApplicationProtocol(context,Embedding(context,CapabilityRegistry(context,CapabilityDiscovery(context){false},emptyList()),exhaustedModel,EmbeddingConfig("experience",emptyList(),"exhausted-${java.util.UUID.randomUUID()}"))).use{other->
                 val r=other.request("Exhausted","Fixture request",other.snapshot(WireType("record"),"{}"))
                 check(runCatching{other.generate(r)}.exceptionOrNull().let{it is ProtocolFailure&&it.code=="GENERATION_ATTEMPT_LIMIT"});check(distinct.get()==3)

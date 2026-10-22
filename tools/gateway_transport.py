@@ -13,12 +13,11 @@ def stable_messages(body):
     messages = [{'role': 'system', 'content': prefix}] if sep else []
     messages.append({'role': 'user', 'content': (boundary + variable) if sep else text})
     patch = 'REPAIR PROTOCOL exact-source-patch-v1' in text
-    if body.get('previous') and not patch:
-        messages.append({'role': 'assistant', 'content': body['previous']})
-    if body.get('previous') or body.get('diagnostics'):
-        instruction = ('Return only exact-source-patch-v1 edits; preserve unaffected source. No full-source fallback.' if patch else
-                       'Return both complete source strings in the exact JSON envelope. Preserve behavior.')
-        messages.append({'role': 'user', 'content': instruction + '\n' + body.get('diagnostics', '')})
+    repairing = bool(body.get('previous')) or '\nSOURCE OPERATION\nrepair\n' in text
+    if (repairing or patch) and (not patch or not body.get('previous')):
+        raise ValueError('Repair requires a revision-bound exact patch base')
+    if patch:
+        messages.append({'role': 'user', 'content': 'Return only exact-source-patch-v1 edits; preserve unaffected source. No full-source fallback.\n' + body.get('diagnostics', '')})
     return messages
 
 

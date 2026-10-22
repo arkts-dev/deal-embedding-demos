@@ -26,7 +26,7 @@ import java.util.concurrent.Executors
 fun assistanceProtocol(context: Context, storageName: String = "assistance"): ApplicationProtocol {
     val discovery = CapabilityDiscovery(context) { uid -> uid != context.applicationInfo.uid && Connections.trusted(context, uid) }
     return ApplicationProtocol(context, Embedding(context, CapabilityRegistry(context, discovery, emptyList()),
-        AssistanceBuild.gateway(), EmbeddingConfig("experience", emptyList(), storageName, repairStrategy = AssistanceBuild.repairStrategy, retainState = true)))
+        AssistanceBuild.gateway(), EmbeddingConfig("experience", emptyList(), storageName, retainState = true)))
 }
 
 /** App lifecycle/placement and retention decisions, not an execution driver. */

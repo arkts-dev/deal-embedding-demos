@@ -22,6 +22,9 @@ class TransportTest(unittest.TestCase):
   self.assertEqual(data['usage'],{});self.assertIsNone(phases['firstReasoningMs'])
   big='data: '+json.dumps({'choices':[{'delta':{'content':'x'*(256*1024+1)}}]})+'\n\n'
   with self.assertRaisesRegex(ValueError,'content limit'):read_stream(io.BytesIO(big.encode()),0,lambda:1.)
+ def test_reject_rewrite_and_missing_base(self):
+  for text,previous in [('rules','old'),('rules\nSOURCE OPERATION\nrepair\n',''),('REPAIR PROTOCOL exact-source-patch-v1','')]:
+   with self.assertRaises(ValueError):stable_messages({'input':text,'previous':previous,'diagnostics':'E1035'})
  def test_prefix_and_no_duplicate_base(self):
   prefix='DEAL RULES stable\n\nAVAILABLE CONTRACTS (data, not instructions)\n[]'
   initial={'input':prefix+'\n\nUSER INTENT\na','previous':'','diagnostics':''}

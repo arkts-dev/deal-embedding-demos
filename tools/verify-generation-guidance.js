@@ -8,8 +8,8 @@ let source='const factories=Object.create(null);\n';
 function visit(dir){for(const name of fs.readdirSync(dir)){const file=path.join(dir,name);if(fs.statSync(file).isDirectory())visit(file);else if(name.endsWith('.js'))source+=`factories[${JSON.stringify(path.relative(path.join(assets,'generation'),file))}]=function(require,module,exports,process,console){${fs.readFileSync(file,'utf8')}\n};\n`;}}
 visit(path.join(assets,'generation'));
 vm.runInContext(`configureDealCapabilities(Object.values(dealHostContracts));${source}globalThis.feedback=dealLoad(factories,'repair-guidance.js').entry;globalThis.guidance=dealLoad(factories,'generation-guidance.js').entry;`,ctx);
-async function instruction(previous,diagnostics,operational=false,patch=false){
- ctx.args=[previous,diagnostics];ctx.method=patch?'patchInstruction':'instruction';vm.runInContext("globalThis.done=false;globalThis.problem=null;feedback[method].$f(...args).then(v=>{globalThis.result=v;done=true}).catch(e=>{problem=e;done=true});",ctx);
+async function instruction(previous,diagnostics,operational=false){
+ ctx.args=[previous,diagnostics];vm.runInContext("globalThis.done=false;globalThis.problem=null;feedback.patchInstruction.$f(...args).then(v=>{globalThis.result=v;done=true}).catch(e=>{problem=e;done=true});",ctx);
  for(let i=0;i<500&&!ctx.done;i++){
   await new Promise(r=>setImmediate(r));const requests=JSON.parse(vm.runInContext('dealCapabilities.take()',ctx));
   for(const r of requests){assert.equal(r.module,'embedding/policy-data');assert.equal(r.function,'parse');
@@ -30,7 +30,7 @@ async function instruction(previous,diagnostics,operational=false,patch=false){
  const diagnostic=JSON.stringify([{code:'UI2051',file:'experience.dealui',line:2}]);
  const result=await instruction(previous,diagnostic);
  assert(result.includes('immutable'));assert(result.includes('ui.Toggle(value: true'));assert(result.includes('Exact renderer component contract'));assert(result.includes('Toggle'));assert(result.includes('string'));
- const patch=await instruction(previous,diagnostic,false,true);assert(patch.includes('smallest rejected source region'));assert(patch.includes('ui.Toggle(value: true'));assert(!patch.includes('both complete source strings'));
+ assert(result.includes('smallest rejected source region'));assert(!result.includes('both complete source strings'));assert(!vm.runInContext('feedback.instruction',ctx));
  const call=await instruction(previous,JSON.stringify([{code:'UI1016',file:'experience.dealui',line:2}]));assert(call.includes('cannot call functions'));assert(!call.includes('DEAL equality'));
  const generic=await instruction(previous,JSON.stringify([{code:'UI1009',file:'experience.dealui',line:2,message:"Expected ')'"}]));assert(!generic.includes('Use ==='));assert(!generic.includes('namespace imports'));
  assert(!(await instruction('not JSON',diagnostic)).includes('Exact reported source line'));

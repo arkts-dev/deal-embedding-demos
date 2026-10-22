@@ -25,8 +25,8 @@ parser.add_argument('--enable-cortex', action='store_true', help='Also serve Cor
 parser.add_argument('--enable-cerebras', action='store_true', help='Also serve Cerebras when Cortex is the default')
 parser.add_argument('--discovery-backend', choices=('disabled', 'deepseek-flash'), default='disabled', help='Explicit remote discovery; credential comes only from DEXTER_DEEPSEEK_API_KEY')
 parser.add_argument('--cerebras-key-file', type=pathlib.Path, default=pathlib.Path.home()/'cerebras.key')
-parser.add_argument('--initial-reasoning', choices=('none','low','medium','high'), default='low')
-parser.add_argument('--repair-reasoning', choices=('none','low','medium','high'), default='low')
+parser.add_argument('--initial-reasoning', choices=('low','medium','high'), default='low')
+parser.add_argument('--repair-reasoning', choices=('low','medium','high'), default='low')
 parser.add_argument('--initial-max-tokens', type=int, default=32768)
 parser.add_argument('--repair-max-tokens', type=int, default=32768)
 parser.add_argument('--stream-source', action=argparse.BooleanOptionalAction, default=True, help='Measure Cerebras stream phases; partial output never leaves gateway')
@@ -95,6 +95,7 @@ def infer(body):
     if backend == 'cerebras':
         effort=getattr(options,'repair_reasoning','low') if repairing else getattr(options,'initial_reasoning','low')
         limit=getattr(options,'repair_max_tokens',32768) if repairing else getattr(options,'initial_max_tokens',32768)
+        if effort not in ('low','medium','high'): raise ValueError('Source reasoning must be enabled')
         payload.update(max_tokens=limit, temperature=1, top_p=0.95, reasoning_effort=effort, response_format={'type':'json_object'}, clear_thinking=True)
         if getattr(options,'stream_source',False):
             payload.update(stream=True, stream_options={'include_usage':True})

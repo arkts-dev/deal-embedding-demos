@@ -56,7 +56,7 @@ export view Main(state: app.State): View { ui.Column() { ui.Text(value: "Protoco
   // No network: source fixture validates absent-policy fallback through real core.
   val badModel=object:ModelClient{override fun complete(input:String,previous:String,diagnostics:String,cancellation:GenerationCancellation,log:EmbeddingLog):String="not source"}
   val repeated=Embedding(context,CapabilityRegistry(context,CapabilityDiscovery(context){false},emptyList()),badModel,EmbeddingConfig("experience",emptyList(),"protocol-repeated"))
-  try{repeated.refresh();val c=repeated.snapshot(WireType("record"),"{}");val error=runCatching{repeated.generate(repeated.request("Repeated","Fixture invalid response",c))}.exceptionOrNull();check(error is GenerationRejected&&error.reason==GenerationRejected.Reason.REPEATED_RESPONSE)}finally{repeated.shutdown()}
+  try{repeated.refresh();val c=repeated.snapshot(WireType("record"),"{}");val error=runCatching{repeated.generate(repeated.request("Repeated","Fixture invalid response",c))}.exceptionOrNull();check(error is GenerationRejected&&error.reason==GenerationRejected.Reason.INVALID_CANDIDATE)}finally{repeated.shutdown()}
   // Invoke actual compiled DEAL declarations through the public native linkage.
   ProtocolController(context,host).use { controller ->
    check(controller.call("prepareCapabilities") as Int==1)

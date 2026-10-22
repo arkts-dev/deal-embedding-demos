@@ -16,6 +16,6 @@ object PreparationRecords {
     }
     fun opportunityApi(context: Context, registry: dev.deal.embedding.capabilities.CapabilityRegistry? = null): ApplicationProtocol {
         val capabilities = registry ?: dev.deal.embedding.capabilities.CapabilityRegistry(context, dev.deal.embedding.capabilities.CapabilityDiscovery(context) { false }, emptyList())
-        return ApplicationProtocol(context, Embedding(context, capabilities, GenerationBuild.gateway(), EmbeddingConfig("experience", emptyList(), "preparation-opportunity", repairStrategy = dev.deal.shell.AssistanceBuild.repairStrategy, retainState = true)))
+        return ApplicationProtocol(context, Embedding(context, capabilities, GenerationBuild.gateway(), EmbeddingConfig("experience", emptyList(), "preparation-opportunity", retainState = true)))
     }
 }
