@@ -135,7 +135,7 @@ export view Main(state:app.State):View {ui.Column(){ui.IntText(value:state.value
             val exhaustedModel=object:ModelClient{override fun complete(input:String,previous:String,diagnostics:String,cancellation:GenerationCancellation,log:EmbeddingLog):String=if(distinct.incrementAndGet()==1)rejectedPair else "invalid patch ${distinct.get()}"}
             ApplicationProtocol(context,Embedding(context,CapabilityRegistry(context,CapabilityDiscovery(context){false},emptyList()),exhaustedModel,EmbeddingConfig("experience",emptyList(),"exhausted-${java.util.UUID.randomUUID()}"))).use{other->
                 val r=other.request("Exhausted","Fixture request",other.snapshot(WireType("record"),"{}"))
-                check(runCatching{other.generate(r)}.exceptionOrNull().let{it is ProtocolFailure&&it.code=="GENERATION_ATTEMPT_LIMIT"});check(distinct.get()==3)
+                check(runCatching{other.generate(r)}.exceptionOrNull().let{it is ProtocolFailure&&it.code=="GENERATION_ATTEMPT_LIMIT"});check(distinct.get()==33)
             }
             for((thrown,expected) in listOf(java.net.ConnectException("fixture") to "GATEWAY_UNREACHABLE",java.net.SocketTimeoutException("fixture") to "MODEL_TIMEOUT")){
                 val failureModel=object:ModelClient{override fun complete(input:String,previous:String,diagnostics:String,cancellation:GenerationCancellation,log:EmbeddingLog):String=throw thrown}

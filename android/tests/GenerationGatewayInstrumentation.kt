@@ -68,6 +68,17 @@ import * as ui from "./platform.dealui-pack";
 // @ui-root
 export view Main(state:app.State):View {ui.Column(){ui.IntText(value:state.value) ui.Button(text:"Increment",onClick:action app.Increment {})}}
 """)
+            // Locality is mechanically measured with explicit baselines, not semantic acceptance.
+            val telemetryBase=ExperienceSource("a\nb\nc","ui")
+            val telemetryNext=ExperienceSource("a\nB\nc","ui")
+            val telemetryFinal=ExperienceSource("a\nB\nC","ui")
+            check(GenerationTelemetry.changes(telemetryBase,telemetryNext).getInt("addedLines")==1)
+            check(GenerationTelemetry.changes(telemetryNext,telemetryFinal).getInt("removedLines")==1)
+            check(GenerationTelemetry.changes(telemetryBase,telemetryFinal).getInt("addedLines")==2)
+            check(GenerationTelemetry.changes(telemetryBase,telemetryFinal).getBoolean("unchangedUi"))
+            val unicode=ExperienceSource("🌍","界")
+            val unicodeDigest=java.security.MessageDigest.getInstance("SHA-256").digest("1:🌍1:界".toByteArray()).joinToString("") { "%02x".format(it) }
+            check(GenerationTelemetry.revision(unicode)==unicodeDigest)
             // Canonical catalogues preserve field names/positional parameters while sorting inventories.
             val intType=CapabilityType("int")
             val fields=linkedMapOf("optionalFields" to intType,"alpha" to intType)
@@ -119,6 +130,10 @@ export view Main(state:app.State):View {ui.Column(){ui.IntText(value:state.value
                     check(inspected.events.any { it.optString("stage") == "source" && it.optString("trace") == trace })
                     check(inspected.events.any { it.optString("stage") == "model-provider" && it.optString("outcome") == "completed" })
                     check(inspected.events.any { it.optString("stage") == "snapshot" && it.optString("artifact").isNotEmpty() })
+                    val summaries=inspected.events.filter { it.optString("stage")=="request-summary" }.map { JSONObject(it.getString("target")) }
+                    check(summaries.any { it.getString("outcome")=="source_checked" && it.getInt("initialCalls")==1 && it.getInt("repairCalls")==0 })
+                    check(summaries.any { it.getString("outcome")=="runtime_mounted" && it.getBoolean("sourceChecked") && !it.getBoolean("snapshotPublished") && it.getString("testedBehavior")=="not_tested" })
+                    check(summaries.all { it.getJSONObject("tokens").getJSONObject("initial").isNull("reasoning") && !it.getBoolean("telemetryComplete") })
                     api.close(session)
                     val reopened = api.run(experience); check(api.next(reopened, "").snapshot.fault.isEmpty()); api.close(reopened)
                     api.forget(experience)
@@ -155,6 +170,32 @@ export view Main(state:app.State):View {ui.Column(){ui.IntText(value:state.value
                 val s=api.run(e);val tree=api.next(s,"").snapshot.tree
                 val action=tree.getJSONArray("children").getJSONObject(1).getJSONArray("props").let { props -> (0 until props.length()).map { props.getJSONObject(it) }.first { it.optString("kind")=="action" }.getInt("actionSlot") }
                 api.dispatch(s,action,null);check(api.next(s,"").snapshot.tree.toString().contains("\"intValue\":8"));api.close(s);api.forget(e)
+                EmbeddingLog.flush(targetContext)
+                val records=api.retainedEvents().events.filter { it.optString("trace")==api.requestTrace(request) && it.optString("stage")=="repair-metrics" }.map { JSONObject(it.getString("target")) }
+                check(records.size==2) { "Expected exactly two repair records: $records" }
+                check(records[0].getString("patchOutcome")=="rejected" && records[0].getString("patchRejectionCode")=="PATCH_BASE" && records[0].getString("recheckOutcome")=="not_checked")
+                check(records[0].getString("baseRevision")==records[1].getString("baseRevision"))
+                check(records[1].getString("patchOutcome")=="applied" && records[1].getString("recheckOutcome")=="passed")
+                check(records[1].getBoolean("unchangedUi") && !records[1].getBoolean("unchangedDeal") && records[1].getInt("editCount")==1)
+                check(records[1].getJSONObject("immediate").getInt("addedLines")==1 && records[1].getJSONObject("cumulative").getInt("removedLines")==1)
+                check(records[1].getString("preservationOutcome")=="not_tested" && records[1].getJSONArray("remainingDiagnosticCodes").length()==0)
+                check(records.all { it.getLong("totalRepairMs")>=it.getLong("modelMs") })
+            }
+            // Cancellation and operational failure finish summaries without inventing a check or mount.
+            for(cancelledCase in listOf(true,false)) {
+                val failedModel=object:ModelClient {
+                    override fun complete(input:String,previous:String,diagnostics:String,cancellation:GenerationCancellation,log:EmbeddingLog):String {
+                        if(cancelledCase)throw CancellationException("fixture") else throw ProtocolFailure("FIXTURE_OPERATIONAL","fixture")
+                    }
+                }
+                ApplicationProtocol(targetContext,Embedding(targetContext,CapabilityRegistry(targetContext,CapabilityDiscovery(targetContext){false},emptyList()),failedModel,EmbeddingConfig("experience",emptyList(),"failure-${UUID.randomUUID()}"))).use { api ->
+                    val request=api.request("Failure fixture","Counter",api.snapshot(WireType("record"),"{}"))
+                    check(runCatching { api.generate(request) }.isFailure)
+                    EmbeddingLog.flush(targetContext)
+                    val summary=api.retainedEvents().events.last { it.optString("trace")==api.requestTrace(request) && it.optString("stage")=="request-summary" }.let { JSONObject(it.getString("target")) }
+                    check(summary.getString("outcome")==if(cancelledCase)"cancelled" else "failed")
+                    check(summary.getInt("initialCalls")==1 && !summary.getBoolean("sourceChecked") && summary.isNull("mountMs"))
+                }
             }
             // Invalid envelopes have no patch base and must stop without a replacement-source call.
             var invalidCalls=0
@@ -165,6 +206,9 @@ export view Main(state:app.State):View {ui.Column(){ui.IntText(value:state.value
                 val request=api.request("Invalid fixture","Counter",api.snapshot(WireType("record"),"{}"))
                 val failure=runCatching { api.generate(request) }.exceptionOrNull()
                 check(invalidCalls==1 && failure is ProtocolFailure && failure.code=="GENERATION_INVALID_CANDIDATE") { "Invalid envelope admission: calls=$invalidCalls failure=$failure" }
+                EmbeddingLog.flush(targetContext)
+                val summary=api.retainedEvents().events.last { it.optString("trace")==api.requestTrace(request) && it.optString("stage")=="request-summary" }.let { JSONObject(it.getString("target")) }
+                check(summary.getString("outcome")=="failed" && !summary.getBoolean("sourceChecked") && summary.isNull("mountMs") && summary.getString("testedBehavior")=="not_tested")
             }
             // Remote discovery uses the same transport but the unchanged strict discovery/admission path.
             val discoveryRegistry = CapabilityRegistry(targetContext, CapabilityDiscovery(targetContext) { false }, emptyList())

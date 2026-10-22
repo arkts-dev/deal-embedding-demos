@@ -9,6 +9,9 @@ class TransportTest(unittest.TestCase):
   times=iter([1.,2.,3.,4.,5.]);data,phases=read_stream(io.BytesIO(raw.encode()),0,lambda:next(times))
   self.assertEqual(json.loads(data['choices'][0]['message']['content']),{'deal':'x','dealui':'y'})
   self.assertEqual(phases['firstReasoningMs'],1000);self.assertEqual(phases['firstContentMs'],2000)
+  self.assertEqual(phases['requestToFirstMeaningfulOutputMs'],1000)
+  self.assertEqual(phases['firstReasoningReceiptMs'],1000);self.assertEqual(phases['lastContentReceiptMs'],3000)
+  self.assertEqual(phases['streamCompleteMs'],5000)
   self.assertEqual(data['usage']['completion_tokens_details']['reasoning_tokens'],7)
   self.assertNotIn('PRIVATE THOUGHT',json.dumps(data));self.assertNotIn('PRIVATE THOUGHT',json.dumps(phases))
  def test_truncation(self):

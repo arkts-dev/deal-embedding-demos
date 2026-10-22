@@ -95,7 +95,13 @@ def read_stream(response, started, clock=time.monotonic):
     if finish != 'stop':
         raise ValueError('Provider stream did not complete normally')
     elapsed = (clock() - started) * 1000
-    phases = dict(firstOutputMs=first, firstReasoningMs=reasoning_first, lastReasoningMs=reasoning_last,
+    # Canonical receipt names. Legacy aliases retained for archived consumer compatibility.
+    phases = dict(definition='monotonic receipt offsets from provider request start; not transport bytes, prefill or compute',
+                  requestToFirstMeaningfulOutputMs=first,
+                  firstReasoningReceiptMs=reasoning_first, lastReasoningReceiptMs=reasoning_last,
+                  firstContentReceiptMs=content_first, lastContentReceiptMs=content_last,
+                  streamCompleteMs=elapsed,
+                  firstOutputMs=first, firstReasoningMs=reasoning_first, lastReasoningMs=reasoning_last,
                   firstContentMs=content_first, lastContentMs=content_last, totalMs=elapsed, chunks=chunks,
                   reasoningSpanMs=None if reasoning_first is None else reasoning_last - reasoning_first,
                   contentSpanMs=None if content_first is None else content_last - content_first)
