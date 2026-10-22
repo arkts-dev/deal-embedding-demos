@@ -32,7 +32,14 @@ async function instruction(previous,diagnostics,operational=false){
  assert(result.includes('immutable'));assert(result.includes('ui.Toggle(value: true'));assert(result.includes('Exact renderer component contract'));assert(result.includes('Toggle'));assert(result.includes('string'));
  assert(result.includes('smallest rejected source region'));assert(!result.includes('both complete source strings'));assert(!vm.runInContext('feedback.instruction',ctx));
  const call=await instruction(previous,JSON.stringify([{code:'UI1016',file:'experience.dealui',line:2}]));assert(call.includes('cannot call functions'));assert(!call.includes('DEAL equality'));
- const generic=await instruction(previous,JSON.stringify([{code:'UI1009',file:'experience.dealui',line:2,message:"Expected ')'"}]));assert(!generic.includes('Use ==='));assert(!generic.includes('namespace imports'));
+ assert(result.includes('Diagnostic file: experience.dealui; patch file: dealui; line: 2'));
+ assert(result.includes('2 | ui.Toggle(value: true'));
+ const contaminated=JSON.stringify({deal:'export function main(): null { return null; }\n","dealui":"import * as app from \\"./experience\\";',dealui:'import * as app from "./experience";'});
+ const escape=await instruction(contaminated,JSON.stringify([{code:'E1001',file:'experience.deal',line:2}]));
+ assert(escape.includes('patch file: deal; line: 2'));assert(escape.includes('remove only the misplaced fragment from this file'));assert(escape.includes('do not edit the separate dealui file'));assert(!escape.includes('Array length is read-only'));
+ const length=await instruction(previous,JSON.stringify({diagnostics:[{code:'E3017',range:{file:'src/experience.deal',startLine:1}}]}));assert(length.includes('array[array.length] = value'));assert(length.includes('patch file: deal; line: 1'));
+ const typed=await instruction(previous,JSON.stringify([{code:'E3003',file:'experience.deal',line:1}]));assert(typed.includes('let cents: int = record.cents'));assert(!typed.includes('invalid backslash'));
+ const generic=await instruction(previous,JSON.stringify([{code:'UI1009',file:'experience.dealui',line:2,message:"Expected ')'"}]));assert(!generic.includes('Use ==='));assert(!generic.includes('namespace imports'));assert(!generic.includes('misplaced fragment'));assert(!generic.includes('read-only'));
  assert(!(await instruction('not JSON',diagnostic)).includes('Exact reported source line'));
  let rejected=false;try{await instruction(previous,diagnostic,true)}catch(e){rejected=e.code==='STORAGE_FAILED'}assert(rejected,'operational parse failure must propagate');
  console.log('PASS compiled generation guidance: authored example; bounded source/pack feedback; invalid JSON safe; operational parser failure propagates');
