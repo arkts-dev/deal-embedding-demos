@@ -3,6 +3,19 @@ package dev.deal.connectors.tests
 import android.app.Instrumentation
 import android.os.Bundle
 import android.os.SystemClock
+import android.content.Intent
+import androidx.activity.compose.setContent
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
+import dev.deal.apps.organizer.OrganizerActivity
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.atomic.AtomicLong
+import java.util.concurrent.atomic.AtomicReference
 import dev.deal.embedding.*
 import dev.deal.embedding.capabilities.*
 import dev.deal.embedding.discovery.*
@@ -10,8 +23,8 @@ import dev.deal.shell.*
 import org.json.*
 import java.io.File
 
-/** Explicit live, programmatic discovery/generate/test/patch/mount/edit/cold framework journey.
- * Test expectations enter model feedback only after an actual failed runtime evaluation.
+/** Opt-in fresh generation benchmark: discovery start -> first committed runnable frame.
+ * Semantic assessment happens AFTER the immutable stop timestamp, with no model feedback.
  */
 class FrameworkE2eInstrumentation: Instrumentation() {
     private var enabled=false
@@ -20,22 +33,18 @@ class FrameworkE2eInstrumentation: Instrumentation() {
     private fun text(n:JSONObject)=n.getJSONArray("props").let { p -> (0 until p.length()).map { p.getJSONObject(it).optString("stringValue") }.filter { it.isNotEmpty() }.joinToString(" ") }
     private fun slot(n:JSONObject):Int?=n.getJSONArray("props").let { p -> (0 until p.length()).map { p.getJSONObject(it) }.firstOrNull { it.optString("kind")=="action" }?.getInt("actionSlot") }
     private fun amount(t:JSONObject,cents:Int)=nodes(t).any { it.optString("component").endsWith(".Money") && ToolkitNodes.integer(it,"minorUnits")==cents } || nodes(t).any { text(it).contains("%.2f".format(java.util.Locale.US,cents/100.0)) }
-    private fun settle(s:CandidateTestSession):JSONObject {
+    private class RenderedSession(private val surface: ExperienceSurface) {
+        fun snapshot() = checkNotNull(surface.snapshot).json()
+        fun dispatch(slot:Int,payload:String?) { val value=checkNotNull(surface.snapshot);surface.event(value,slot,payload) }
+        fun pause() { Thread.sleep(10) }
+    }
+    private fun settle(s:RenderedSession):JSONObject {
         var t=s.snapshot();var same=0;var version=-1
         while(same<20){s.pause();val next=s.snapshot();if(next.optString("fault").isNotEmpty())error("Runtime fault: ${next.optString("fault")}");val pending=nodes(next.getJSONObject("tree")).any { it.optString("component").endsWith(".Progress") || it.optString("component").endsWith(".Spinner") };if(next.getInt("version")==version && !pending)same++ else same=0;version=next.getInt("version");t=next}
         return t.getJSONObject("tree")
     }
-    private fun evaluate(name:String,s:CandidateTestSession):String = try {
+    private fun evaluate(name:String,s:RenderedSession):String = try {
         var t=settle(s)
-        if(s.restored) {
-            when(name){
-                "food"->check(amount(t,8100)){"Settled restored food total must remain8100"}
-                "departure"->check(nodes(t).joinToString(" "){text(it)}.contains("15:41")){"Settled restored departure must remain15:41"}
-                "budget"->check(amount(t,1750)){"Restored budget difference1750 missing"}
-                "equipment"->check(amount(t,1200)&&amount(t,1300)&&amount(t,5000)){"Restored quote comparison/deposit missing"}
-            }
-            return ""
-        }
         // These are runtime actions, never capability reads during discovery/source construction.
         if(name!="budget") {
             val actions=nodes(t).filter { slot(it)!=null && it.optString("component").let { c -> c.endsWith(".Button")||c.endsWith(".PrimaryAction")||c.endsWith(".SecondaryAction") } }
@@ -54,7 +63,7 @@ class FrameworkE2eInstrumentation: Instrumentation() {
                 s.dispatch(slot(b)!!,"19850");t=settle(s);check(amount(t,1750)){"181/198.50 must yield EUR17.50"}
                 fun approved(cents:Int){val field=nodes(t).first { it.optString("component").endsWith(".IntField") && text(it).lowercase().let { v -> v.contains("approved")||v.contains("budget") } };s.dispatch(slot(field)!!,cents.toString());t=settle(s)}
                 approved(19850);check(amount(t,0)){"Equal amounts must show zero difference"}
-                approved(20000);check(amount(t,150)){"200/198.50 must show EUR1.50 under budget"}
+                approved(20000);check((amount(t,150)||amount(t,-150)) && nodes(t).joinToString(" "){text(it)}.contains("under",true)){"200/198.50 must show signed or magnitude EUR1.50 with under-budget status"}
                 approved(18100)
             }
             "departure" -> {
@@ -88,10 +97,6 @@ class FrameworkE2eInstrumentation: Instrumentation() {
                     val option=actions.firstOrNull { text(it).contains(label,true) && !it.optString("component").endsWith(".IntField") }
                     if(option!=null){val value=ToolkitNodes.string(option,"value").takeIf { it.isNotEmpty() };s.dispatch(slot(option)!!,value);t=settle(s);actions=nodes(t).filter { slot(it)!=null }}
                 }
-                for(i in 0..1) {
-                    val quote=nodes(t).firstOrNull { slot(it)!=null && text(it).contains("quote",true) }
-                    if(quote!=null){s.dispatch(slot(quote)!!,null);t=settle(s)}
-                }
                 check(amount(t,1200)&&amount(t,1300)&&amount(t,5000)){"Comparison must show actual package1200,separate stand+cable1300 and separate refundable deposit5000 cents, using actual catalogue/quotes, not unavailable or assumed adapter. Observed:${nodes(t).joinToString(" "){text(it)}}"}
                 val budget=nodes(t).firstOrNull { it.optString("component").endsWith(".IntField") && ToolkitNodes.integer(it,"value")==2000 } ?: error("Editable EUR20 rental budget missing")
                 s.dispatch(slot(budget)!!,"1100");t=settle(s)
@@ -113,34 +118,67 @@ class FrameworkE2eInstrumentation: Instrumentation() {
             for((name,fact) in cases.sortedBy { listOf("budget","departure","food","equipment").indexOf(it.first) }){
                 val row=JSONObject().put("scenario",name);receipts.put(row);val started=SystemClock.elapsedRealtime()
                 val storage="framework-e2e-$name-${java.util.UUID.randomUUID()}"
-                fun open(test:Boolean):ApplicationProtocol {
-                    val registry=CapabilityRegistry(ctx,CapabilityDiscovery(ctx){uid->Connections.trusted(ctx,uid)},emptyList())
-                    val config=EmbeddingConfig("experience",emptyList(),storage,retainState=true,candidateTest=if(test)({ s -> val feedback=evaluate(name,s);row.put("evaluations",row.optInt("evaluations")+1);row.put("lastFeedback",feedback);File(ctx.filesDir,"framework-e2e-results.json").writeText(receipts.toString(2));feedback }) else null)
-                    return ApplicationProtocol(ctx,Embedding(ctx,registry,AssistanceBuild.gateway(),config))
-                }
-                var id=""
-                open(true).use { api ->
+                val activity=startActivitySync(Intent(ctx,OrganizerActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) as OrganizerActivity
+                val registry=CapabilityRegistry(ctx,CapabilityDiscovery(ctx){uid->Connections.trusted(ctx,uid)},emptyList())
+                // NO candidateTest: semantic failures cannot trigger generation/repair in this benchmark.
+                val config=EmbeddingConfig("experience",emptyList(),storage,retainState=true)
+                ApplicationProtocol(ctx,Embedding(ctx,registry,AssistanceBuild.gateway(),config)).use { api ->
                     api.capture(true);Connections.apply(ctx,api)
-                    // Explicit live-test host authority for the requested read-only provider cases.
                     val module=when(name){"food"->"host/pizza";"departure"->"host/trip";"equipment"->"host/rental";else->""}
                     if(module.isNotEmpty())api.grant(module)
                     val facts=DiscoveryInput(listOf(DiscoveryFact("task",fact)))
+                    val discoveryStarted=SystemClock.elapsedRealtime()
                     val request=Discovery(ctx,api,AssistanceBuild.discoveryGateway()).use { finder ->
-                        var tip=finder.discover(facts).get()
-                        while(tip==null){tip=finder.discover(facts).get()}
-                        row.put("discoveryMs",SystemClock.elapsedRealtime()-started);finder.request(tip,facts)
+                        val tip=finder.discover(facts).get()
+                        row.put("discoveryOnlyMs",SystemClock.elapsedRealtime()-discoveryStarted)
+                        row.put("discoveryMs",SystemClock.elapsedRealtime()-started)
+                        checkNotNull(tip){"Discovery returned no suggestion; no automatic new request"}
+                        finder.request(tip,facts)
                     }
                     row.put("trace",api.requestTrace(request))
-                    val e=api.generate(request);id=e.id;row.put("attempts",e.attempts).put("checkedMs",SystemClock.elapsedRealtime()-started)
-                    val session=api.run(e);val snapshot=api.next(session,"").snapshot;check(snapshot.fault.isEmpty());api.published(session,snapshot.version)
-                    row.put("mountedPublishedMs",SystemClock.elapsedRealtime()-started);api.close(session)
+                    val generationStarted=SystemClock.elapsedRealtime()
+                    val e=api.generate(request)
+                    row.put("experience",e.id).put("attempts",e.attempts).put("checkedMs",SystemClock.elapsedRealtime()-started)
+                    val surface=ExperienceSurface(api,e)
+                    try {
+                        val frame=CountDownLatch(1);val renderedAt=AtomicLong(0);val renderError=AtomicReference<Throwable?>()
+                        surface.activate { error -> renderError.set(error);frame.countDown() }
+                        runOnMainSync {
+                            activity.setContent {
+                                AppTheme(Accent.Organizer) {
+                                    Surface(Modifier.fillMaxSize()) {
+                                        Column(Modifier.statusBarsPadding().navigationBarsPadding().padding(16.dp).verticalScroll(rememberScrollState())) {
+                                            ExperienceSurface(surface,onSnapshot={snapshot ->
+                                                if(renderedAt.get()==0L) {
+                                                    if(snapshot.fault.isNotEmpty()){renderError.set(IllegalStateException(snapshot.fault));frame.countDown()}
+                                                    else activity.window.decorView.viewTreeObserver.registerFrameCommitCallback {
+                                                        renderedAt.compareAndSet(0,SystemClock.elapsedRealtime());frame.countDown()
+                                                    }
+                                                    activity.window.decorView.invalidate()
+                                                }
+                                            })
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        frame.await();renderError.get()?.let{throw it}
+                        val stop=renderedAt.get();check(stop>0)
+                        row.put("status","rendered").put("runMs",stop-started).put("generationToRenderMs",stop-generationStarted)
+                        row.put("stopDefinition","first generated UI frame committed to swap chain; not physical pixel scanout")
+                        // Freeze and persist timed outcome BEFORE any semantic action, screenshot or cleanup.
+                        File(ctx.filesDir,"framework-e2e-results.json").writeText(receipts.toString(2))
+                        sendStatus(2,Bundle().apply{putString("timed",row.toString())})
+                        uiAutomation.takeScreenshot()?.let { bitmap -> File(ctx.filesDir,"framework-e2e-$name.png").outputStream().use { bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG,100,it) };bitmap.recycle() }
+                        val feedback=evaluate(name,RenderedSession(surface))
+                        row.put("semantic",if(feedback.isEmpty())"passed_supplied_assertions" else "incorrect_or_inconclusive").put("semanticFailure",feedback)
+                        File(ctx.filesDir,"framework-e2e-$name-final-tree.json").writeText(checkNotNull(surface.snapshot).json().toString(2))
+                    } finally {
+                        runOnMainSync { activity.setContent { Text("Assessment complete") } }
+                        surface.close()
+                    }
                 }
-                open(false).use { api ->
-                    Connections.apply(ctx,api)
-                    val module=when(name){"food"->"host/pizza";"departure"->"host/trip";"equipment"->"host/rental";else->""};if(module.isNotEmpty())api.grant(module)
-                    val e=api.saved().single{it.id==id};val s=api.run(e);check(api.next(s,"").snapshot.fault.isEmpty());api.close(s)
-                }
-                row.put("status","passed_explicit_tests_and_cold_mount").put("totalMs",SystemClock.elapsedRealtime()-started)
+                runOnMainSync { activity.finish() }
                 File(ctx.filesDir,"framework-e2e-results.json").writeText(receipts.toString(2));sendStatus(2,Bundle().apply{putString("scenario",row.toString())})
             }
             result.putString("e2e",receipts.toString());finish(0,result)

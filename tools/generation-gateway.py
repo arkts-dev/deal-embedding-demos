@@ -97,6 +97,23 @@ def infer(body):
         limit=getattr(options,'repair_max_tokens',-1) if repairing else getattr(options,'initial_max_tokens',-1)
         if effort not in ('low','medium','high'): raise ValueError('Source reasoning must be enabled')
         payload.update(max_tokens=limit, temperature=1, top_p=0.95, reasoning_effort=effort, response_format={'type':'json_object'}, clear_thinking=True)
+        if '\n\nISSUED OPTIONS\n' not in body['input']:
+            # JSON-object mode permits UI source escaped inside the deal string.
+            # Constrain structure only; core still validates nonempty source and
+            # digest-bound, unique/disjoint exact edits before checking/execution.
+            schema = {'type':'object', 'properties':{
+                'deal':{'type':'string'}, 'dealui':{'type':'string'}
+            }, 'required':['deal','dealui'], 'additionalProperties':False}
+            if repairing:
+                schema = {'type':'object', 'properties':{
+                    'baseDigest':{'type':'string'},
+                    'edits':{'type':'array', 'items':{'type':'object', 'properties':{
+                        'file':{'type':'string','enum':['deal','dealui']},
+                        'search':{'type':'string'}, 'replacement':{'type':'string'}
+                    }, 'required':['file','search','replacement'], 'additionalProperties':False}}
+                }, 'required':['baseDigest','edits'], 'additionalProperties':False}
+            payload['response_format'] = {'type':'json_schema', 'json_schema':{
+                'name':'exact_source_patch' if repairing else 'source_pair', 'strict':True, 'schema':schema}}
         if limit == -1: payload.pop('max_tokens',None)
         if getattr(options,'stream_source',False):
             payload.update(stream=True, stream_options={'include_usage':True})
