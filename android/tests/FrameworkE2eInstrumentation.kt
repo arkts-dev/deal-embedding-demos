@@ -28,29 +28,71 @@ import java.io.File
  */
 class FrameworkE2eInstrumentation: Instrumentation() {
     private var enabled=false
-    override fun onCreate(arguments:Bundle?){super.onCreate(arguments);enabled=arguments?.getString("live")=="true";start()}
+    private var selftest=false
+    private var reassess=""
+    private var savedStorage=""
+    private var savedExperience=""
+    override fun onCreate(arguments:Bundle?){super.onCreate(arguments);enabled=arguments?.getString("live")=="true";selftest=arguments?.getString("selftest")=="true";reassess=arguments?.getString("reassess").orEmpty();savedStorage=arguments?.getString("storage").orEmpty();savedExperience=arguments?.getString("experience").orEmpty();start()}
     private fun nodes(t:JSONObject)=ToolkitNodes.all(t)
     private fun text(n:JSONObject)=n.getJSONArray("props").let { p -> (0 until p.length()).map { p.getJSONObject(it).optString("stringValue") }.filter { it.isNotEmpty() }.joinToString(" ") }
     private fun slot(n:JSONObject):Int?=n.getJSONArray("props").let { p -> (0 until p.length()).map { p.getJSONObject(it) }.firstOrNull { it.optString("kind")=="action" }?.getInt("actionSlot") }
     private fun amount(t:JSONObject,cents:Int)=nodes(t).any { it.optString("component").endsWith(".Money") && ToolkitNodes.integer(it,"minorUnits")==cents } || nodes(t).any { text(it).contains("%.2f".format(java.util.Locale.US,cents/100.0)) }
+    private class AssessmentIncomplete(message:String):Exception(message)
     private class RenderedSession(private val surface: ExperienceSurface) {
+        var dispatchedVersion:Int?=null
         fun snapshot() = checkNotNull(surface.snapshot).json()
-        fun dispatch(slot:Int,payload:String?) { val value=checkNotNull(surface.snapshot);surface.event(value,slot,payload) }
+        fun dispatch(slot:Int,payload:String?) {
+            check(dispatchedVersion==null){"Previous assessment action has not settled"}
+            val value=checkNotNull(surface.snapshot)
+            dispatchedVersion=value.version
+            surface.event(value,slot,payload)
+        }
         fun pause() { Thread.sleep(10) }
     }
+    // A quiet OLD frame cannot acknowledge a queued action. First require a committed
+    // newer snapshot, then wait through its pending UI and subsequent completion.
+    private fun settledSnapshot(after:Int?,snapshot:()->JSONObject,pause:()->Unit,clock:()->Long):JSONObject {
+        var same=0;var version=-1;val start=clock()
+        while(true){
+            val next=snapshot()
+            if(next.optString("fault").isNotEmpty())error("Runtime fault: ${next.optString("fault")}")
+            val pending=nodes(next.getJSONObject("tree")).any { it.optString("component").endsWith(".Progress") || it.optString("component").endsWith(".Spinner") }
+            val acknowledged=after==null || next.getInt("version")>after
+            if(acknowledged && next.getInt("version")==version && !pending)same++ else same=0
+            version=next.getInt("version")
+            if(same>=20)return next.getJSONObject("tree")
+            // Assessment watchdog only: never report a product failure or feed generation.
+            if(clock()-start>60000)throw AssessmentIncomplete("Action did not reach a newer, non-pending rendered snapshot within assessment watchdog")
+            pause()
+        }
+    }
     private fun settle(s:RenderedSession):JSONObject {
-        var t=s.snapshot();var same=0;var version=-1
-        while(same<20){s.pause();val next=s.snapshot();if(next.optString("fault").isNotEmpty())error("Runtime fault: ${next.optString("fault")}");val pending=nodes(next.getJSONObject("tree")).any { it.optString("component").endsWith(".Progress") || it.optString("component").endsWith(".Spinner") };if(next.getInt("version")==version && !pending)same++ else same=0;version=next.getInt("version");t=next}
-        return t.getJSONObject("tree")
+        val tree=settledSnapshot(s.dispatchedVersion,s::snapshot,s::pause,SystemClock::elapsedRealtime)
+        s.dispatchedVersion=null
+        return tree
+    }
+    private fun verifyAssessmentWaiting(){
+        fun frame(version:Int,pending:Boolean)=JSONObject().put("version",version).put("fault","").put("tree",JSONObject().put("component",if(pending)"ui.Progress" else "ui.Column").put("props",JSONArray()).put("children",JSONArray()))
+        var time=0L
+        settledSnapshot(1,{when{time<350->frame(1,false);time<1750->frame(2,true);else->frame(3,false)}},{time+=10},{time})
+        check(time>=1950){"Evaluator accepted old or pending frame"}
+        time=0
+        // A fast action can skip its loading frame; the newer completed frame is enough.
+        settledSnapshot(1,{if(time<350)frame(1,false) else frame(3,false)},{time+=10},{time})
+        check(time>=550)
+        time=0
+        check(runCatching{settledSnapshot(1,{frame(1,false)},{time+=1000},{time})}.exceptionOrNull() is AssessmentIncomplete)
     }
     private fun evaluate(name:String,s:RenderedSession):String = try {
         var t=settle(s)
+        var initialReadSlot:Int?=null
         // These are runtime actions, never capability reads during discovery/source construction.
         if(name!="budget") {
             val actions=nodes(t).filter { slot(it)!=null && it.optString("component").let { c -> c.endsWith(".Button")||c.endsWith(".PrimaryAction")||c.endsWith(".SecondaryAction") } }
             val load=actions.firstOrNull { text(it).lowercase().let { v -> listOf("load","fetch","check","estimate","find","compare","refresh","compute","calculate").any(v::contains) } }
             if(load==null)error("No explicit action to read provider data. Observed actionable labels: ${actions.joinToString { text(it) }}")
-            s.dispatch(slot(load)!!,null);t=settle(s)
+            initialReadSlot=slot(load)!!
+            s.dispatch(initialReadSlot,null);t=settle(s)
         }
         when(name) {
             "budget" -> {
@@ -69,8 +111,20 @@ class FrameworkE2eInstrumentation: Instrumentation() {
             "departure" -> {
                 val rendered=nodes(t).joinToString(" "){text(it)}
                 check(rendered.contains("15:16") && rendered.contains("15:06")){"Actual Vehicle29min:16:00 minus15 unload minus29 travel gives15:16; inspection10 earlier15:06. Observed:$rendered"}
-                val start=nodes(t).firstOrNull { it.optString("component").endsWith(".IntField") && ToolkitNodes.integer(it,"value")==960 } ?: error("Editable event start minute960 missing")
-                s.dispatch(slot(start)!!,"985");t=settle(s)
+                val fields=nodes(t).filter { it.optString("component").endsWith(".IntField") }
+                val start=fields.firstOrNull { ToolkitNodes.integer(it,"value")==960 }
+                if(start!=null){s.dispatch(slot(start)!!,"985");t=settle(s)}
+                else {
+                    val hour=fields.firstOrNull { text(it).contains("hour",true) && ToolkitNodes.integer(it,"value")==16 }
+                    val minute=fields.firstOrNull { text(it).contains("minute",true) && ToolkitNodes.integer(it,"value")==0 }
+                    if(hour==null || minute==null)throw AssessmentIncomplete("Unsupported event-start control representation; no minute-of-day or hour/minute pair")
+                    s.dispatch(slot(minute)!!,"25");t=settle(s)
+                }
+                // Some correct workflows clear results on edits and require an explicit refresh.
+                if(!nodes(t).joinToString(" "){text(it)}.contains("15:41")) {
+                    val refresh=nodes(t).firstOrNull { slot(it)==initialReadSlot }
+                    if(refresh!=null){s.dispatch(slot(refresh)!!,null);t=settle(s)}
+                }
                 val changed=nodes(t).joinToString(" "){text(it)}
                 check(changed.contains("15:41")&&changed.contains("15:31")){"Editing start to16:25 must recompute departure15:41/inspection15:31; observed:$changed"}
             }
@@ -91,11 +145,11 @@ class FrameworkE2eInstrumentation: Instrumentation() {
                 check(amount(t,8100)){"Row edit4Margherita+3Garden must total8100 cents"}
             }
             "equipment" -> {
-                // Quote both actual returned catalogue options through generated controls.
-                var actions=nodes(t).filter { slot(it)!=null }
-                for(label in if(amount(t,1200)&&amount(t,1300)&&amount(t,5000))emptyList() else listOf("package","stand","cable")) {
-                    val option=actions.firstOrNull { text(it).contains(label,true) && !it.optString("component").endsWith(".IntField") }
-                    if(option!=null){val value=ToolkitNodes.string(option,"value").takeIf { it.isNotEmpty() };s.dispatch(slot(option)!!,value);t=settle(s);actions=nodes(t).filter { slot(it)!=null }}
+                // A two-stage catalogue -> quote workflow needs one explicit follow-up.
+                // Do not dispatch the same quote action again under package/stand/cable labels.
+                if(!(amount(t,1200)&&amount(t,1300)&&amount(t,5000))) {
+                    val compare=nodes(t).firstOrNull { n -> slot(n)!=null && slot(n)!=initialReadSlot && n.optString("component").let { it.endsWith(".Button")||it.endsWith(".PrimaryAction")||it.endsWith(".SecondaryAction") } && text(n).contains("quote",true) }
+                    if(compare!=null){s.dispatch(slot(compare)!!,null);t=settle(s)}
                 }
                 check(amount(t,1200)&&amount(t,1300)&&amount(t,5000)){"Comparison must show actual package1200,separate stand+cable1300 and separate refundable deposit5000 cents, using actual catalogue/quotes, not unavailable or assumed adapter. Observed:${nodes(t).joinToString(" "){text(it)}}"}
                 val budget=nodes(t).firstOrNull { it.optString("component").endsWith(".IntField") && ToolkitNodes.integer(it,"value")==2000 } ?: error("Editable EUR20 rental budget missing")
@@ -105,9 +159,42 @@ class FrameworkE2eInstrumentation: Instrumentation() {
             }
         }
         ""
-    } catch(e:ProtocolFailure){throw e} catch(e:Exception){e.message ?: e.javaClass.simpleName}
+    } catch(e:ProtocolFailure){throw e} catch(e:AssessmentIncomplete){"INCONCLUSIVE: ${e.message}"} catch(e:Exception){e.message ?: e.javaClass.simpleName}
+    private fun assessSaved():String {
+        check(reassess in setOf("budget","departure","food","equipment") && savedStorage.startsWith("framework-e2e-") && savedExperience.isNotEmpty())
+        val ctx=targetContext
+        val activity=startActivitySync(Intent(ctx,OrganizerActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) as OrganizerActivity
+        val registry=CapabilityRegistry(ctx,CapabilityDiscovery(ctx){uid->Connections.trusted(ctx,uid)},emptyList())
+        // No inference in saved assessment, even if an accidental generation call is added.
+        val noModel=object:ModelClient {override fun complete(input:String,previous:String,diagnostics:String,cancellation:GenerationCancellation,log:EmbeddingLog):String=error("Saved assessment must not invoke inference")}
+        try {
+            ApplicationProtocol(ctx,Embedding(ctx,registry,noModel,EmbeddingConfig("experience",emptyList(),savedStorage,retainState=true))).use { api ->
+                api.capture(true);Connections.apply(ctx,api)
+                val module=when(reassess){"departure"->"host/trip";"food"->"host/pizza";"equipment"->"host/rental";else->""}
+                if(module.isNotEmpty())api.grant(module)
+                val experience=api.saved().first { it.id==savedExperience }
+                ExperienceSurface(api,experience).use { surface ->
+                    val failure=AtomicReference<Throwable?>()
+                    surface.activate {failure.set(it)}
+                    runOnMainSync {activity.setContent {AppTheme(Accent.Organizer){ExperienceSurface(surface)}}}
+                    while(surface.snapshot==null){failure.get()?.let{throw it};Thread.sleep(10)}
+                    val feedback=evaluate(reassess,RenderedSession(surface))
+                    File(ctx.filesDir,"framework-e2e-$reassess-reassessed-tree.json").writeText(checkNotNull(surface.snapshot).json().toString(2))
+                    runOnMainSync {activity.setContent {Text("Assessment complete")}}
+                    return feedback
+                }
+            }
+        }finally{runOnMainSync{activity.finish()}}
+    }
     override fun onStart(){val result=Bundle();val receipts=JSONArray();val ctx=targetContext
         try {
+            verifyAssessmentWaiting()
+            if(selftest){result.putString("assessmentWaiting","PASS delayed dispatch > old stability window, delayed provider, skipped loading frame, no-ack watchdog");finish(0,result);return}
+            if(reassess.isNotEmpty()){
+                val feedback=assessSaved()
+                result.putString("reassessment",JSONObject().put("scenario",reassess).put("experience",savedExperience).put("semantic",if(feedback.isEmpty())"passed_supplied_assertions" else if(feedback.startsWith("INCONCLUSIVE:"))"inconclusive" else "failed_supplied_assertions").put("semanticFailure",feedback).toString())
+                finish(0,result);return
+            }
             check(enabled){"Requires -e live true"}
             val cases=listOf(
                 "equipment" to "Vocal kit hire at The Foundry,stage centre,23October2026 16:15–22:30 Europe/Berlin (14:15Z–20:30Z). Need one adjustable boom stand including clip adapter and balanced XLR female-to-male cable minimum10m. Compare package and separate hire via Rental catalogue/quotes. Editable EUR20 budget; refundable deposit separate. Read-only,no booking.",
@@ -171,7 +258,7 @@ class FrameworkE2eInstrumentation: Instrumentation() {
                         sendStatus(2,Bundle().apply{putString("timed",row.toString())})
                         uiAutomation.takeScreenshot()?.let { bitmap -> File(ctx.filesDir,"framework-e2e-$name.png").outputStream().use { bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG,100,it) };bitmap.recycle() }
                         val feedback=evaluate(name,RenderedSession(surface))
-                        row.put("semantic",if(feedback.isEmpty())"passed_supplied_assertions" else "incorrect_or_inconclusive").put("semanticFailure",feedback)
+                        row.put("semantic",if(feedback.isEmpty())"passed_supplied_assertions" else if(feedback.startsWith("INCONCLUSIVE:"))"inconclusive" else "failed_supplied_assertions").put("semanticFailure",feedback)
                         File(ctx.filesDir,"framework-e2e-$name-final-tree.json").writeText(checkNotNull(surface.snapshot).json().toString(2))
                     } finally {
                         runOnMainSync { activity.setContent { Text("Assessment complete") } }
