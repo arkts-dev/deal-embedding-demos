@@ -86,7 +86,7 @@ export view Main(state:app.State):View {ui.Text(value:"Compound failure proof")}
             // Public application load AND generation must retain compiler cleanup evidence.
             val invalidModel=object:ModelClient{
                 override fun complete(input:String,previous:String,diagnostics:String,cancellation:GenerationCancellation,log:EmbeddingLog):String=
-                    org.json.JSONObject().put("deal",source.deal).put("dealui","this is not Deal UI").toString()
+                    rawSourceFixture(source.deal,"this is not Deal UI")
             }
             val evidenceApi=ApplicationProtocol(context,Embedding(context,registry(),invalidModel,config()));cleanups.add(evidenceApi)
             try{

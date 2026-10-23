@@ -124,7 +124,7 @@ export view Main(state:app.State):View {ui.Column(){ui.IntText(value:state.value
             api.close(closeSession);check(StagingReclamation.pending(context)==0);api.forget(closeFailure)
             val request=api.request("Provider failure","Fixture request",api.snapshot(WireType("record"),"{}"))
             check(runCatching{api.generate(request)}.exceptionOrNull().let{it is ProtocolFailure&&it.code=="AUDIT_LIMIT"})
-            val rejectedPair=JSONObject().put("deal",source.deal+"\nlet broken: int = ;").put("dealui",source.dealui).toString()
+            val rejectedPair=rawSourceFixture(source.deal+"\nlet broken: int = ;",source.dealui)
             var repeatCalls=0
             val repeatedModel=object:ModelClient{override fun complete(input:String,previous:String,diagnostics:String,cancellation:GenerationCancellation,log:EmbeddingLog):String { repeatCalls++;if(repeatCalls>5)throw ProtocolFailure("FIXTURE_DONE","fixture");return if(repeatCalls==1)rejectedPair else "invalid patch" }}
             ApplicationProtocol(context,Embedding(context,CapabilityRegistry(context,CapabilityDiscovery(context){false},emptyList()),repeatedModel,EmbeddingConfig("experience",emptyList(),"repeated-${java.util.UUID.randomUUID()}"))).use{other->

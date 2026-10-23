@@ -98,7 +98,7 @@ library_key=$(python3 tools/build-cache.py \
     dependencies/deal-embedding/build.sh dependencies/deal-embedding/android \
     dependencies/deal-embedding/tools dependencies/deal-embedding/core/generation.deal dependencies/deal-embedding/api \
     dependencies/deal-embedding/core/host dependencies/deal-embedding/core/source-literals.deal \
-    dependencies/deal-embedding/core/candidate-check.deal dependencies/deal-embedding/core/source-repair.deal dependencies/deal-embedding/core/logging.deal dependencies/deal-embedding/core/generation-guidance.deal \
+    dependencies/deal-embedding/core/candidate-check.deal dependencies/deal-embedding/core/source-framing.deal dependencies/deal-embedding/core/source-repair.deal dependencies/deal-embedding/core/logging.deal dependencies/deal-embedding/core/generation-guidance.deal \
     dependencies/deal-embedding/ui dependencies/deal-embedding/core/repair-guidance.deal \
     dependencies/deal-embedding/core/host \
     dependencies/deal/deal dependencies/deal/std dependencies/deal/skills/write-deal/references \

@@ -82,7 +82,7 @@ class GatewayTest(unittest.TestCase):
             seen.append(json.loads(data));headers_seen.append(headers);return object()
         namespace={'options':types.SimpleNamespace(chooser='jev',backend='cortex'),'GatewayFailure':ValueError,'BACKENDS':{'cortex':{'model':'fixture','endpoint':'unused','key':'private-key'},'cerebras':{'model':'qwen-3.8-27b','endpoint':'cerebras','key':'private-key'}},'admit': lambda body: None, 'time':time, 'stable_messages':stable_messages, 'prefix_fingerprint':prefix_fingerprint, 'read_stream':read_stream, 'json':json,'urllib':types.SimpleNamespace(request=types.SimpleNamespace(Request=request,urlopen=lambda *a,**k:Reply()))}
         exec(compile(ast.Module(body=[infer],type_ignores=[]),'gateway','exec'),namespace)
-        body={'input':'prompt\nREPAIR PROTOCOL exact-source-patch-v1\nBASE SOURCE\nprior','previous':'prior','diagnostics':'E3003','capture':True}
+        body={'input':'prompt\nREPAIR PROTOCOL DEAL-PATCH/1\nBASE SOURCE\nprior','previous':'prior','diagnostics':'E3003','capture':True}
         result=json.loads(namespace['infer'](body))
         self.assertEqual(result['request'],seen[0]);self.assertEqual(result['response'],response)
         self.assertEqual(headers_seen[0]['Authorization'],'Bearer private-key')
@@ -100,18 +100,7 @@ class GatewayTest(unittest.TestCase):
         self.assertEqual(cerebras['model'],'qwen-3.8-27b')
         self.assertNotIn('max_tokens',seen[-1]);self.assertEqual(cerebras['metadata']['max_tokens'],-1)
         self.assertEqual(seen[-1]['reasoning_effort'],'low')
-        patch_format=seen[-1]['response_format']
-        self.assertEqual(patch_format['type'],'json_schema')
-        self.assertTrue(patch_format['json_schema']['strict'])
-        self.assertEqual(patch_format['json_schema']['name'],'exact_source_patch')
-        patch_schema=patch_format['json_schema']['schema']
-        self.assertEqual(patch_schema['required'],['baseDigest','edits'])
-        self.assertFalse(patch_schema['additionalProperties'])
-        edit_schema=patch_schema['properties']['edits']['items']
-        self.assertEqual(edit_schema['required'],['file','search','replacement'])
-        self.assertFalse(edit_schema['additionalProperties'])
-        self.assertEqual(edit_schema['properties']['file']['enum'],['deal','dealui'])
-        self.assertNotIn('maxItems',patch_schema['properties']['edits'])
+        self.assertNotIn('response_format',seen[-1],'source patches must use raw text')
         self.assertEqual(headers_seen[-1]['User-Agent'],'deal-embed-development/1.0')
         self.assertEqual(seen[-1]['messages'],seen[0]['messages'])
         namespace['options'].initial_reasoning='medium';namespace['options'].repair_reasoning='low'
@@ -119,21 +108,18 @@ class GatewayTest(unittest.TestCase):
         body.update(input='rules\nSOURCE OPERATION\ninitial\n',previous='',diagnostics='')
         initial=json.loads(namespace['infer'](body))
         self.assertEqual(initial['metadata']['operation'],'initial');self.assertEqual(seen[-1]['reasoning_effort'],'medium');self.assertEqual(seen[-1]['max_tokens'],16000)
-        initial_format=seen[-1]['response_format']
-        self.assertEqual(initial_format,{'type':'json_schema','json_schema':{'name':'source_pair','strict':True,'schema':{
-            'type':'object','properties':{'deal':{'type':'string'},'dealui':{'type':'string'}},
-            'required':['deal','dealui'],'additionalProperties':False}}})
-        body.update(input='rules\nSOURCE OPERATION\ninitial\nINITIAL ENVELOPE RECOVERY\nprevious unadmitted response',diagnostics='INVALID_CANDIDATE')
+        self.assertNotIn('response_format',seen[-1],'initial source must use raw text')
+        body.update(input='rules\nSOURCE OPERATION\ninitial\nINITIAL FRAMING RECOVERY\nprevious unadmitted response',diagnostics='INVALID_FRAME')
         namespace['infer'](body)
-        self.assertEqual(seen[-1]['response_format'],initial_format,'no-base recovery must still require a complete pair')
+        self.assertNotIn('response_format',seen[-1],'no-base recovery remains raw text')
         namespace['options'].chooser='llm'
         body.update(input='rules\n\nISSUED OPTIONS\n{}',diagnostics='')
         namespace['infer'](body)
         self.assertEqual(seen[-1]['response_format'],{'type':'json_object'},'choice is not a source pair')
-        body.update(input='rules\nSOURCE OPERATION\nrepair\nREPAIR PROTOCOL exact-source-patch-v1\nBASE SOURCE\nprior',previous='prior',diagnostics='E1035')
+        body.update(input='rules\nSOURCE OPERATION\nrepair\nREPAIR PROTOCOL DEAL-PATCH/1\nBASE SOURCE\nprior',previous='prior',diagnostics='E1035')
         repair=json.loads(namespace['infer'](body))
         self.assertEqual(repair['metadata']['operation'],'repair');self.assertEqual(seen[-1]['reasoning_effort'],'low');self.assertEqual(seen[-1]['max_tokens'],4096)
-        self.assertEqual(seen[-1]['response_format'],patch_format)
+        self.assertNotIn('response_format',seen[-1])
         namespace['options'].repair_reasoning='none'
         with self.assertRaisesRegex(ValueError,'enabled'):namespace['infer'](body)
         namespace['options'].repair_reasoning='low'

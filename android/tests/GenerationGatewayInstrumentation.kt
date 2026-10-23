@@ -94,7 +94,7 @@ export view Main(state:app.State):View {ui.Column(){ui.IntText(value:state.value
             check(catalog(false,parameters)==catalog(true,parameters))
             check(catalog(false,parameters)!=catalog(true,parameters.reversed()))
             val registry = CapabilityRegistry(targetContext, CapabilityDiscovery(targetContext) { false }, emptyList())
-            val pair = JSONObject().put("deal", source.deal).put("dealui", source.dealui).toString()
+            val pair = rawSourceFixture(source.deal, source.dealui)
             EmbeddingLog.capture(targetContext, true)
             Server { client, headers, body ->
                 check(headers.startsWith("POST /configured-generation HTTP/1.1"))
@@ -152,16 +152,16 @@ export view Main(state:app.State):View {ui.Column(){ui.IntText(value:state.value
             val patchModel=object:ModelClient {
                 override fun complete(input:String,previous:String,diagnostics:String,cancellation:GenerationCancellation,log:EmbeddingLog):String {
                     repairCalls++
-                    if(repairCalls==1) { check(input.contains("SOURCE OPERATION\ninitial"));return JSONObject().put("deal",broken.deal).put("dealui",broken.dealui).toString() }
+                    if(repairCalls==1) { check(input.contains("SOURCE OPERATION\ninitial"));return rawSourceFixture(broken.deal,broken.dealui) }
                     check(repairCalls in 2..3 && input.contains("SOURCE OPERATION\nrepair")) { "Patch operation marker/call bound" }
                     check(input.contains("smallest rejected source region") && input.contains("Exact reported source line")) { "Patch diagnostic window missing at call $repairCalls" }
                     check(JSONObject(previous).getString("deal")==broken.deal) { "Rejected patch changed base" }
-                    if(repairCalls==2)return "{\"baseDigest\":\"wrong revision\",\"edits\":[]}"
+                    if(repairCalls==2)return rawPatchFixture("wrong-revision","value:state.value+","value:state.value+1")
                     check(input.contains("PATCH_BASE") && diagnostics.isNotBlank()) { "Patch failure or original diagnostics missing" }
                     check(!input.contains("return both complete source strings"))
                     val digestText="${broken.deal.length}:${broken.deal}${broken.dealui.length}:${broken.dealui}"
                     val digest=java.security.MessageDigest.getInstance("SHA-256").digest(digestText.toByteArray()).joinToString("") { "%02x".format(it) }
-                    return JSONObject().put("baseDigest",digest).put("edits",org.json.JSONArray().put(JSONObject().put("file","deal").put("search","value:state.value+").put("replacement","value:state.value+1"))).toString()
+                    return rawPatchFixture(digest,"value:state.value+","value:state.value+1")
                 }
             }
             ApplicationProtocol(targetContext,Embedding(targetContext,CapabilityRegistry(targetContext,CapabilityDiscovery(targetContext){false},emptyList()),patchModel,EmbeddingConfig("experience",emptyList(),"patch-${UUID.randomUUID()}"))).use { api ->
@@ -200,7 +200,7 @@ export view Main(state:app.State):View {ui.Column(){ui.IntText(value:state.value
             // Invalid initial envelopes recover inside the same request without a user retry.
             var invalidCalls=0
             val invalidModel=object:ModelClient {
-                override fun complete(input:String,previous:String,diagnostics:String,cancellation:GenerationCancellation,log:EmbeddingLog):String { invalidCalls++;if(invalidCalls==1)return "{\"deal\":\"missing view\"}";check(previous.isEmpty() && input.contains("INITIAL ENVELOPE RECOVERY"));return pair }
+                override fun complete(input:String,previous:String,diagnostics:String,cancellation:GenerationCancellation,log:EmbeddingLog):String { invalidCalls++;if(invalidCalls==1)return "{\"deal\":\"missing view\"}";check(previous.isEmpty() && input.contains("INITIAL FRAMING RECOVERY"));return pair }
             }
             ApplicationProtocol(targetContext,Embedding(targetContext,CapabilityRegistry(targetContext,CapabilityDiscovery(targetContext){false},emptyList()),invalidModel,EmbeddingConfig("experience",emptyList(),"invalid-${UUID.randomUUID()}"))).use { api ->
                 val request=api.request("Invalid fixture","Counter",api.snapshot(WireType("record"),"{}"))

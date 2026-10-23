@@ -25,8 +25,8 @@ async function instruction(previous,diagnostics,operational=false){
  const text=vm.runInContext('guidance.guidance.$f()',ctx);
  assert(text.includes('literal Unicode character'));assert(text.includes('DEAL does not support Unicode escape sequences'));assert(text.includes('record["from"]'));assert(!text.includes('String-key indexing like'));
  assert(text.includes('required props: label, minorUnits'));assert(text.includes('requires children of types Money|Metric'));assert(text.includes('CHECKED LOCAL COMPARISON EXAMPLE'));assert(text.includes('backend never calculates a winner'));
- assert(text.includes('Serialize each file independently'));assert(text.includes('member separator between deal and dealui is OUTSIDE'));assert(text.includes('never the renderer'));assert(text.includes('actual returned records after explicit loading'));assert(text.includes('A required provider result must come from that provider'));
- const workflow=vm.runInContext('guidance.workflow.$f()',ctx);assert(workflow.includes('never emulate a provider formula'));assert(workflow.includes('unless manual selection was explicitly requested'));assert(workflow.includes('exactly one JSON-escaping layer'));
+ assert(text.includes('raw DEAL-SOURCE/1'));assert(text.includes('not JSON-escaped strings'));assert(text.includes('never the renderer'));assert(text.includes('actual returned records after explicit loading'));assert(text.includes('A required provider result must come from that provider'));
+ const workflow=vm.runInContext('guidance.workflow.$f()',ctx);assert(workflow.includes('never emulate a provider formula'));assert(workflow.includes('unless manual selection was explicitly requested'));assert(workflow.includes('raw DEAL-SOURCE/1 blocks'));
  assert(text.includes('CHECKED ASYNC EXAMPLE'));assert(text.includes('host/sample'));assert(text.includes('not an available capability'));
  const previous=JSON.stringify({deal:'export class State {}',dealui:'ui.Column() {\nui.Toggle(value: true, checked: false)\n}'});
  const diagnostic=JSON.stringify([{code:'UI2051',file:'experience.dealui',line:2}]);
