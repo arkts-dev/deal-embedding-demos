@@ -25,6 +25,8 @@ async function instruction(previous,diagnostics,operational=false){
  const text=vm.runInContext('guidance.guidance.$f()',ctx);
  assert(text.includes('literal Unicode character'));assert(text.includes('DEAL does not support Unicode escape sequences'));assert(text.includes('record["from"]'));assert(!text.includes('String-key indexing like'));
  assert(text.includes('required props: label, minorUnits'));assert(text.includes('requires children of types Money|Metric'));assert(text.includes('CHECKED LOCAL COMPARISON EXAMPLE'));assert(text.includes('backend never calculates a winner'));
+ assert(text.includes('Serialize each file independently'));assert(text.includes('member separator between deal and dealui is OUTSIDE'));assert(text.includes('never the renderer'));assert(text.includes('actual returned records after explicit loading'));assert(text.includes('A required provider result must come from that provider'));
+ const workflow=vm.runInContext('guidance.workflow.$f()',ctx);assert(workflow.includes('never emulate a provider formula'));assert(workflow.includes('unless manual selection was explicitly requested'));assert(workflow.includes('exactly one JSON-escaping layer'));
  assert(text.includes('CHECKED ASYNC EXAMPLE'));assert(text.includes('host/sample'));assert(text.includes('not an available capability'));
  const previous=JSON.stringify({deal:'export class State {}',dealui:'ui.Column() {\nui.Toggle(value: true, checked: false)\n}'});
  const diagnostic=JSON.stringify([{code:'UI2051',file:'experience.dealui',line:2}]);
@@ -38,6 +40,7 @@ async function instruction(previous,diagnostics,operational=false){
  const escape=await instruction(contaminated,JSON.stringify([{code:'E1001',file:'experience.deal',line:2}]));
  assert(escape.includes('patch file: deal; line: 2'));assert(escape.includes('remove only the misplaced fragment from this file'));assert(escape.includes('do not edit the separate dealui file'));assert(!escape.includes('Array length is read-only'));
  const length=await instruction(previous,JSON.stringify({diagnostics:[{code:'E3017',range:{file:'src/experience.deal',startLine:1}}]}));assert(length.includes('array[array.length] = value'));assert(length.includes('patch file: deal; line: 1'));
+ const unicode=await instruction(previous,JSON.stringify([{code:'E1052',file:'experience.deal',line:1}]));assert(unicode.includes('intended literal Unicode character'));assert(unicode.includes('do not unescape other valid source strings'));
  const typed=await instruction(previous,JSON.stringify([{code:'E3003',file:'experience.deal',line:1}]));assert(typed.includes('let cents: int = record.cents'));assert(!typed.includes('invalid backslash'));
  const generic=await instruction(previous,JSON.stringify([{code:'UI1009',file:'experience.dealui',line:2,message:"Expected ')'"}]));assert(!generic.includes('Use ==='));assert(!generic.includes('namespace imports'));assert(!generic.includes('misplaced fragment'));assert(!generic.includes('read-only'));
  assert(!(await instruction('not JSON',diagnostic)).includes('Exact reported source line'));

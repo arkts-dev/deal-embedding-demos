@@ -16,6 +16,10 @@ class DiscoveryInstrumentation : Instrumentation() {
             val input = DiscoveryInput(listOf(DiscoveryFact("event", "Compare approved 12000 EUR with revised 13750 EUR before deciding.")))
             val capturedInput = CapturedDiscoveryInput(input, emptyList())
             val yes = """{"title":"Compare budgets","brief":"Compare approved 12000 EUR and revised 13750 EUR with editable amounts and calculated difference.","factIds":["event"],"capabilityIds":[]}"""
+            val authorityPrompt=Discovery.prompt(capturedInput)
+            check(authorityPrompt.contains("Never copy provider implementation formulas"))
+            check(authorityPrompt.contains("Selecting a capabilityId without specifying its invocation is insufficient"))
+            check(authorityPrompt.contains("explicit user-triggered read"))
             check(Discovery.parse("null", capturedInput) == null)
             val parsed = Discovery.parse(yes, capturedInput)!!
             check(parsed.brief.contains("12000 EUR") && parsed.factIds == listOf("event"))
