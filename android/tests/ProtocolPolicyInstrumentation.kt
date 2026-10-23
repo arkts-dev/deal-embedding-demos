@@ -47,7 +47,7 @@ export view Main(state:app.State):View {ui.Column(){ui.Text(value:"Fixture sourc
    val model=object:ModelClient {override fun complete(input:String,previous:String,diagnostics:String,cancellation:GenerationCancellation,log:EmbeddingLog):String {
     cancellation.check()
     if(input.contains("\n\nISSUED OPTIONS\n")){choices++;if(failure)throw ProtocolFailure("PROVIDER_UNREACHABLE","Fixture provider unavailable");return answer!!}
-    sources++;return rawSourceFixture(deal,view)
+    sources++;return nativeSourceFixture(deal,view)
    }}
    val host=Embedding(context,CapabilityRegistry(context,CapabilityDiscovery(context){false},listOf(read,prepare)),model,EmbeddingConfig("experience",emptyList(),"protocol-policy-$name-${java.util.UUID.randomUUID()}",policyAssets=if(answer==null)"" else "organizer-policy"))
    ProtocolController(context,host).use{controller->

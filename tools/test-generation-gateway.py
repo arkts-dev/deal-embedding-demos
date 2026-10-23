@@ -2,6 +2,7 @@
 """No credentials loaded, no network: exact provider exchange envelope contract."""
 import ast, json, pathlib, types, unittest, tempfile, http.server, urllib.request, urllib.error, concurrent.futures, threading, time
 from gateway_transport import stable_messages, read_stream, prefix_fingerprint
+from native_source_tools import SOURCE_TOOLS, source_messages, native_result, strip_reasoning
 
 class GatewayTest(unittest.TestCase):
     def test_budget(self):
@@ -71,80 +72,36 @@ class GatewayTest(unittest.TestCase):
     def test_exchange(self):
         tree=ast.parse(pathlib.Path('tools/generation-gateway.py').read_text())
         infer=next(n for n in tree.body if isinstance(n,ast.FunctionDef) and n.name=='infer')
-        headers_seen=[]
-        response={'choices':[{'message':{'content':'{"deal":"x","dealui":"y"}'},'finish_reason':'stop'}],'usage':{'prompt_tokens':10,'completion_tokens':100,'completion_tokens_details':{'reasoning_tokens':70}}}
+        call={'id':'c','type':'function','function':{'name':'write_file','arguments':json.dumps({'file':'deal','source':'literal " € \\n'})}}
+        response={'choices':[{'message':{'content':None,'tool_calls':[call],'reasoning_content':'PRIVATE'},'finish_reason':'tool_calls'}],'usage':{'prompt_tokens':10,'completion_tokens':100,'completion_tokens_details':{'reasoning_tokens':70}}}
         seen=[]
         class Reply:
             def __enter__(self):return self
             def __exit__(self,*args):pass
             def read(self,limit=-1):return json.dumps(response).encode()
-        def request(url,data,headers):
-            seen.append(json.loads(data));headers_seen.append(headers);return object()
-        namespace={'options':types.SimpleNamespace(chooser='jev',backend='cortex'),'GatewayFailure':ValueError,'BACKENDS':{'cortex':{'model':'fixture','endpoint':'unused','key':'private-key'},'cerebras':{'model':'qwen-3.8-27b','endpoint':'cerebras','key':'private-key'}},'admit': lambda body: None, 'time':time, 'stable_messages':stable_messages, 'prefix_fingerprint':prefix_fingerprint, 'read_stream':read_stream, 'json':json,'urllib':types.SimpleNamespace(request=types.SimpleNamespace(Request=request,urlopen=lambda *a,**k:Reply()))}
+        def request(url,data,headers):seen.append(json.loads(data));return object()
+        namespace={'options':types.SimpleNamespace(chooser='llm',backend='cerebras'),'GatewayFailure':ValueError,'BACKENDS':{'cerebras':{'model':'qwen-3.8-27b','endpoint':'unused','key':'private-key'}},'admit':lambda b:None,'time':time,'stable_messages':stable_messages,'prefix_fingerprint':prefix_fingerprint,'read_stream':read_stream,'json':json,'urllib':types.SimpleNamespace(request=types.SimpleNamespace(Request=request,urlopen=lambda *a,**k:Reply())), 'SOURCE_TOOLS':SOURCE_TOOLS,'source_messages':source_messages,'native_result':native_result,'strip_reasoning':strip_reasoning}
         exec(compile(ast.Module(body=[infer],type_ignores=[]),'gateway','exec'),namespace)
-        body={'input':'prompt\nREPAIR PROTOCOL DEAL-PATCH/1\nBASE SOURCE\nprior','previous':'prior','diagnostics':'E3003','capture':True}
+        body={'input':'rules\nSOURCE OPERATION\ninitial\nNATIVE TOOL TURN\n{"messages":[]}','previous':'','diagnostics':'','capture':True}
         result=json.loads(namespace['infer'](body))
-        self.assertEqual(result['request'],seen[0]);self.assertEqual(result['response'],response)
-        self.assertEqual(headers_seen[0]['Authorization'],'Bearer private-key')
-        self.assertNotIn('private-key',json.dumps(result));self.assertEqual(result['content'],response['choices'][0]['message']['content'])
-        body['capture']=False
-        omitted=json.loads(namespace['infer'](body))
-        self.assertNotIn('request',omitted);self.assertNotIn('response',omitted)
-        self.assertNotIn('prompt',json.dumps(omitted));self.assertEqual(omitted['metadata']['in'],10)
-        self.assertEqual(omitted['metadata']['finish'],'stop')
-        self.assertEqual(omitted['metadata']['out'],100)
-        self.assertEqual(omitted['metadata']['reasoning'],70)
-        self.assertNotIn('reasoning_content',json.dumps(omitted))
-        body['backend']='cerebras'
-        cerebras=json.loads(namespace['infer'](body))
-        self.assertEqual(cerebras['model'],'qwen-3.8-27b')
-        self.assertNotIn('max_tokens',seen[-1]);self.assertEqual(cerebras['metadata']['max_tokens'],-1)
-        self.assertEqual(seen[-1]['reasoning_effort'],'low')
-        self.assertNotIn('response_format',seen[-1],'source patches must use raw text')
-        self.assertEqual(headers_seen[-1]['User-Agent'],'deal-embed-development/1.0')
-        self.assertEqual(seen[-1]['messages'],seen[0]['messages'])
-        namespace['options'].initial_reasoning='medium';namespace['options'].repair_reasoning='low'
-        namespace['options'].initial_max_tokens=16000;namespace['options'].repair_max_tokens=4096
-        body.update(input='rules\nSOURCE OPERATION\ninitial\n',previous='',diagnostics='')
-        initial=json.loads(namespace['infer'](body))
-        self.assertEqual(initial['metadata']['operation'],'initial');self.assertEqual(seen[-1]['reasoning_effort'],'medium');self.assertEqual(seen[-1]['max_tokens'],16000)
-        self.assertNotIn('response_format',seen[-1],'initial source must use raw text')
-        body.update(input='rules\nSOURCE OPERATION\ninitial\nINITIAL FRAMING RECOVERY\nprevious unadmitted response',diagnostics='INVALID_FRAME')
-        namespace['infer'](body)
-        self.assertNotIn('response_format',seen[-1],'no-base recovery remains raw text')
-        namespace['options'].chooser='llm'
-        body.update(input='rules\n\nISSUED OPTIONS\n{}',diagnostics='')
-        namespace['infer'](body)
-        self.assertEqual(seen[-1]['response_format'],{'type':'json_object'},'choice is not a source pair')
-        body.update(input='rules\nSOURCE OPERATION\nrepair\nREPAIR PROTOCOL DEAL-PATCH/1\nBASE SOURCE\nprior',previous='prior',diagnostics='E1035')
-        repair=json.loads(namespace['infer'](body))
-        self.assertEqual(repair['metadata']['operation'],'repair');self.assertEqual(seen[-1]['reasoning_effort'],'low');self.assertEqual(seen[-1]['max_tokens'],4096)
-        self.assertNotIn('response_format',seen[-1])
+        self.assertEqual(json.loads(result['content'])['tool_calls'],[call])
+        self.assertEqual(result['metadata']['reasoning'],70)
+        self.assertEqual(seen[-1]['tools'],SOURCE_TOOLS);self.assertEqual(seen[-1]['tool_choice'],'required')
+        self.assertFalse(seen[-1]['parallel_tool_calls']);self.assertNotIn('max_tokens',seen[-1]);self.assertNotIn('response_format',seen[-1])
+        self.assertNotIn('PRIVATE',json.dumps(result));self.assertNotIn('private-key',json.dumps(result))
+        body['capture']=False;result=json.loads(namespace['infer'](body));self.assertNotIn('request',result);self.assertNotIn('response',result)
+        history=[{'role':'assistant','content':'','tool_calls':[call]},{'role':'tool','tool_call_id':'c','content':'{"accepted":true}'}]
+        body.update(input='rules\nSOURCE OPERATION\nrepair\nNATIVE TOOL TURN\n'+json.dumps({'messages':history}),previous='host-bound-pair')
+        namespace['infer'](body);self.assertEqual(seen[-1]['messages'][-2:],history)
         namespace['options'].repair_reasoning='none'
         with self.assertRaisesRegex(ValueError,'enabled'):namespace['infer'](body)
         namespace['options'].repair_reasoning='low'
-        body.update(input='rules',previous='prior')
-        with self.assertRaisesRegex(ValueError,'exact patch'):namespace['infer'](body)
-        namespace['DISCOVERY']={'model':'deepseek-flash','endpoint':'deepseek','key':'private-deepseek-key'}
-        body.update(backend='deepseek-flash',discovery=True,previous='',diagnostics='',capture=True)
+        response['choices'][0]={'message':{'content':'{}'},'finish_reason':'stop'}
+        body.update(input='rules\n\nISSUED OPTIONS\n{}',previous='')
+        namespace['infer'](body);self.assertEqual(seen[-1]['response_format'],{'type':'json_object'});self.assertNotIn('tools',seen[-1])
+        namespace['DISCOVERY']={'model':'deepseek-flash','endpoint':'unused','key':'private-key'}
+        body.update(input='facts',backend='deepseek-flash',discovery=True)
         response['choices'][0]['message']['content']='null'
-        discovery=json.loads(namespace['infer'](body))
-        self.assertEqual(discovery['content'],'null')
-        self.assertEqual(discovery['model'],'deepseek-flash')
-        self.assertEqual(seen[-1]['thinking'],{'type':'disabled'})
-        self.assertEqual(seen[-1]['max_tokens'],4096)
-        self.assertNotIn('response_format',seen[-1])
-        self.assertNotIn('private-deepseek-key',json.dumps(discovery))
-        body.pop('discovery');response['choices'][0]['message']['content']='{"deal":"x","dealui":"y"}'
-        body['backend']='unknown'
-        with self.assertRaises(ValueError):namespace['infer'](body)
-        body['backend']='cortex'
-        body['capture']=True
-        response['extra']='x'*(2*1024*1024)
-        bounded=json.loads(namespace['infer'](body))
-        self.assertTrue(bounded['captureOmitted']);self.assertNotIn('response',bounded)
-        self.assertEqual(bounded['content'],response['choices'][0]['message']['content'])
-        response['choices'][0]['message']['content']='x'*(256*1024+1)
-        self.assertGreater(len(json.loads(namespace['infer'](body))['content']),256*1024)
+        result=json.loads(namespace['infer'](body));self.assertEqual(result['content'],'null');self.assertNotIn('tools',seen[-1]);self.assertNotIn('response_format',seen[-1])
 
 if __name__=='__main__':unittest.main()

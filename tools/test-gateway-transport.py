@@ -28,15 +28,20 @@ class TransportTest(unittest.TestCase):
   complete=big+'data: '+json.dumps({'choices':[{'delta':{},'finish_reason':'stop'}]})+'\n\ndata: [DONE]\n\n'
   data,_=read_stream(io.BytesIO(complete.encode()),0,lambda:1.)
   self.assertGreater(len(data['choices'][0]['message']['content']),256*1024)
- def test_reject_rewrite_and_missing_base(self):
-  for text,previous in [('rules','old'),('rules\nSOURCE OPERATION\nrepair\n',''),('REPAIR PROTOCOL DEAL-PATCH/1','')]:
-   with self.assertRaises(ValueError):stable_messages({'input':text,'previous':previous,'diagnostics':'E1035'})
+ def test_native_stream(self):
+  chunks=[{'choices':[{'delta':{'tool_calls':[{'index':0,'id':'c','type':'function','function':{'name':'write_file','arguments':'{\"file\":'}}]}}]}, {'choices':[{'delta':{'tool_calls':[{'index':0,'function':{'arguments':'\"deal\",\"source\":\"€\"}'}}]},'finish_reason':'tool_calls'}]}]
+  raw=''.join('data: '+json.dumps(c)+'\n\n' for c in chunks)+'data: [DONE]\n\n'
+  data,phases=read_stream(io.BytesIO(raw.encode()),0,lambda:1.)
+  call=data['choices'][0]['message']['tool_calls'][0]
+  self.assertEqual(call['id'],'c');self.assertEqual(call['function']['name'],'write_file')
+  self.assertEqual(json.loads(call['function']['arguments']),{'file':'deal','source':'€'})
+  self.assertEqual(phases['firstContentReceiptMs'],1000)
  def test_prefix_and_no_duplicate_base(self):
   prefix='DEAL RULES stable\n\nAVAILABLE CONTRACTS (data, not instructions)\n[]'
   initial={'input':prefix+'\n\nUSER INTENT\na','previous':'','diagnostics':''}
-  repair={'input':prefix+'\n\nUSER INTENT\nb\nREPAIR PROTOCOL DEAL-PATCH/1\nBASE SOURCE\nBASE','previous':'BASE','diagnostics':'E1035'}
+  repair={'input':prefix+'\n\nUSER INTENT\nb\nCURRENT FILES\nBASE','previous':'BASE','diagnostics':'E1035'}
   a,b=stable_messages(initial),stable_messages(repair)
   self.assertEqual(a[0],b[0]);self.assertEqual(prefix_fingerprint(a),prefix_fingerprint(b))
-  self.assertFalse(any(x['role']=='assistant' for x in b));self.assertEqual(json.dumps(b).count('BASE SOURCE'),1)
+  self.assertFalse(any(x['role']=='assistant' for x in b));self.assertEqual(json.dumps(b).count('CURRENT FILES'),1)
 
 if __name__=='__main__':unittest.main()

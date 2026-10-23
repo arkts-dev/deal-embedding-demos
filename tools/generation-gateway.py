@@ -3,6 +3,7 @@
 import argparse, concurrent.futures, http.server, json, os, pathlib, subprocess, time, urllib.request, urllib.error
 from jev_chooser import infer as infer_jev
 from gateway_transport import stable_messages, read_stream, prefix_fingerprint
+from native_source_tools import SOURCE_TOOLS, source_messages, native_result, strip_reasoning
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 # Credentials are loaded only for enabled backends, never packaged in an APK.
 BACKENDS = {}
@@ -87,7 +88,8 @@ def infer(body):
     admit(body)
     if not discovery and options.chooser == 'jev' and '\n\nISSUED OPTIONS\n' in body['input']:
         return infer_jev(body, JEV_KEY, options.jev_model)
-    messages=stable_messages(body)
+    source = not discovery and '\n\nISSUED OPTIONS\n' not in body['input']
+    messages=source_messages(body) if source else stable_messages(body)
     repairing=bool(body.get('previous')) or '\nSOURCE OPERATION\nrepair\n' in body['input']
     operation='discovery' if discovery else 'repair' if repairing else 'initial'
     provider = DISCOVERY if discovery else BACKENDS[backend]
@@ -97,12 +99,14 @@ def infer(body):
         limit=getattr(options,'repair_max_tokens',-1) if repairing else getattr(options,'initial_max_tokens',-1)
         if effort not in ('low','medium','high'): raise ValueError('Source reasoning must be enabled')
         payload.update(max_tokens=limit, temperature=1, top_p=0.95, reasoning_effort=effort, clear_thinking=True)
-        # Source/patch output is raw framed text. Only catalogue choices use JSON mode.
+        # Source operations use the provider-native tool channel; choices remain independent.
         if '\n\nISSUED OPTIONS\n' in body['input']:
             payload['response_format'] = {'type':'json_object'}
         if limit == -1: payload.pop('max_tokens',None)
         if getattr(options,'stream_source',False):
             payload.update(stream=True, stream_options={'include_usage':True})
+    if source:
+        payload.update(tools=SOURCE_TOOLS, tool_choice='required', parallel_tool_calls=False)
     if discovery:
         # Discovery can return literal null; JSON-object mode would change the existing contract.
         payload.update(max_tokens=4096, temperature=0, thinking={'type':'disabled'})
@@ -114,7 +118,8 @@ def infer(body):
         if payload['stream']: data,phases=read_stream(response,started)
         else: data=json.loads(response.read())
     total_ms=(time.monotonic()-started)*1000
-    content=data['choices'][0]['message']['content']
+    strip_reasoning(data)
+    content=native_result(data['choices'][0]['message']) if source else data['choices'][0]['message']['content']
     if not isinstance(content,str): raise ValueError('No text result')
     usage=data.get('usage') or {}
     def count(value): return value if type(value) is int and 0<=value<=2147483647 else None

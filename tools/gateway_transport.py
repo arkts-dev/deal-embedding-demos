@@ -12,18 +12,13 @@ def stable_messages(body):
     prefix, sep, variable = text.partition(boundary)
     messages = [{'role': 'system', 'content': prefix}] if sep else []
     messages.append({'role': 'user', 'content': (boundary + variable) if sep else text})
-    patch = 'REPAIR PROTOCOL DEAL-PATCH/1' in text
-    repairing = bool(body.get('previous')) or '\nSOURCE OPERATION\nrepair\n' in text
-    if (repairing or patch) and (not patch or not body.get('previous')):
-        raise ValueError('Repair requires a revision-bound exact patch base')
-    if patch:
-        messages.append({'role': 'user', 'content': 'Return only raw DEAL-PATCH/1 blocks; preserve literal source and unaffected behavior. No JSON or full-source fallback.\n' + body.get('diagnostics', '')})
     return messages
 
 
 def read_stream(response, started, clock=time.monotonic):
     """SSE parser for Cerebras chat chunks. Timings are observed receipt times, not CPU time."""
     content = []
+    tool_calls = {}
     total = 0
     content_bytes = 0
     first = reasoning_first = reasoning_last = content_first = content_last = None
@@ -57,7 +52,19 @@ def read_stream(response, started, clock=time.monotonic):
             delta = choice.get('delta') or {}
             reasoning = delta.get('reasoning') or delta.get('reasoning_content')
             text = delta.get('content')
-            if reasoning or text:
+            tools = delta.get('tool_calls') or []
+            for part in tools:
+                index = part['index']
+                target = tool_calls.setdefault(index, {'id':'', 'type':'function', 'function':{'name':'','arguments':''}})
+                if part.get('id'): target['id'] = part['id']
+                if part.get('type'): target['type'] = part['type']
+                for key in ('name','arguments'):
+                    target['function'][key] += (part.get('function') or {}).get(key) or ''
+            if tools:
+                if content_first is None: content_first = now
+                content_last = now
+                content_bytes += len(json.dumps(tools).encode())
+            if reasoning or text or tools:
                 if first is None:
                     first = now
             if reasoning:
@@ -88,7 +95,7 @@ def read_stream(response, started, clock=time.monotonic):
         consume(event)
     if not done or finish is None:
         raise ValueError('Incomplete provider stream')
-    if finish not in ('stop','length'):
+    if finish not in ('stop','length','tool_calls'):
         raise ValueError('Provider stream did not complete normally')
     # A provider-limited reply is feedback, not executable source. Core still validates
     # the complete source envelope and compiler result before accepting anything.
@@ -105,6 +112,7 @@ def read_stream(response, started, clock=time.monotonic):
                   contentSpanMs=None if content_first is None else content_last - content_first)
     data = {'id': identifier, 'model': model, 'choices': [{'message': {'role': 'assistant', 'content': ''.join(content)}, 'finish_reason': finish}],
             'usage': usage, 'time_info': time_info}
+    if tool_calls: data['choices'][0]['message']['tool_calls'] = [tool_calls[k] for k in sorted(tool_calls)]
     return data, phases
 
 

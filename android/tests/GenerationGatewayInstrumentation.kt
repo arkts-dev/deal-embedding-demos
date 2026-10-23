@@ -94,7 +94,7 @@ export view Main(state:app.State):View {ui.Column(){ui.IntText(value:state.value
             check(catalog(false,parameters)==catalog(true,parameters))
             check(catalog(false,parameters)!=catalog(true,parameters.reversed()))
             val registry = CapabilityRegistry(targetContext, CapabilityDiscovery(targetContext) { false }, emptyList())
-            val pair = rawSourceFixture(source.deal, source.dealui)
+            val pair = nativeSourceFixture(source.deal, source.dealui)
             EmbeddingLog.capture(targetContext, true)
             Server { client, headers, body ->
                 check(headers.startsWith("POST /configured-generation HTTP/1.1"))
@@ -152,16 +152,16 @@ export view Main(state:app.State):View {ui.Column(){ui.IntText(value:state.value
             val patchModel=object:ModelClient {
                 override fun complete(input:String,previous:String,diagnostics:String,cancellation:GenerationCancellation,log:EmbeddingLog):String {
                     repairCalls++
-                    if(repairCalls==1) { check(input.contains("SOURCE OPERATION\ninitial"));return rawSourceFixture(broken.deal,broken.dealui) }
+                    if(repairCalls==1) { check(input.contains("SOURCE OPERATION\ninitial"));return nativeSourceFixture(broken.deal,broken.dealui) }
                     check(repairCalls in 2..3 && input.contains("SOURCE OPERATION\nrepair")) { "Patch operation marker/call bound" }
                     check(input.contains("smallest rejected source region") && input.contains("Exact reported source line")) { "Patch diagnostic window missing at call $repairCalls" }
                     check(JSONObject(previous).getString("deal")==broken.deal) { "Rejected patch changed base" }
-                    if(repairCalls==2)return rawPatchFixture("wrong-revision","value:state.value+","value:state.value+1")
-                    check(input.contains("PATCH_BASE") && diagnostics.isNotBlank()) { "Patch failure or original diagnostics missing" }
+                    if(repairCalls==2)return nativePatchFixture("wrong-revision","value:state.value+","value:state.value+1")
+                    check(input.contains("PATCH_NO_MATCH") && diagnostics.isNotBlank()) { "Patch failure or original diagnostics missing" }
                     check(!input.contains("return both complete source strings"))
                     val digestText="${broken.deal.length}:${broken.deal}${broken.dealui.length}:${broken.dealui}"
                     val digest=java.security.MessageDigest.getInstance("SHA-256").digest(digestText.toByteArray()).joinToString("") { "%02x".format(it) }
-                    return rawPatchFixture(digest,"value:state.value+","value:state.value+1")
+                    return nativePatchFixture(digest,"value:state.value+","value:state.value+1")
                 }
             }
             ApplicationProtocol(targetContext,Embedding(targetContext,CapabilityRegistry(targetContext,CapabilityDiscovery(targetContext){false},emptyList()),patchModel,EmbeddingConfig("experience",emptyList(),"patch-${UUID.randomUUID()}"))).use { api ->
@@ -173,7 +173,7 @@ export view Main(state:app.State):View {ui.Column(){ui.IntText(value:state.value
                 EmbeddingLog.flush(targetContext)
                 val records=api.retainedEvents().events.filter { it.optString("trace")==api.requestTrace(request) && it.optString("stage")=="repair-metrics" }.map { JSONObject(it.getString("target")) }
                 check(records.size==2) { "Expected exactly two repair records: $records" }
-                check(records[0].getString("patchOutcome")=="rejected" && records[0].getString("patchRejectionCode")=="PATCH_BASE" && records[0].getString("recheckOutcome")=="not_checked")
+                check(records[0].getString("patchOutcome")=="rejected" && records[0].getString("patchRejectionCode")=="PATCH_NO_MATCH" && records[0].getString("recheckOutcome")=="not_checked")
                 check(records[0].getString("baseRevision")==records[1].getString("baseRevision"))
                 check(records[1].getString("patchOutcome")=="applied" && records[1].getString("recheckOutcome")=="passed")
                 check(records[1].getBoolean("unchangedUi") && !records[1].getBoolean("unchangedDeal") && records[1].getInt("editCount")==1)
@@ -200,7 +200,7 @@ export view Main(state:app.State):View {ui.Column(){ui.IntText(value:state.value
             // Invalid initial envelopes recover inside the same request without a user retry.
             var invalidCalls=0
             val invalidModel=object:ModelClient {
-                override fun complete(input:String,previous:String,diagnostics:String,cancellation:GenerationCancellation,log:EmbeddingLog):String { invalidCalls++;if(invalidCalls==1)return "{\"deal\":\"missing view\"}";check(previous.isEmpty() && input.contains("INITIAL FRAMING RECOVERY"));return pair }
+                override fun complete(input:String,previous:String,diagnostics:String,cancellation:GenerationCancellation,log:EmbeddingLog):String { invalidCalls++;if(invalidCalls==1)return "{\"deal\":\"missing view\"}";check(previous.isEmpty() && input.contains("Invalid tool response"));return pair }
             }
             ApplicationProtocol(targetContext,Embedding(targetContext,CapabilityRegistry(targetContext,CapabilityDiscovery(targetContext){false},emptyList()),invalidModel,EmbeddingConfig("experience",emptyList(),"invalid-${UUID.randomUUID()}"))).use { api ->
                 val request=api.request("Invalid fixture","Counter",api.snapshot(WireType("record"),"{}"))
