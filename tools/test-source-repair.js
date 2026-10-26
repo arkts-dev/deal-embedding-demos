@@ -16,6 +16,14 @@ function digest(p){return crypto.createHash('sha256').update(`${[...p.deal].leng
  const instruction=await call('instruction',base);assert(instruction.includes('FILE deal (experience.deal)'));assert(instruction.includes(p.deal));assert(instruction.includes(p.dealui));assert(!instruction.includes(base));
  let r=await call('apply',base,patch([{file:'dealui',search:'misplaced \\"UI\\" 🦔',replacement:''}]));assert(!r.get('accepted'));assert(r.get('diagnostics').startsWith('PATCH_NO_MATCH:'));assert(r.get('diagnostics').includes('editIndex=0'));assert(r.get('diagnostics').includes('file=dealui, matchCount=0, otherFile=deal, otherFileMatchCount=1'));assert.equal(r.get('source'),'');
  r=await call('apply',base,patch([{file:'deal',search:'aa',replacement:'b'}]));assert(r.get('diagnostics').startsWith('PATCH_MULTIPLE_MATCHES:'));assert(r.get('diagnostics').includes('matchCount=2'));
+ assert(r.get('diagnostics').includes('Occurrence 1: lines 1-1'));assert(r.get('diagnostics').includes('Occurrence 2: lines 1-1'));assert.equal(r.get('source'),'');
+ const repeated={deal:'🦔 head\r\nrepeat\nbody A\n\nrepeat\nbody B\n',dealui:'untouched'};
+ r=await call('apply',JSON.stringify(repeated),frame([{file:'deal',search:'repeat',replacement:'x'}],digest(repeated)));
+ assert(!r.get('accepted'));assert(r.get('diagnostics').includes('Occurrence 1: lines 2-2'));assert(r.get('diagnostics').includes('Occurrence 2: lines 5-5'));assert(r.get('diagnostics').includes('1 | 🦔 head\r'));assert(r.get('diagnostics').includes('6 | body B'));assert.equal(r.get('source'),'');
+ const many={deal:Array.from({length:10},(_,i)=>'line '+i+'\nrepeat').join('\n'),dealui:'UI'};
+ r=await call('apply',JSON.stringify(many),frame([{file:'deal',search:'repeat',replacement:'x'}],digest(many)));
+ assert(r.get('diagnostics').includes('Occurrence 10: lines 20-20'));assert(r.get('diagnostics').includes('Only the first eight contexts'));assert(!r.get('diagnostics').includes('20 | repeat'));
+ r=await call('apply',JSON.stringify(repeated),frame([{file:'deal',search:'repeat\nbody',replacement:'x'}],digest(repeated)));assert(r.get('diagnostics').includes('Occurrence 2: lines 5-6'));
  r=await call('apply',base,patch([{file:'deal',search:'aaa',replacement:'one'},{file:'dealui',search:'absent',replacement:'no'}]));assert(!r.get('accepted'));assert(r.get('diagnostics').includes('editIndex=1'));assert.equal(r.get('source'),'');
  r=await call('apply',base,patch([{file:'deal',search:'aaa',replacement:'one'},{file:'deal',search:'aa',replacement:'two'}]));assert(!r.get('accepted'));
  r=await call('apply',base,frame([{file:'deal',search:'aaa',replacement:'one'}],'stale'));assert.equal(r.get('diagnostics'),'PATCH_BASE');

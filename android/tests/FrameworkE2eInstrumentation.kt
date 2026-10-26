@@ -30,9 +30,10 @@ class FrameworkE2eInstrumentation: Instrumentation() {
     private var enabled=false
     private var selftest=false
     private var reassess=""
+    private var additionalOnly=false
     private var savedStorage=""
     private var savedExperience=""
-    override fun onCreate(arguments:Bundle?){super.onCreate(arguments);enabled=arguments?.getString("live")=="true";selftest=arguments?.getString("selftest")=="true";reassess=arguments?.getString("reassess").orEmpty();savedStorage=arguments?.getString("storage").orEmpty();savedExperience=arguments?.getString("experience").orEmpty();start()}
+    override fun onCreate(arguments:Bundle?){super.onCreate(arguments);enabled=arguments?.getString("live")=="true";selftest=arguments?.getString("selftest")=="true";reassess=arguments?.getString("reassess").orEmpty();savedStorage=arguments?.getString("storage").orEmpty();savedExperience=arguments?.getString("experience").orEmpty();additionalOnly=arguments?.getString("additional")=="true";start()}
     private fun nodes(t:JSONObject)=ToolkitNodes.all(t)
     private fun text(n:JSONObject)=n.getJSONArray("props").let { p -> (0 until p.length()).map { p.getJSONObject(it).optString("stringValue") }.filter { it.isNotEmpty() }.joinToString(" ") }
     private fun slot(n:JSONObject):Int?=n.getJSONArray("props").let { p -> (0 until p.length()).map { p.getJSONObject(it) }.firstOrNull { it.optString("kind")=="action" }?.getInt("actionSlot") }
@@ -160,6 +161,27 @@ class FrameworkE2eInstrumentation: Instrumentation() {
         }
         ""
     } catch(e:ProtocolFailure){throw e} catch(e:AssessmentIncomplete){"INCONCLUSIVE: ${e.message}"} catch(e:Exception){e.message ?: e.javaClass.simpleName}
+    // Extra untimed assertions are reported separately to preserve historical comparability.
+    // Exercise issued controls only; never alter provider records or generated state/source.
+    private fun evaluateAdditional(name:String,s:RenderedSession):String = try {
+        if(name=="food") {
+            var t=settle(s)
+            fun editRow(word:String,value:Int) {
+                val group=nodes(t).filter { n -> nodes(n).any { text(it).contains(word,true) } && nodes(n).any { it.optString("component").endsWith(".IntField") } }.minByOrNull { nodes(it).size } ?: throw AssessmentIncomplete("Additional food check: editable $word row missing")
+                val field=nodes(group).first { it.optString("component").endsWith(".IntField") }
+                s.dispatch(slot(field)!!,value.toString());t=settle(s)
+            }
+            editRow("Margherita",3);editRow("Garden",3);editRow("Pepperoni",0)
+            val late=nodes(t).firstOrNull { n -> n.optString("component").endsWith(".Option") && slot(n)!=null && text(n).contains("18:45") } ?: throw AssessmentIncomplete("Additional food check: no supported late-window Option control")
+            val value=ToolkitNodes.string(late,"value")
+            if(value.isEmpty())throw AssessmentIncomplete("Additional food check: late-window payload unavailable")
+            s.dispatch(slot(late)!!,JSONObject.quote(value));t=settle(s)
+            val comparison=nodes(t).filter { it.optString("component").endsWith(".Comparison") }.joinToString(" "){text(it)}
+            if(comparison.isEmpty())throw AssessmentIncomplete("Additional food check: unsupported feasibility presentation")
+            check(listOf("not feasible","infeasible","invalid","not ready","cannot","late","misses").any { comparison.contains(it,true) }) { "Selecting an actual late delivery window must invalidate feasibility with otherwise valid quantities/budget. Observed status: $comparison" }
+        }
+        ""
+    } catch(e:ProtocolFailure){throw e} catch(e:AssessmentIncomplete){"INCONCLUSIVE: ${e.message}"} catch(e:Exception){e.message ?: e.javaClass.simpleName}
     private fun assessSaved():String {
         check(reassess in setOf("budget","departure","food","equipment") && savedStorage.startsWith("framework-e2e-") && savedExperience.isNotEmpty())
         val ctx=targetContext
@@ -178,7 +200,7 @@ class FrameworkE2eInstrumentation: Instrumentation() {
                     surface.activate {failure.set(it)}
                     runOnMainSync {activity.setContent {AppTheme(Accent.Organizer){ExperienceSurface(surface)}}}
                     while(surface.snapshot==null){failure.get()?.let{throw it};Thread.sleep(10)}
-                    val feedback=evaluate(reassess,RenderedSession(surface))
+                    val feedback=if(additionalOnly)evaluateAdditional(reassess,RenderedSession(surface)) else evaluate(reassess,RenderedSession(surface))
                     File(ctx.filesDir,"framework-e2e-$reassess-reassessed-tree.json").writeText(checkNotNull(surface.snapshot).json().toString(2))
                     runOnMainSync {activity.setContent {Text("Assessment complete")}}
                     return feedback
@@ -260,6 +282,11 @@ class FrameworkE2eInstrumentation: Instrumentation() {
                         val feedback=evaluate(name,RenderedSession(surface))
                         row.put("semantic",if(feedback.isEmpty())"passed_supplied_assertions" else if(feedback.startsWith("INCONCLUSIVE:"))"inconclusive" else "failed_supplied_assertions").put("semanticFailure",feedback)
                         File(ctx.filesDir,"framework-e2e-$name-final-tree.json").writeText(checkNotNull(surface.snapshot).json().toString(2))
+                        if(feedback.isEmpty() && name=="food") {
+                            val additional=evaluateAdditional(name,RenderedSession(surface))
+                            row.put("additionalSemantic",if(additional.isEmpty())"passed_additional_assertions" else if(additional.startsWith("INCONCLUSIVE:"))"inconclusive" else "failed_additional_assertions").put("additionalSemanticFailure",additional)
+                            File(ctx.filesDir,"framework-e2e-$name-additional-tree.json").writeText(checkNotNull(surface.snapshot).json().toString(2))
+                        }
                     } finally {
                         runOnMainSync { activity.setContent { Text("Assessment complete") } }
                         surface.close()

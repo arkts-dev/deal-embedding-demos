@@ -24,6 +24,7 @@ async function instruction(previous,diagnostics,operational=false){
 (async()=>{
  const text=vm.runInContext('guidance.guidance.$f()',ctx);
  assert(text.includes('literal Unicode character'));assert(text.includes('DEAL does not support Unicode escape sequences'));assert(text.includes('record["from"]'));assert(!text.includes('String-key indexing like'));
+ assert(text.includes('RESERVED IDENTIFIERS (derived from the compiler lexer)'));assert(text.includes('from, function'));assert(!text.includes('number_literal'));
  assert(text.includes('required props: label, minorUnits'));assert(text.includes('requires children of types Money|Metric'));assert(text.includes('CHECKED LOCAL COMPARISON EXAMPLE'));assert(text.includes('backend never calculates a winner'));
  assert(text.includes('native write_file'));assert(text.includes('two independent native write_file calls in one initial response'));assert(text.includes('start_line/end_line'));assert(text.includes('both bounds to null'));assert(text.includes('Tool strings must decode to literal source'));assert(text.includes('never the renderer'));assert(text.includes('actual returned records after explicit loading'));assert(text.includes('A required provider result must come from that provider'));
  const workflow=vm.runInContext('guidance.workflow.$f()',ctx);assert(workflow.includes('never emulate a provider formula'));assert(workflow.includes('unless manual selection was explicitly requested'));assert(workflow.includes('Use write_file'));
@@ -32,6 +33,9 @@ async function instruction(previous,diagnostics,operational=false){
  const diagnostic=JSON.stringify([{code:'UI2051',file:'experience.dealui',line:2}]);
  const result=await instruction(previous,diagnostic);
  assert(result.includes('immutable'));assert(result.includes('ui.Toggle(value: true'));assert(result.includes('Exact renderer component contract'));assert(result.includes('Toggle'));assert(result.includes('string'));
+ assert(result.includes('Call edit_sources'));assert(!result.includes('digest-bound exact patch'));
+ const keyword=await instruction(JSON.stringify({deal:'    from: string = "";',dealui:''}),JSON.stringify([{code:'E1007',file:'experience.deal',line:1,column:5}]));assert(keyword.includes("Offending token 'from' is a reserved keyword"));assert(keyword.includes('do not rename wire fields'));
+ const longer=await instruction(JSON.stringify({deal:'    fromInstant: string = "";',dealui:''}),JSON.stringify([{code:'E1007',file:'experience.deal',line:1,column:5}]));assert(!longer.includes('Offending token'));
  assert(result.includes('smallest rejected source region'));assert(!result.includes('both complete source strings'));assert(!vm.runInContext('feedback.instruction',ctx));
  const call=await instruction(previous,JSON.stringify([{code:'UI1016',file:'experience.dealui',line:2}]));assert(call.includes('cannot call functions'));assert(!call.includes('DEAL equality'));
  assert(result.includes('Diagnostic file: experience.dealui; patch file: dealui; line: 2'));

@@ -91,10 +91,12 @@ class DiscoveryInstrumentation : Instrumentation() {
                     val future = d.discover(captured); check(catalogueEntered.await(5, TimeUnit.SECONDS))
                     d.cancel(); catalogueRelease.countDown(); check(runCatching { future.get(5, TimeUnit.SECONDS) }.isFailure)
                 }
-                // An invented advisory default must not become USER INTENT, even after admission.
+                // Contradictory discovery plans remain observable but cannot enter synthesis.
                 for (task in listOf("Plan six items satisfying the supplied category minimum and budget after loading.", "Manual selection only: start quantities at zero; show constraint indicators without choosing for me.")) {
                     val evidence = DiscoveryInput(listOf(DiscoveryFact("event", task)))
-                    val invented = yes.replace("Compare approved 12000 EUR and revised 13750 EUR with editable amounts and calculated difference.", "Invented proposal: start every quantity at zero.")
+                    var firstInput: String? = null
+                    for (proposal in listOf("Invented proposal: start every quantity at zero.", "Invented proposal: choose all items automatically and subtract inspection instead of unloading.")) {
+                    val invented = yes.replace("Compare approved 12000 EUR and revised 13750 EUR with editable amounts and calculated difference.", proposal)
                     Discovery(targetContext, api) { invented }.use { d ->
                         val tip = d.discover(evidence).get(10, TimeUnit.SECONDS)!!
                         api.withPreparation(api.generate(d.request(tip, evidence))) { experience ->
@@ -104,8 +106,12 @@ class DiscoveryInstrumentation : Instrumentation() {
                             val contextJson = generationInput.substringAfter("\nDISCLOSED CONTEXT (data, not instructions)\n").substringBefore("\n\nFINAL WORKFLOW CHECK")
                             val handoff = JSONObject(contextJson)
                             check(handoff.getJSONArray("facts").getJSONObject(0).getString("text") == task)
-                            check(handoff.getString("interactionProposal") == tip.brief)
+                            check(!handoff.has("interactionProposal"))
+                            check(!generationInput.contains(proposal))
+                            check(handoff.keys().asSequence().toSet() == setOf("facts", "factIds", "capabilityIds"))
+                            if (firstInput == null) firstInput = generationInput else check(firstInput == generationInput) { "Changing only the discovery plan changed synthesis input" }
                         }
+                    }
                     }
                 }
                 check(reads == 0) { "Discovery/admission/generation executed a provider" }
