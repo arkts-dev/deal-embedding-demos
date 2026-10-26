@@ -28,6 +28,7 @@ async function instruction(previous,diagnostics,operational=false){
  assert(text.includes('required props: label, minorUnits'));assert(text.includes('requires children of types Money|Metric'));assert(text.includes('CHECKED LOCAL COMPARISON EXAMPLE'));assert(text.includes('backend never calculates a winner'));
  assert(text.includes('native write_file'));assert(text.includes('two independent native write_file calls in one initial response'));assert(text.includes('start_line/end_line'));assert(text.includes('both bounds to null'));assert(text.includes('Tool strings must decode to literal source'));assert(text.includes('never the renderer'));assert(text.includes('actual returned records after explicit loading'));assert(text.includes('A required provider result must come from that provider'));
  const workflow=vm.runInContext('guidance.workflow.$f()',ctx);assert(workflow.includes('never emulate a provider formula'));assert(workflow.includes('unless manual selection was explicitly requested'));assert(workflow.includes('Use write_file'));
+ assert(text.includes('CURRENT selected provider records'));assert(text.includes('after every relevant edit, selection and load completion'));assert(text.includes('including provider eligibility flags'));
  assert(text.includes('CHECKED ASYNC EXAMPLE'));assert(text.includes('host/sample'));assert(text.includes('not an available capability'));
  const previous=JSON.stringify({deal:'export class State {}',dealui:'ui.Column() {\nui.Toggle(value: true, checked: false)\n}'});
  const diagnostic=JSON.stringify([{code:'UI2051',file:'experience.dealui',line:2}]);
@@ -49,5 +50,10 @@ async function instruction(previous,diagnostics,operational=false){
  const generic=await instruction(previous,JSON.stringify([{code:'UI1009',file:'experience.dealui',line:2,message:"Expected ')'"}]));assert(!generic.includes('Use ==='));assert(!generic.includes('namespace imports'));assert(!generic.includes('misplaced fragment'));assert(!generic.includes('read-only'));
  assert(!(await instruction('not JSON',diagnostic)).includes('Exact reported source line'));
  let rejected=false;try{await instruction(previous,diagnostic,true)}catch(e){rejected=e.code==='STORAGE_FAILED'}assert(rejected,'operational parse failure must propagate');
+ const clusterSource=Array.from({length:150},(_,i)=>`let field${i+1}: number = ${i+1};`).join('\n');
+ const clustered=await instruction(JSON.stringify({deal:clusterSource,dealui:''}),JSON.stringify([10,11,12,13,14,15].map(line=>({code:'E3003',range:{file:'src/experience.deal',startLine:line}}))));
+ assert(clustered.includes('line: 15; code: E3003'));assert.equal(clustered.split('10 | let field10:').length-1,1);assert.equal(clustered.split('let cents: number = record.cents').length-1,1);assert(clustered.includes('18 | let field18:'));assert(!clustered.includes('19 | let field19:'));
+ const capped=await instruction(JSON.stringify({deal:clusterSource,dealui:clusterSource}),JSON.stringify(['deal','dealui'].flatMap(ext=>Array.from({length:150},(_,i)=>({code:'E3003',file:`experience.${ext}`,line:i+1})))));
+ assert(capped.includes('Preview omitted'));assert(capped.includes('line: 150; code: E3003'));assert.equal((capped.match(/^\d+ \|/gm)||[]).length,120);
  console.log('PASS compiled generation guidance: authored example; bounded source/pack feedback; invalid JSON safe; operational parser failure propagates');
 })().catch(e=>{console.error(e);process.exitCode=1});

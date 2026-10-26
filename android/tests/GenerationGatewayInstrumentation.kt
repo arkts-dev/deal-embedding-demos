@@ -154,7 +154,7 @@ export view Main(state:app.State):View {ui.Column(){ui.IntText(value:state.value
                     repairCalls++
                     if(repairCalls==1) { check(input.contains("SOURCE OPERATION\ninitial"));return nativeSourceFixture(broken.deal,broken.dealui) }
                     check(repairCalls in 2..3 && input.contains("SOURCE OPERATION\nrepair")) { "Patch operation marker/call bound" }
-                    check(input.contains("smallest rejected source region") && input.contains("Exact reported source line")) { "Patch diagnostic window missing at call $repairCalls" }
+                    check(input.contains("smallest rejected source region") && input.contains("Clustered source; patch file:")) { "Patch diagnostic window missing at call $repairCalls" }
                     check(JSONObject(previous).getString("deal")==broken.deal) { "Rejected patch changed base" }
                     if(repairCalls==2)return nativePatchFixture("wrong-revision","value:state.value+","value:state.value+1")
                     check(input.contains("PATCH_NO_MATCH") && diagnostics.isNotBlank()) { "Patch failure or original diagnostics missing" }
