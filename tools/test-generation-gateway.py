@@ -2,7 +2,7 @@
 """No credentials loaded, no network: exact provider exchange envelope contract."""
 import ast, json, pathlib, types, unittest, tempfile, http.server, urllib.request, urllib.error, concurrent.futures, threading, time
 from gateway_transport import stable_messages, read_stream, prefix_fingerprint
-from native_source_tools import SOURCE_TOOLS, source_messages, native_result, strip_reasoning
+from native_source_tools import SOURCE_TOOLS, source_messages, initial_write_batch, native_result, strip_reasoning
 
 class GatewayTest(unittest.TestCase):
     def test_budget(self):
@@ -69,6 +69,13 @@ class GatewayTest(unittest.TestCase):
         namespace['infer_jev']=lambda *args:(_ for _ in ()).throw(urllib.error.URLError('unreachable'))
         with self.assertRaises(urllib.error.URLError):namespace['infer'](body)
 
+    def test_read_schema(self):
+        schema=next(t['function']['parameters'] for t in SOURCE_TOOLS if t['function']['name']=='read_file')
+        self.assertEqual(set(schema['required']),{'file','start_line','end_line'})
+        self.assertFalse(schema['additionalProperties'])
+        for bound in ('start_line','end_line'):
+            self.assertEqual(schema['properties'][bound],{'type':['integer','null'],'minimum':1})
+
     def test_exchange(self):
         tree=ast.parse(pathlib.Path('tools/generation-gateway.py').read_text())
         infer=next(n for n in tree.body if isinstance(n,ast.FunctionDef) and n.name=='infer')
@@ -80,19 +87,23 @@ class GatewayTest(unittest.TestCase):
             def __exit__(self,*args):pass
             def read(self,limit=-1):return json.dumps(response).encode()
         def request(url,data,headers):seen.append(json.loads(data));return object()
-        namespace={'options':types.SimpleNamespace(chooser='llm',backend='cerebras'),'GatewayFailure':ValueError,'BACKENDS':{'cerebras':{'model':'qwen-3.8-27b','endpoint':'unused','key':'private-key'}},'admit':lambda b:None,'time':time,'stable_messages':stable_messages,'prefix_fingerprint':prefix_fingerprint,'read_stream':read_stream,'json':json,'urllib':types.SimpleNamespace(request=types.SimpleNamespace(Request=request,urlopen=lambda *a,**k:Reply())), 'SOURCE_TOOLS':SOURCE_TOOLS,'source_messages':source_messages,'native_result':native_result,'strip_reasoning':strip_reasoning}
+        namespace={'options':types.SimpleNamespace(chooser='llm',backend='cerebras'),'GatewayFailure':ValueError,'BACKENDS':{'cerebras':{'model':'qwen-3.8-27b','endpoint':'unused','key':'private-key'}},'admit':lambda b:None,'time':time,'stable_messages':stable_messages,'prefix_fingerprint':prefix_fingerprint,'read_stream':read_stream,'json':json,'urllib':types.SimpleNamespace(request=types.SimpleNamespace(Request=request,urlopen=lambda *a,**k:Reply())), 'SOURCE_TOOLS':SOURCE_TOOLS,'source_messages':source_messages,'initial_write_batch':initial_write_batch,'native_result':native_result,'strip_reasoning':strip_reasoning}
         exec(compile(ast.Module(body=[infer],type_ignores=[]),'gateway','exec'),namespace)
-        body={'input':'rules\nSOURCE OPERATION\ninitial\nNATIVE TOOL TURN\n{"messages":[]}','previous':'','diagnostics':'','capture':True}
+        body={'input':'rules\nSOURCE OPERATION\ninitial\nNATIVE TOOL TURN\n{"messages":[],"initialWrites":true}','previous':'','diagnostics':'','capture':True}
         result=json.loads(namespace['infer'](body))
         self.assertEqual(json.loads(result['content'])['tool_calls'],[call])
         self.assertEqual(result['metadata']['reasoning'],70)
         self.assertEqual(seen[-1]['tools'],SOURCE_TOOLS);self.assertEqual(seen[-1]['tool_choice'],'required')
-        self.assertFalse(seen[-1]['parallel_tool_calls']);self.assertNotIn('max_tokens',seen[-1]);self.assertNotIn('response_format',seen[-1])
+        self.assertTrue(seen[-1]['parallel_tool_calls']);self.assertNotIn('max_tokens',seen[-1]);self.assertNotIn('response_format',seen[-1])
         self.assertNotIn('PRIVATE',json.dumps(result));self.assertNotIn('private-key',json.dumps(result))
         body['capture']=False;result=json.loads(namespace['infer'](body));self.assertNotIn('request',result);self.assertNotIn('response',result)
         history=[{'role':'assistant','content':'','tool_calls':[call]},{'role':'tool','tool_call_id':'c','content':'{"accepted":true}'}]
-        body.update(input='rules\nSOURCE OPERATION\nrepair\nNATIVE TOOL TURN\n'+json.dumps({'messages':history}),previous='host-bound-pair')
-        namespace['infer'](body);self.assertEqual(seen[-1]['messages'][-2:],history)
+        # A single staged file still has no complete `previous` pair, but batching is off.
+        body.update(input='rules\nSOURCE OPERATION\ninitial\nNATIVE TOOL TURN\n'+json.dumps({'messages':history,'initialWrites':False}))
+        namespace['infer'](body);self.assertFalse(seen[-1]['parallel_tool_calls'])
+        body.update(input='rules\nSOURCE OPERATION\nrepair\nNATIVE TOOL TURN\n'+json.dumps({'messages':history,'initialWrites':False}),previous='host-bound-pair')
+        namespace['infer'](body);self.assertEqual(seen[-1]['messages'][-2:],history);self.assertFalse(seen[-1]['parallel_tool_calls'])
+        self.assertFalse(initial_write_batch({'input':'rules\nNATIVE TOOL TURN\n{"messages":[]}'}))
         namespace['options'].repair_reasoning='none'
         with self.assertRaisesRegex(ValueError,'enabled'):namespace['infer'](body)
         namespace['options'].repair_reasoning='low'

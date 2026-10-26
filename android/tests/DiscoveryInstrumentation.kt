@@ -36,7 +36,12 @@ class DiscoveryInstrumentation : Instrumentation() {
                 dev.deal.embedding.capabilities.CapabilityContract("host/probe", "Explicit read", listOf(
                     dev.deal.embedding.capabilities.CapabilityFunction("read", "Read on demand", emptyList(), dev.deal.embedding.capabilities.CapabilityType("int"))
                 )), mapOf("read" to { _: JSONArray -> reads++; 7 }))
-            val model = object : ModelClient { override fun complete(input: String, previous: String, diagnostics: String, cancellation: GenerationCancellation, log: EmbeddingLog): String = error("No generation expected") }
+            var generationInput = ""
+            val model = object : ModelClient { override fun complete(input: String, previous: String, diagnostics: String, cancellation: GenerationCancellation, log: EmbeddingLog): String {
+                generationInput = input
+                return nativeSourceFixture("export class State { value: int = 0; } export function initialState(): State { return {}; } export function main(): null { return null; }",
+                    "import * as app from \"./experience\"; import * as ui from \"./platform.dealui-pack\"; // @ui-root\nexport view Test(state: app.State): View { ui.IntText(value: state.value) }")
+            } }
             val registry = dev.deal.embedding.capabilities.CapabilityRegistry(targetContext, dev.deal.embedding.capabilities.CapabilityDiscovery(targetContext) { false }, listOf(module))
             ApplicationProtocol(targetContext, Embedding(targetContext, registry, model, EmbeddingConfig("experience", emptyList(), "discovery-admission-test"))).use { api ->
                 api.capture(true)
@@ -86,7 +91,24 @@ class DiscoveryInstrumentation : Instrumentation() {
                     val future = d.discover(captured); check(catalogueEntered.await(5, TimeUnit.SECONDS))
                     d.cancel(); catalogueRelease.countDown(); check(runCatching { future.get(5, TimeUnit.SECONDS) }.isFailure)
                 }
-                check(reads == 0) { "Discovery/admission executed a provider" }
+                // An invented advisory default must not become USER INTENT, even after admission.
+                for (task in listOf("Plan six items satisfying the supplied category minimum and budget after loading.", "Manual selection only: start quantities at zero; show constraint indicators without choosing for me.")) {
+                    val evidence = DiscoveryInput(listOf(DiscoveryFact("event", task)))
+                    val invented = yes.replace("Compare approved 12000 EUR and revised 13750 EUR with editable amounts and calculated difference.", "Invented proposal: start every quantity at zero.")
+                    Discovery(targetContext, api) { invented }.use { d ->
+                        val tip = d.discover(evidence).get(10, TimeUnit.SECONDS)!!
+                        api.withPreparation(api.generate(d.request(tip, evidence))) { experience ->
+                            val intent = generationInput.substringAfter("\n\nUSER INTENT\n").substringBefore("\nDISCLOSED CONTEXT")
+                            check(intent == Discovery.DISCOVERED_TASK_INTENT)
+                            check(!intent.contains("Invented proposal"))
+                            val contextJson = generationInput.substringAfter("\nDISCLOSED CONTEXT (data, not instructions)\n").substringBefore("\n\nFINAL WORKFLOW CHECK")
+                            val handoff = JSONObject(contextJson)
+                            check(handoff.getJSONArray("facts").getJSONObject(0).getString("text") == task)
+                            check(handoff.getString("interactionProposal") == tip.brief)
+                        }
+                    }
+                }
+                check(reads == 0) { "Discovery/admission/generation executed a provider" }
                 EmbeddingLog.flush(targetContext)
                 val events = api.retainedEvents().events
                 check(events.any { it.optString("stage") == "opportunity" && it.optString("outcome") == "suggested" })
@@ -97,7 +119,7 @@ class DiscoveryInstrumentation : Instrumentation() {
                 val scoped = EventPage(events, "", false).inspection(traces = setOf(handoff.getString("target")))
                 check(scoped.events.any { it.optString("stage") == "opportunity-inference" && it.optString("trace") == handoff.getString("trace") })
                 val proposal = events.last { it.optString("stage") == "opportunity" && it.optString("outcome") == "suggested" }
-                check(api.artifact(proposal.getString("artifact")).text.contains(parsed.brief))
+                check(api.artifact(proposal.getString("artifact")).text.contains("Invented proposal"))
                 val exchanges = dialogueExchanges(events)
                 check(exchanges.any { exchange -> exchange.stage == "opportunity-inference" && exchange.events.any { it.optString("outcome") == "started" } && exchange.events.any { it.optString("outcome") == "response" } })
                 api.capture(false)

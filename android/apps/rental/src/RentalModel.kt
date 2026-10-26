@@ -6,9 +6,14 @@ import java.time.*
 
 val RENTAL_ZONE: ZoneId = ZoneId.of("Europe/Berlin")
 
+data class RentalAttributes(
+    val kind: String, val adjustable: Boolean = false, val clipAdapter: Boolean = false,
+    val balanced: Boolean = false, val connectorFrom: String = "", val connectorTo: String = "", val lengthMm: Int = 0,
+)
 data class RentalItem(
     val id: String, val name: String, val category: String, val specification: String,
     val included: List<String>, val notIncluded: List<String>, val quantity: Int, val cents: Int, val art: String,
+    val attributes: RentalAttributes, val components: List<QuoteLine> = emptyList(),
 )
 data class QuoteLine(val itemId: String, val quantity: Int)
 data class Quote(val id: String, val lines: List<QuoteLine>, val from: Long, val until: Long, val expiresAt: Long, val substitution: String)
@@ -22,15 +27,19 @@ class RentalStore(private val context: Context) {
 
     val catalogue: List<RentalItem> = listOf(
         RentalItem("stand", "Boom microphone stand", "Microphones", "Adjustable boom; adapter fitting the venue microphone clip",
-            listOf("Boom stand", "Clip adapter"), listOf("Microphone"), 2, 800, "stand"),
+            listOf("Boom stand", "Clip adapter"), listOf("Microphone"), 2, 800, "stand",
+            RentalAttributes("stand", adjustable = true, clipAdapter = true)),
         RentalItem("cable10", "Vocal cable 10 m", "Cables", "Balanced XLR female → XLR male, 10 m",
-            listOf("10 m balanced XLR cable"), emptyList(), 3, 500, "cable"),
+            listOf("10 m balanced XLR cable"), emptyList(), 3, 500, "cable",
+            RentalAttributes("cable", balanced = true, connectorFrom = "XLR female", connectorTo = "XLR male", lengthMm = 10000)),
         RentalItem("package", "Vocal package", "Microphones", "One boom stand plus one 10 m cable",
-            listOf("1 boom microphone stand", "1 clip adapter", "1 XLR female → XLR male cable, 10 m"), listOf("Microphone"), 2, 1200, "package"),
+            listOf("1 boom microphone stand", "1 clip adapter", "1 XLR female → XLR male cable, 10 m"), listOf("Microphone"), 2, 1200, "package",
+            RentalAttributes("package"), listOf(QuoteLine("stand", 1), QuoteLine("cable10", 1))),
         RentalItem("cable3", "Vocal cable 3 m", "Cables", "Balanced XLR female → XLR male, 3 m",
-            listOf("3 m balanced XLR cable"), emptyList(), 2, 300, "cable"),
+            listOf("3 m balanced XLR cable"), emptyList(), 2, 300, "cable",
+            RentalAttributes("cable", balanced = true, connectorFrom = "XLR female", connectorTo = "XLR male", lengthMm = 3000)),
         RentalItem("amp", "Bass combo amplifier", "Backline", "At least 300 W into its built-in speaker; 6.35 mm instrument input; balanced XLR DI output",
-            listOf("Amplifier", "Power cable"), listOf("Instrument cable"), 1, 4000, "amp"),
+            listOf("Amplifier", "Power cable"), listOf("Instrument cable"), 1, 4000, "amp", RentalAttributes("amplifier")),
     )
 
     fun item(id: String) = catalogue.firstOrNull { it.id == id }
@@ -45,8 +54,11 @@ class RentalStore(private val context: Context) {
     fun quoteTotal(quote: Quote) = quote.lines.sumOf(::lineTotal)
 
     /** A package consumes the stand and cable it contains rather than extra stock. */
-    fun consumed(itemId: String, quantity: Int): Map<String, Int> =
-        if (itemId == "package") mapOf("stand" to quantity, "cable10" to quantity) else mapOf(itemId to quantity)
+    fun consumed(itemId: String, quantity: Int): Map<String, Int> {
+        val components = checkNotNull(item(itemId)).components
+        return if (components.isEmpty()) mapOf(itemId to quantity)
+        else components.associate { it.itemId to it.quantity * quantity }
+    }
 
     fun availability(from: Long, until: Long): Map<String, Int> {
         val used = mutableMapOf<String, Int>()
@@ -54,7 +66,11 @@ class RentalStore(private val context: Context) {
             reservation.lines.forEach { line -> consumed(line.itemId, line.quantity).forEach { (id, count) -> used[id] = (used[id] ?: 0) + count } }
         }
         val remaining = catalogue.associate { it.id to ((it.quantity - (used[it.id] ?: 0)).coerceAtLeast(0)) }
-        return remaining + ("package" to minOf(remaining.getValue("package"), remaining.getValue("stand"), remaining.getValue("cable10")))
+        return remaining.mapValues { (id, count) ->
+            checkNotNull(item(id)).components.fold(count) { available, component ->
+                minOf(available, remaining.getValue(component.itemId) / component.quantity)
+            }
+        }
     }
 
     private fun lines(o: JSONObject): List<QuoteLine> {

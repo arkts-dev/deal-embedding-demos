@@ -3,7 +3,7 @@
 import argparse, concurrent.futures, http.server, json, os, pathlib, subprocess, time, urllib.request, urllib.error
 from jev_chooser import infer as infer_jev
 from gateway_transport import stable_messages, read_stream, prefix_fingerprint
-from native_source_tools import SOURCE_TOOLS, source_messages, native_result, strip_reasoning
+from native_source_tools import SOURCE_TOOLS, source_messages, initial_write_batch, native_result, strip_reasoning
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 # Credentials are loaded only for enabled backends, never packaged in an APK.
 BACKENDS = {}
@@ -106,7 +106,7 @@ def infer(body):
         if getattr(options,'stream_source',False):
             payload.update(stream=True, stream_options={'include_usage':True})
     if source:
-        payload.update(tools=SOURCE_TOOLS, tool_choice='required', parallel_tool_calls=False)
+        payload.update(tools=SOURCE_TOOLS, tool_choice='required', parallel_tool_calls=initial_write_batch(body))
     if discovery:
         # Discovery can return literal null; JSON-object mode would change the existing contract.
         payload.update(max_tokens=4096, temperature=0, thinking={'type':'disabled'})

@@ -36,6 +36,16 @@ class TransportTest(unittest.TestCase):
   self.assertEqual(call['id'],'c');self.assertEqual(call['function']['name'],'write_file')
   self.assertEqual(json.loads(call['function']['arguments']),{'file':'deal','source':'€'})
   self.assertEqual(phases['firstContentReceiptMs'],1000)
+ def test_interleaved_initial_writes(self):
+  first={'file':'deal','source':'literal €\n\\'};second={'file':'dealui','source':'UI "text"'}
+  a,b=json.dumps(first),json.dumps(second)
+  chunks=[{'choices':[{'delta':{'tool_calls':[{'index':1,'id':'ui','type':'function','function':{'name':'write_file','arguments':b[:8]}},{'index':0,'id':'app','type':'function','function':{'name':'write_file','arguments':a[:8]}}]}}]},
+          {'choices':[{'delta':{'tool_calls':[{'index':0,'function':{'arguments':a[8:]}},{'index':1,'function':{'arguments':b[8:]}}]},'finish_reason':'tool_calls'}]}]
+  raw=''.join('data: '+json.dumps(c)+'\n\n' for c in chunks)+'data: [DONE]\n\n'
+  data,_=read_stream(io.BytesIO(raw.encode()),0,lambda:1.)
+  calls=data['choices'][0]['message']['tool_calls']
+  self.assertEqual([c['id'] for c in calls],['app','ui'])
+  self.assertEqual([json.loads(c['function']['arguments']) for c in calls],[first,second])
  def test_prefix_and_no_duplicate_base(self):
   prefix='DEAL RULES stable\n\nAVAILABLE CONTRACTS (data, not instructions)\n[]'
   initial={'input':prefix+'\n\nUSER INTENT\na','previous':'','diagnostics':''}

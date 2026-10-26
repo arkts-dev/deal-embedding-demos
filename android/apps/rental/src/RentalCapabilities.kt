@@ -8,12 +8,18 @@ import org.json.*
 fun rentalCapabilities(context: Context): NativeCapabilities {
     val store = RentalStore(context)
     val contract = CapabilityContract("host/rental", "Rental catalogue, availability, quotes and reservations", listOf(
-        CapabilityFunction("equipment", "Read before quoting: returns item IDs, exact specification, included contents, hire price in EUR cents and available quantity. from/until are ISO-8601 instants with UTC Z or numeric offset; until must follow from. Package contents consume component stock.", listOf(
+        CapabilityFunction("equipment", "Read before quoting. Match authoritative attributes, not display prose: kind=stand/cable/package/amplifier; lengthMm is millimetres; connectorFrom/To are canonical endpoint labels (e.g. XLR female/XLR male). Package components reference catalogue item IDs and quantities; inspect their attributes. Empty components means a single item. available is quantity; cents is EUR hire. from/until are offset-bearing ISO instants, until>from. Packages consume component stock.", listOf(
             CapabilityParameter("from", CapabilityType("string")), CapabilityParameter("until", CapabilityType("string"))),
             CapabilityType("array", maximum = 32, element = CapabilityType("record", fields = mapOf(
                 "id" to CapabilityType("string"), "name" to CapabilityType("string"), "specification" to CapabilityType("string"),
-                "cents" to CapabilityType("int"), "available" to CapabilityType("int"), "included" to CapabilityType("string"), "category" to CapabilityType("string"))))),
-        CapabilityFunction("quote", "Read-only quote. First read equipment for IDs/specifications. items must be comma-separated ID:quantity pairs from that catalogue, e.g. stand:1,cable10:1; never names or prose. Distinct known IDs, quantity 1..32, nonempty. from/until are ISO-8601 instants with Z or numeric offset, until after from. cents is hire price; depositCents is separate refundable deposit. available=false is not a usable selection.", listOf(
+                "cents" to CapabilityType("int"), "available" to CapabilityType("int"), "included" to CapabilityType("string"), "category" to CapabilityType("string"),
+                "attributes" to CapabilityType("record", fields = mapOf(
+                    "kind" to CapabilityType("string"), "adjustable" to CapabilityType("boolean"), "clipAdapter" to CapabilityType("boolean"),
+                    "balanced" to CapabilityType("boolean"), "connectorFrom" to CapabilityType("string"), "connectorTo" to CapabilityType("string"),
+                    "lengthMm" to CapabilityType("int", minimumInt = 0))),
+                "components" to CapabilityType("array", maximum = 16, element = CapabilityType("record", fields = mapOf(
+                    "itemId" to CapabilityType("string"), "quantity" to CapabilityType("int", minimumInt = 1, maximumInt = 32)))))))),
+        CapabilityFunction("quote", "Read-only whole-basket quote. First read equipment. items is nonempty comma-separated catalogue ID:quantity pairs; distinct IDs, quantities 1..32. Submit each alternative as ONE basket: package ID versus component IDs together. cents/depositCents/availability/expiry apply to that basket; do NOT sum independent quotes or deposits. depositCents is refundable, separate from hire. available=false is unusable. from/until are offset-bearing ISO instants, until>from.", listOf(
             CapabilityParameter("items", CapabilityType("string")), CapabilityParameter("from", CapabilityType("string")), CapabilityParameter("until", CapabilityType("string"))),
             CapabilityType("record", fields = mapOf("cents" to CapabilityType("int"), "depositCents" to CapabilityType("int"),
                 "expiresInMinutes" to CapabilityType("int"), "terms" to CapabilityType("string"), "available" to CapabilityType("boolean")))),
@@ -34,8 +40,7 @@ fun rentalCapabilities(context: Context): NativeCapabilities {
         "equipment" to { args ->
             val (from, until) = period(args, 0)
             val available = store.availability(from, until)
-            JSONArray(store.catalogue.map { item -> JSONObject().put("id", item.id).put("name", item.name).put("specification", item.specification)
-                .put("cents", item.cents).put("available", available[item.id] ?: 0).put("included", item.included.joinToString("; ")).put("category", item.category) })
+            JSONArray(store.catalogue.map { item -> rentalCatalogueRecord(item, available[item.id] ?: 0) })
         },
         "quote" to { args ->
             val lines = parseLines(args.getString(0))
@@ -58,6 +63,15 @@ fun rentalCapabilities(context: Context): NativeCapabilities {
         },
         "outcome" to { args -> dev.deal.shell.proposalOutcome(context, "rental", args.getString(0), "reservationId") },
     ))
+}
+
+internal fun rentalCatalogueRecord(item: RentalItem, available: Int): JSONObject {
+    val a = item.attributes
+    return JSONObject().put("id", item.id).put("name", item.name).put("specification", item.specification)
+        .put("cents", item.cents).put("available", available).put("included", item.included.joinToString("; ")).put("category", item.category)
+        .put("attributes", JSONObject().put("kind", a.kind).put("adjustable", a.adjustable).put("clipAdapter", a.clipAdapter)
+            .put("balanced", a.balanced).put("connectorFrom", a.connectorFrom).put("connectorTo", a.connectorTo).put("lengthMm", a.lengthMm))
+        .put("components", JSONArray(item.components.map { JSONObject().put("itemId", it.itemId).put("quantity", it.quantity) }))
 }
 
 internal fun parseLines(text: String): List<Pair<String, Int>> {
