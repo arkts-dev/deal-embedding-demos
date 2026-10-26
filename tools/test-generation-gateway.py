@@ -2,7 +2,7 @@
 """No credentials loaded, no network: exact provider exchange envelope contract."""
 import ast, json, pathlib, types, unittest, tempfile, http.server, urllib.request, urllib.error, concurrent.futures, threading, time
 from gateway_transport import stable_messages, read_stream, prefix_fingerprint
-from native_source_tools import SOURCE_TOOLS, source_messages, initial_write_batch, native_result, strip_reasoning
+from native_source_tools import SOURCE_TOOLS, COMPACT_TOOLS, tools_for, source_messages, initial_write_batch, native_result, strip_reasoning
 
 class GatewayTest(unittest.TestCase):
     def test_budget(self):
@@ -69,6 +69,14 @@ class GatewayTest(unittest.TestCase):
         namespace['infer_jev']=lambda *args:(_ for _ in ()).throw(urllib.error.URLError('unreachable'))
         with self.assertRaises(urllib.error.URLError):namespace['infer'](body)
 
+    def test_compact_tool_phase(self):
+        body={'input':'rules\nNATIVE TOOL TURN\n'+json.dumps({'messages':[],'initialWrites':True,'compact':True})}
+        self.assertEqual(tools_for(body),COMPACT_TOOLS)
+        self.assertFalse(initial_write_batch(body))
+        body['input']='rules\nNATIVE TOOL TURN\n'+json.dumps({'messages':[],'initialWrites':False,'compact':False})
+        self.assertNotIn('write_file',[t['function']['name'] for t in tools_for(body)])
+        self.assertNotIn('submit_compact',[t['function']['name'] for t in tools_for(body)])
+
     def test_read_schema(self):
         schema=next(t['function']['parameters'] for t in SOURCE_TOOLS if t['function']['name']=='read_file')
         self.assertEqual(set(schema['required']),{'file','start_line','end_line'})
@@ -87,7 +95,7 @@ class GatewayTest(unittest.TestCase):
             def __exit__(self,*args):pass
             def read(self,limit=-1):return json.dumps(response).encode()
         def request(url,data,headers):seen.append(json.loads(data));return object()
-        namespace={'options':types.SimpleNamespace(chooser='llm',backend='cerebras'),'GatewayFailure':ValueError,'BACKENDS':{'cerebras':{'model':'qwen-3.8-27b','endpoint':'unused','key':'private-key'}},'admit':lambda b:None,'time':time,'stable_messages':stable_messages,'prefix_fingerprint':prefix_fingerprint,'read_stream':read_stream,'json':json,'urllib':types.SimpleNamespace(request=types.SimpleNamespace(Request=request,urlopen=lambda *a,**k:Reply())), 'SOURCE_TOOLS':SOURCE_TOOLS,'source_messages':source_messages,'initial_write_batch':initial_write_batch,'native_result':native_result,'strip_reasoning':strip_reasoning}
+        namespace={'options':types.SimpleNamespace(chooser='llm',backend='cerebras'),'GatewayFailure':ValueError,'BACKENDS':{'cerebras':{'model':'qwen-3.8-27b','endpoint':'unused','key':'private-key'}},'admit':lambda b:None,'time':time,'stable_messages':stable_messages,'prefix_fingerprint':prefix_fingerprint,'read_stream':read_stream,'json':json,'urllib':types.SimpleNamespace(request=types.SimpleNamespace(Request=request,urlopen=lambda *a,**k:Reply())), 'tools_for':tools_for,'source_messages':source_messages,'initial_write_batch':initial_write_batch,'native_result':native_result,'strip_reasoning':strip_reasoning}
         exec(compile(ast.Module(body=[infer],type_ignores=[]),'gateway','exec'),namespace)
         body={'input':'rules\nSOURCE OPERATION\ninitial\nNATIVE TOOL TURN\n{"messages":[],"initialWrites":true}','previous':'','diagnostics':'','capture':True}
         result=json.loads(namespace['infer'](body))

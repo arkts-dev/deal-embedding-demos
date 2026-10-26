@@ -72,14 +72,14 @@ export view Main(state: app.State): View { ui.Column() { ui.Text(value: "Protoco
   check(runCatching{host.generate(request)}.isFailure)
   val page=host.events("","",20);check(page.events.size<=20)
   var fixtureCalls=0
-  val fixtureModel=object:ModelClient{override fun complete(input:String,previous:String,diagnostics:String,cancellation:GenerationCancellation,log:EmbeddingLog):String{fixtureCalls++;return nativeSourceFixture(deal,view)}}
+  val fixtureModel=object:ModelClient{override fun complete(input:String,previous:String,diagnostics:String,cancellation:GenerationCancellation,log:EmbeddingLog):String{if(JSONObject(input.substringAfterLast("\nNATIVE TOOL TURN\n")).optBoolean("compact"))return nativeFallbackFixture();fixtureCalls++;return nativeSourceFixture(deal,view)}}
   val fallback=Embedding(context,CapabilityRegistry(context,CapabilityDiscovery(context){false},listOf(probe)),fixtureModel,EmbeddingConfig("experience",emptyList(),"protocol-fallback"))
   try{fallback.refresh();val facts=fallback.snapshot(WireType("record"),"{}");val prepared=fallback.generate(fallback.request("Fallback","An authored test workflow",facts));check(prepared.origin=="generated"&&fixtureCalls==1);fallback.release(prepared)}finally{fallback.shutdown()}
   // No network: source fixture validates absent-policy fallback through real core.
   var badCalls=0
-  val badModel=object:ModelClient{override fun complete(input:String,previous:String,diagnostics:String,cancellation:GenerationCancellation,log:EmbeddingLog):String {badCalls++;return if(badCalls<4)"not source" else nativeSourceFixture(deal,view)}}
+  val badModel=object:ModelClient{override fun complete(input:String,previous:String,diagnostics:String,cancellation:GenerationCancellation,log:EmbeddingLog):String {if(JSONObject(input.substringAfterLast("\nNATIVE TOOL TURN\n")).optBoolean("compact"))return nativeFallbackFixture();badCalls++;return if(badCalls<4)"not source" else nativeSourceFixture(deal,view)}}
   val repeated=Embedding(context,CapabilityRegistry(context,CapabilityDiscovery(context){false},listOf(probe)),badModel,EmbeddingConfig("experience",emptyList(),"protocol-repeated"))
-  try{repeated.refresh();val c=repeated.snapshot(WireType("record"),"{}");val recovered=repeated.generate(repeated.request("Repeated","Fixture invalid response",c));check(recovered.attempts==4&&badCalls==4);repeated.release(recovered)}finally{repeated.shutdown()}
+  try{repeated.refresh();val c=repeated.snapshot(WireType("record"),"{}");val recovered=repeated.generate(repeated.request("Repeated","Fixture invalid response",c));check(recovered.attempts==5&&badCalls==4);repeated.release(recovered)}finally{repeated.shutdown()}
   // Invoke actual compiled DEAL declarations through the public native linkage.
   ProtocolController(context,host).use { controller ->
    check(controller.call("prepareCapabilities") as Int==1)
@@ -105,7 +105,7 @@ export view Main(state: app.State): View { ui.Column() { ui.Text(value: "Protoco
   ProtocolController(context,restarted).use{c->c.call("prepareCapabilities");check(c.call("resumeSaved")==1)}
   // A valid generation may exceed the adapter's ordinary 120-second operation deadline.
   val longModel=object:ModelClient{override fun complete(input:String,previous:String,diagnostics:String,cancellation:GenerationCancellation,log:EmbeddingLog):String{
-   Thread.sleep(121000);cancellation.check();return nativeSourceFixture(deal,view)
+   if(JSONObject(input.substringAfterLast("\nNATIVE TOOL TURN\n")).optBoolean("compact"))return nativeFallbackFixture();Thread.sleep(121000);cancellation.check();return nativeSourceFixture(deal,view)
   }}
   ApplicationProtocol(context,Embedding(context,CapabilityRegistry(context,CapabilityDiscovery(context){false},listOf(probe)),longModel,EmbeddingConfig("experience",emptyList(),"protocol-long-generation"))).use{api->
    val request=api.request("Long generation","Authored source fixture",api.snapshot(WireType("record"),"{}"))
@@ -124,7 +124,7 @@ export view Main(state: app.State): View { ui.Column() { ui.Text(value: "Protoco
    check((controller.call("saved") as JSONArray).length()==0)
   }
   val slowEntered=java.util.concurrent.CountDownLatch(1);val slowRelease=java.util.concurrent.CountDownLatch(1)
-  val noncooperative=object:ModelClient{override fun complete(input:String,previous:String,diagnostics:String,cancellation:GenerationCancellation,log:EmbeddingLog):String{slowEntered.countDown();slowRelease.await(10,java.util.concurrent.TimeUnit.SECONDS);return nativeSourceFixture(deal,view)}}
+  val noncooperative=object:ModelClient{override fun complete(input:String,previous:String,diagnostics:String,cancellation:GenerationCancellation,log:EmbeddingLog):String{slowEntered.countDown();slowRelease.await(10,java.util.concurrent.TimeUnit.SECONDS);return nativeSourceFixture(deal,view,input)}}
   val slowHost=Embedding(context,CapabilityRegistry(context,CapabilityDiscovery(context){false},listOf(probe)),noncooperative,EmbeddingConfig("experience",emptyList(),"protocol-controller-noncooperative"))
   ProtocolController(context,slowHost).use {c->
    try{val request=c.call("waitingRequest") as String;val operation=c.start("generateWaiting",JSONArray().put(request));val deadline=System.currentTimeMillis()+10000

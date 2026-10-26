@@ -14,7 +14,7 @@ assert {p.name for p in (library/'android/src/capabilities').glob('*.kt')} == {
     'CapabilityContract.kt','CapabilityRegistry.kt','CapabilityDiscovery.kt','CapabilityService.kt','CapabilityBindings.kt'}
 assert (library/'core/generation.deal').exists()
 assert not (library/'backends').exists()
-assert {p.name for p in (library/'core/host').glob('*.d.deal')} == {'checker.d.deal', 'discovery.d.deal', 'model.d.deal', 'chooser.d.deal', 'policy-data.d.deal', 'observer.d.deal', 'embedding.d.deal', 'catalogue-policy.d.deal', 'protocol.d.deal'}
+assert {p.name for p in (library/'core/host').glob('*.d.deal')} == {'composer.d.deal', 'checker.d.deal', 'discovery.d.deal', 'model.d.deal', 'chooser.d.deal', 'policy-data.d.deal', 'observer.d.deal', 'embedding.d.deal', 'catalogue-policy.d.deal', 'protocol.d.deal'}
 assert (library/'android/src/compiler/ExperienceCompiler.kt').exists()
 assert {p.name for p in (library/'android/src/bindings').glob('*.kt')} == {'DealSessionBindings.kt', 'ExperienceGenerator.kt', 'SandboxProgram.kt', 'EmbeddingLog.kt', 'ChoiceProtocol.kt', 'ApplicationProtocol.kt', 'ProtocolController.kt','ObservationPresentation.kt','DiagnosticFiles.kt','FailureEvidence.kt','TrustedProgram.kt','GenerationTelemetry.kt'}
 assert {p.name for p in (library/'android/src/inference').glob('*.kt')} == {'ModelClient.kt', 'GenerationGateway.kt'}
@@ -84,7 +84,7 @@ with zipfile.ZipFile(os.environ.get('EMBEDDING_AAR', root / 'build/embedding-lib
         contracts = app.read('assets/embedding/bindings/generation-contracts.js').decode()
         import json
         metadata = json.loads(contracts.removeprefix('configureDealCapabilities(').strip().removesuffix(');'))
-        assert {m['module'] for m in metadata} == {'embedding/checker', 'embedding/model', 'embedding/discovery', 'embedding/chooser', 'embedding/observer'}
+        assert {m['module'] for m in metadata} == {'embedding/composer', 'embedding/checker', 'embedding/model', 'embedding/discovery', 'embedding/chooser', 'embedding/observer'}
         checker = next(m for m in metadata if m['module'] == 'embedding/checker')
         assert checker['functions'][0]['result'] == json.loads((library/'core/host/check-result.json').read_text())
         assert [p['name'] for p in checker['functions'][0]['parameters']] == ['deal', 'dealui']

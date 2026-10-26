@@ -42,6 +42,7 @@
  <instrumentation android:name=".LoggingInstrumentation" android:targetPackage="dev.deal.apps.organizer" />
  <instrumentation android:name=".CompoundFailureInstrumentation" android:targetPackage="dev.deal.connectors.tests" />
  <instrumentation android:name=".HardeningInstrumentation" android:targetPackage="dev.deal.connectors.tests" />
+ <instrumentation android:name=".CompactInstrumentation" android:targetPackage="dev.deal.apps.organizer" />
  <instrumentation android:name=".ProtocolInstrumentation" android:targetPackage="dev.deal.apps.organizer" />
  <instrumentation android:name=".ProtocolPolicyInstrumentation" android:targetPackage="dev.deal.apps.organizer" />
 </manifest>

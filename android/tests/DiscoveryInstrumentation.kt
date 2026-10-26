@@ -40,7 +40,7 @@ class DiscoveryInstrumentation : Instrumentation() {
             val model = object : ModelClient { override fun complete(input: String, previous: String, diagnostics: String, cancellation: GenerationCancellation, log: EmbeddingLog): String {
                 generationInput = input
                 return nativeSourceFixture("export class State { value: number ; } export function initialState(): State { return {value: 0}; } export function main(): null { return null; }",
-                    "import * as app from \"./experience\"; import * as ui from \"./platform.dealui-pack\"; // @ui-root\nexport view Test(state: app.State): View { ui.IntText(value: state.value) }")
+                    "import * as app from \"./experience\"; import * as ui from \"./platform.dealui-pack\"; // @ui-root\nexport view Test(state: app.State): View { ui.IntText(value: state.value) }", input)
             } }
             val registry = dev.deal.embedding.capabilities.CapabilityRegistry(targetContext, dev.deal.embedding.capabilities.CapabilityDiscovery(targetContext) { false }, listOf(module))
             ApplicationProtocol(targetContext, Embedding(targetContext, registry, model, EmbeddingConfig("experience", emptyList(), "discovery-admission-test"))).use { api ->

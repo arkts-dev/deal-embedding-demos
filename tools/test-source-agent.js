@@ -3,18 +3,22 @@
 const fs=require('fs'),path=require('path'),vm=require('vm'),assert=require('assert'),crypto=require('crypto');
 const assets=path.resolve('build/embedding-library/aar/assets');
 const generation=path.resolve(process.argv[2]||path.join(assets,'generation'));
-async function scenario(replies,verify){
+async function scenario(replies,verify,compact=false){
  const ctx=vm.createContext({});for(const n of ['sandbox.js','generation-contracts.js','protocol-contracts.js','protocol-host.js'])vm.runInContext(fs.readFileSync(path.join(assets,'embedding/bindings',n),'utf8'),ctx);
  const sources={};function walk(dir){for(const n of fs.readdirSync(dir)){const f=path.join(dir,n);if(fs.statSync(f).isDirectory())walk(f);else if(n.endsWith('.js'))sources[path.relative(generation,f)]=fs.readFileSync(f,'utf8');}}walk(generation);ctx.sources=sources;
  vm.runInContext("configureDealCapabilities(Object.values(dealHostContracts));const factories=Object.fromEntries(Object.entries(sources).map(([k,v])=>[k,new Function('require','module','exports','process','console',v)]));globalThis.agent=dealLoad(factories,'source-agent.js').entry;globalThis.done=false;agent.run.$f('fixture','fixture').then(v=>{globalThis.result=v;done=true}).catch(e=>{globalThis.problem=e;done=true});",ctx);
- let calls=0,checks=[],patches=[];
+ let calls=0,checks=[],patches=[],offset=0;
  for(let i=0;i<5000&&!ctx.done;i++){
   await new Promise(r=>setImmediate(r));const req=JSON.parse(vm.runInContext('dealCapabilities.take()',ctx));ctx.replies=req.map(r=>{try{
    let v;
    if(r.module==='embedding/policy-data'){
     if(r.function==='parse')v=JSON.parse(r.args[0]);else if(r.function==='sha256')v=crypto.createHash('sha256').update(r.args[0]).digest('hex');else throw Error(r.function);
+   } else if(r.module==='embedding/composer'){
+    const p=JSON.parse(r.args[0]);v=JSON.stringify(p.invalid?{accepted:false,source:{},diagnostics:'COMPACT_PLAN: fixture'}:{accepted:true,source:{deal:p.deal,dealui:p.dealui},diagnostics:''});
    } else if(r.module==='embedding/model'){
-    assert(calls<replies.length,'Unexpected retry '+r.args[0]);const state=JSON.parse(r.args[0].split('\nNATIVE TOOL TURN\n')[1]);verify?.(calls,r.args,state);v=replies[calls++];
+    const state=JSON.parse(r.args[0].split('\nNATIVE TOOL TURN\n')[1]);
+    if(!compact && calls===0 && offset===0){assert.equal(state.compact,true);offset=1;v=msg(call('source_fallback',{reason:'Legacy source mechanics fixture'}));}
+    else {assert(calls<replies.length,'Unexpected retry '+r.args[0]);if(!compact)state.messages=state.messages.slice(2);verify?.(calls,r.args,state);v=replies[calls++];}
    } else if(r.module==='embedding/checker'){
     checks.push(r.args);v={accepted:r.args[0]==='valid',candidateId:r.args[0]==='valid'?'checked':'',diagnostics:'[]'};
    } else if(r.module==='embedding/observer') {if(r.args[0]==='patch'&&r.args[1]==='completed')patches.push(JSON.parse(r.args[2]));v=null;}
@@ -27,7 +31,12 @@ async function scenario(replies,verify){
 const call=(name,args,id='c')=>({id,type:'function',function:{name,arguments:JSON.stringify(args)}});
 const msg=(...tool_calls)=>JSON.stringify({role:'assistant',content:'',tool_calls});
 (async()=>{
- let r=await scenario([msg(call('write_file',{file:'deal',source:'broken'})),msg(call('write_file',{file:'dealui',source:'UI'})),msg(call('edit_sources',{edits:[{file:'deal',search:'missing',replacement:'valid'}]})),msg(call('write_file',{file:'deal',source:'valid'})),msg(call('read_file',{file:'deal'})),msg(call('edit_sources',{edits:[{file:'deal',search:'broken',replacement:'valid'}]}))],(n,args,state)=>{
+ let r=await scenario([msg(call('submit_compact',{invalid:true})),msg(call('submit_compact',{deal:'broken',dealui:'UI'})),msg(call('submit_compact',{deal:'valid',dealui:'UI'})),msg(call('edit_sources',{edits:[{file:'deal',search:'broken',replacement:'valid'}]}))],(n,args,state)=>{
+  if(n===1){assert(state.messages.at(-1).content.includes('COMPACT_PLAN'));assert.equal(args[1],'');}
+  if(n===2){const v=JSON.parse(state.messages.at(-1).content);assert.equal(v.source.deal,'broken');assert.equal(JSON.parse(args[1]).deal,'broken');}
+  if(n===3)assert(state.messages.at(-1).content.includes('FILES_EXIST'));
+ },true);assert.equal(r.calls,4);assert.equal(r.checks.length,2);assert(r.patches[0].accepted);
+ r=await scenario([msg(call('write_file',{file:'deal',source:'broken'})),msg(call('write_file',{file:'dealui',source:'UI'})),msg(call('edit_sources',{edits:[{file:'deal',search:'missing',replacement:'valid'}]})),msg(call('write_file',{file:'deal',source:'valid'})),msg(call('read_file',{file:'deal'})),msg(call('edit_sources',{edits:[{file:'deal',search:'broken',replacement:'valid'}]}))],(n,args,state)=>{
   if(n===1){assert.equal(state.messages.length,2);assert.equal(state.messages[1].role,'tool');assert.equal(args[1],'');}
   if(n>=2)assert.equal(JSON.parse(args[1]).deal,'broken');
   if(n===3)assert(state.messages.at(-1).content.includes('PATCH_NO_MATCH'));
