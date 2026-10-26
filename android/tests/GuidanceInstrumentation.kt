@@ -16,7 +16,7 @@ class GuidanceInstrumentation : Instrumentation() {
             val ctx = targetContext
             var calls = 0
             var fail = false
-            val sample = NativeCapabilities(CapabilityContract("host/sample", "Example-only read fixture", listOf(CapabilityFunction("value", "Read fixture value", emptyList(), CapabilityType.IntType))), mapOf("value" to { _ -> calls++; if (fail) throw ProtocolFailure("UNAVAILABLE", "Fixture failure"); 42 }))
+            val sample = NativeCapabilities(CapabilityContract("host/sample", "Example-only read fixture", listOf(CapabilityFunction("value", "Read fixture value", emptyList(), CapabilityType.NumberType))), mapOf("value" to { _ -> calls++; if (fail) throw ProtocolFailure("UNAVAILABLE", "Fixture failure"); 42 }))
             val model = object : ModelClient { override fun complete(input: String, previous: String, diagnostics: String, cancellation: GenerationCancellation, log: EmbeddingLog): String = error("Unexpected inference") }
             ApplicationProtocol(ctx, Embedding(ctx, CapabilityRegistry(ctx, CapabilityDiscovery(ctx) { false }, listOf(sample)), model, EmbeddingConfig("experience", emptyList(), "guidance-${UUID.randomUUID()}", retainState = true))).use { api ->
                 api.refresh(); api.grant("host/sample")
@@ -39,22 +39,22 @@ class GuidanceInstrumentation : Instrumentation() {
                         while (!tree().toString().contains(text)) { check(System.currentTimeMillis() < end); Thread.sleep(20) }
                     }
                     check(calls == 0) { "Example read without explicit action" }
-                    read(); await("\"intValue\":42"); check(calls == 1)
+                    read(); await("\"numberValue\":42"); check(calls == 1)
                     api.close(session); session = api.run(experience)
-                    check(tree().toString().contains("\"intValue\":42")) { "Settled effect result was not retained" }
+                    check(tree().toString().contains("\"numberValue\":42")) { "Settled effect result was not retained" }
                     fail = true; read(); await("Check access and try again"); check(calls == 2)
                     fail = false; read()
                     val end = System.currentTimeMillis() + 10000
                     while (calls != 3 || tree().toString().contains("Check access and try again")) { check(System.currentTimeMillis() < end); Thread.sleep(20) }
-                    check(tree().toString().contains("\"intValue\":42"))
+                    check(tree().toString().contains("\"numberValue\":42"))
                     api.close(session); api.forget(experience)
                 }
             }
             // Exact checked source + source-bound draft reopen, not a rendered-text rewrite.
             ApplicationProtocol(ctx, Embedding(ctx, CapabilityRegistry(ctx, CapabilityDiscovery(ctx) { false }, emptyList()), model,
                 EmbeddingConfig("experience", emptyList(), "currency-${UUID.randomUUID()}", retainState = true))).use { api ->
-                val source = Source("""export class State {amount:string="€20.00";}
-export function initialState():State {return {};}
+                val source = Source("""export class State {amount:string;}
+export function initialState():State {return {amount: "€20.00"};}
 """, """import * as app from "./experience";
 import * as ui from "./platform.dealui-pack";
 // @ui-root
@@ -75,9 +75,9 @@ export view Main(state:app.State):View {ui.Column(){ui.Text(value:state.amount)}
             fun draftApi() = ApplicationProtocol(ctx, Embedding(ctx,
                 CapabilityRegistry(ctx, CapabilityDiscovery(ctx) { false }, emptyList()), model,
                 EmbeddingConfig("experience", emptyList(), retention, retainState = true)))
-            val draftSource = Source("""export class State { value:int=18000; }
-export class Change { value:int=0; }
-export function initialState():State {return {};}
+            val draftSource = Source("""export class State { value:number; }
+export class Change { value:number; }
+export function initialState():State {return {value: 18000};}
 // @ui-update
 export function change(state:State,action:Change):State {return {value:action.value};}
 """, """import * as app from "./experience";
@@ -92,7 +92,7 @@ export view Main(state:app.State):View {ui.Column(){ui.IntField(value:state.valu
                         else api.saved().single { it.id == draftId }
                     val session = api.run(experience)
                     val tree = api.next(session, "").snapshot.tree
-                    check(tree.toString().contains("\"intValue\":${18000 + cycle}")) { "Cold draft lost at cycle $cycle: $tree" }
+                    check(tree.toString().contains("\"numberValue\":${18000 + cycle}")) { "Cold draft lost at cycle $cycle: $tree" }
                     val field = tree.getJSONArray("children").getJSONObject(0)
                     val props = field.getJSONArray("props")
                     val slot = (0 until props.length()).map { props.getJSONObject(it) }.single { it.optString("kind") == "action" }.getInt("actionSlot")
@@ -101,7 +101,7 @@ export view Main(state:app.State):View {ui.Column(){ui.IntField(value:state.valu
                         check(reader.source(reader.saved().single { it.id == draftId }) == draftSource)
                         reader.retainedEvents()
                     }
-                    check(api.next(session, "").snapshot.tree.toString().contains("\"intValue\":${18001 + cycle}"))
+                    check(api.next(session, "").snapshot.tree.toString().contains("\"numberValue\":${18001 + cycle}"))
                     api.close(session)
                     if (cycle == 3) api.forget(experience)
                 }

@@ -19,8 +19,8 @@ class CompoundFailureInstrumentation:Instrumentation(){
         try{
             fun field(value:Any,name:String):Any?=value.javaClass.getDeclaredField(name).apply{isAccessible=true}.get(value)
             fun hasCleanup(error:Throwable):Boolean=error.suppressed.any{it is ProtocolFailure&&it.code=="CLEANUP_FAILED" || hasCleanup(it)}
-            val source=Source("""export class State {value:int=0;}
-export function initialState():State {return {};}
+            val source=Source("""export class State {value:number;}
+export function initialState():State {return {value: 0};}
 ""","""import * as app from "./experience";
 import * as ui from "./platform.dealui-pack";
 // @ui-root

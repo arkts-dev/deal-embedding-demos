@@ -9,7 +9,7 @@ import org.json.*
 /** Real Binder boundary, separate provider process, no inference. */
 class RemoteProbeService:CapabilityService(){
     override val capabilities=NativeCapabilities(CapabilityContract("host/remote-probe","Remote echo",listOf(
-        CapabilityFunction("echo","Echo integer",listOf(CapabilityParameter("value",CapabilityType.IntType)),CapabilityType.IntType)
+        CapabilityFunction("echo","Echo integer",listOf(CapabilityParameter("value",CapabilityType.NumberType)),CapabilityType.NumberType)
     )),mapOf("echo" to {args:JSONArray->args.getInt(0)}))
     override fun authorize(uid:Int)=uid==applicationInfo.uid
     override fun consent()=true

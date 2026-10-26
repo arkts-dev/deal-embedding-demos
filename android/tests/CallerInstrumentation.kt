@@ -28,7 +28,7 @@ open class CallerInstrumentation : Instrumentation() {
             val service = if (provider == "todo") "TodoService" else "VehicleService"
             check(context.bindService(Intent().setComponent(ComponentName("dev.deal.apps.$provider", "dev.deal.apps.$provider.$service")), connection, Context.BIND_AUTO_CREATE))
             check(latch.await(10, TimeUnit.SECONDS) && denied) { "Provider accepted non-demo test UID" }
-            val type = CapabilityType("record", fields = mapOf("nested" to CapabilityType("array", element = CapabilityType.IntType, maximum = 2)))
+            val type = CapabilityType("record", fields = mapOf("nested" to CapabilityType("array", element = CapabilityType.NumberType, maximum = 2)))
             type.validate(JSONObject().put("nested", JSONArray(listOf(1, 2))))
             check(runCatching { type.validate(JSONObject().put("nested", JSONArray(listOf("bad")))) }.isFailure)
             check(runCatching { type.validate(JSONObject().put("nested", JSONArray()).put("extra", true)) }.isFailure)

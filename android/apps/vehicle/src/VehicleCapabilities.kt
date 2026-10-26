@@ -4,7 +4,7 @@ import dev.deal.embedding.capabilities.*
 
 fun vehicleCapabilities(): NativeCapabilities {
     val contract = CapabilityContract("host/trip", "Simulated vehicle travel, not live telemetry", listOf(
-        CapabilityFunction("estimate", "Estimate travel minutes using the simulation 5 + 2 times distance in km", listOf(
-            CapabilityParameter("distanceKm", CapabilityType("int", minimumInt = 1, maximumInt = 1000))), CapabilityType("int", minimumInt = 7, maximumInt = 2005))))
-    return NativeCapabilities(contract, mapOf("estimate" to { args -> 5 + 2 * args.getInt(0) }))
+        CapabilityFunction("estimate", "Estimate travel minutes using the simulation 5 + 2 times integral distance in km (1..1000)", listOf(
+            CapabilityParameter("distanceKm", CapabilityType("number", minimumNumber = 1.0, maximumNumber = 1000.0))), CapabilityType("number", minimumNumber = 7.0, maximumNumber = 2005.0))))
+    return NativeCapabilities(contract, mapOf("estimate" to { args -> val distance = args.getDouble(0); require(distance.isFinite() && distance in 1.0..1000.0 && distance == kotlin.math.floor(distance)); 5 + 2 * distance.toInt() }))
 }

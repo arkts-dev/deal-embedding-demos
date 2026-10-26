@@ -7,9 +7,10 @@ shutil.copytree(root/'dependencies/deal-ui/ui',src/'ui',dirs_exist_ok=True)
 shutil.copy(root/'dependencies/deal-embedding/core/source-literals.deal',src/'source-literals.deal')
 for p in (root/'dependencies/deal-embedding/core/host').glob('*.d.deal'):shutil.copy(p,src/p.name)
 externals={'embedding':{'declaration':'src/embedding.d.deal'},'catalogue-policy':{'declaration':'src/catalogue-policy.d.deal'},'embedding/policy-data':{'declaration':'src/policy-data.d.deal'},'embedding/observer':{'declaration':'src/observer.d.deal'}}
-(stage/'deal.json').write_text(json.dumps({'languageVersion':'1.3','backend':'js','moduleRoots':['src'],'externals':externals}))
+(stage/'deal.json').write_text(json.dumps({'languageVersion':'1.4','backend':'js','moduleRoots':['src'],'externals':externals}))
 # Source-literals is ordinary DEAL; alias resolution remains project-owned.
-p=src/'equipment-source.deal';p.write_text(p.read_text().replace('"embedding/source-literals"','"./source-literals"'))
+for name in ('equipment-source.deal','equipment-choice.deal'):
+    p=src/name;p.write_text(p.read_text().replace('"embedding/source-literals"','"./source-literals"'))
 subprocess.run(['java','-Ddeal.home='+str(root/'dependencies/deal'),'-cp',str(root/'build/embedding-consumer/classes.jar'),'deal.Main','compile',str(src/'app-policy.deal'),'--backend','js','--output',str(stage/'js')],check=True)
 output=stage/'js'
 for app in ('organizer','tests'):

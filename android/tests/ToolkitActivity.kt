@@ -17,7 +17,7 @@ import java.util.concurrent.Executors
 
 /** Delayed external fixture keeps pending frames observable across the real Binder boundary. */
 class ToolkitReadingService:CapabilityService() {
-    override val capabilities=NativeCapabilities(CapabilityContract("host/sample","Reading",listOf(CapabilityFunction("value","Read",emptyList(),CapabilityType.IntType))),mapOf("value" to { _ ->
+    override val capabilities=NativeCapabilities(CapabilityContract("host/sample","Reading",listOf(CapabilityFunction("value","Read",emptyList(),CapabilityType.NumberType))),mapOf("value" to { _ ->
         Thread.sleep(2500)
         if(java.io.File(filesDir,"toolkit-reading-failure").readText()=="true") throw ProtocolFailure("UNAVAILABLE","Reading unavailable")
         42

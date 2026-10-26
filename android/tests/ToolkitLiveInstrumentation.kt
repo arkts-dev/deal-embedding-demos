@@ -32,7 +32,7 @@ class ToolkitLiveInstrumentation : Instrumentation() {
                             EmbeddingConfig("experience",emptyList(),"toolkit-live-${UUID.randomUUID()}",retainState=true)))
                         cleanup=p
                         val facts=JSONObject().put("approvedCents",approved).put("committedCents",committed).put("currency","EUR")
-                        val schema=WireType("record",fields=listOf(WireField("approvedCents",WireType("int")),WireField("committedCents",WireType("int")),WireField("currency",WireType("string",maximum=3))))
+                        val schema=WireType("record",fields=listOf(WireField("approvedCents",WireType("number")),WireField("committedCents",WireType("number")),WireField("currency",WireType("string",maximum=3))))
                         val request=p.request("Budget","Compare my approved budget with commitments in euros. Keep both amounts editable and show a clear over-budget, under-budget or on-budget result with the difference. No external reads are needed.",p.snapshot(schema,facts.toString()))
                         row.put("trace",p.requestTrace(request))
                         val e=p.generate(request);row.put("experience",e.id).put("attempts",e.attempts)

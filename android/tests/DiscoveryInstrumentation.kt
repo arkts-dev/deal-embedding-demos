@@ -28,18 +28,18 @@ class DiscoveryInstrumentation : Instrumentation() {
                 check(runCatching { Discovery.parse(bad, capturedInput) }.isFailure) { bad }
             }
             check(runCatching { DiscoveryInput(listOf(DiscoveryFact("event", "x".repeat(2049)))) }.isFailure)
-            val full = (1..24).map { SharedCapabilityContract("host/bound$it", "d".repeat(500), functions = listOf(SharedCapabilityFunction("read", "d".repeat(300), result = WireType("int")))) }
+            val full = (1..24).map { SharedCapabilityContract("host/bound$it", "d".repeat(500), functions = listOf(SharedCapabilityFunction("read", "d".repeat(300), result = WireType("number")))) }
             check(CapturedDiscoveryInput(input, full).catalogueJson.toByteArray().size in 16385..32768)
-            check(runCatching { CapturedDiscoveryInput(input, full.map { it.copy(functions = it.functions + SharedCapabilityFunction("other", "d".repeat(500), result = WireType("int"))) }) }.isFailure)
+            check(runCatching { CapturedDiscoveryInput(input, full.map { it.copy(functions = it.functions + SharedCapabilityFunction("other", "d".repeat(500), result = WireType("number"))) }) }.isFailure)
             var reads = 0
             val module = dev.deal.embedding.capabilities.NativeCapabilities(
                 dev.deal.embedding.capabilities.CapabilityContract("host/probe", "Explicit read", listOf(
-                    dev.deal.embedding.capabilities.CapabilityFunction("read", "Read on demand", emptyList(), dev.deal.embedding.capabilities.CapabilityType("int"))
+                    dev.deal.embedding.capabilities.CapabilityFunction("read", "Read on demand", emptyList(), dev.deal.embedding.capabilities.CapabilityType("number"))
                 )), mapOf("read" to { _: JSONArray -> reads++; 7 }))
             var generationInput = ""
             val model = object : ModelClient { override fun complete(input: String, previous: String, diagnostics: String, cancellation: GenerationCancellation, log: EmbeddingLog): String {
                 generationInput = input
-                return nativeSourceFixture("export class State { value: int = 0; } export function initialState(): State { return {}; } export function main(): null { return null; }",
+                return nativeSourceFixture("export class State { value: number ; } export function initialState(): State { return {value: 0}; } export function main(): null { return null; }",
                     "import * as app from \"./experience\"; import * as ui from \"./platform.dealui-pack\"; // @ui-root\nexport view Test(state: app.State): View { ui.IntText(value: state.value) }")
             } }
             val registry = dev.deal.embedding.capabilities.CapabilityRegistry(targetContext, dev.deal.embedding.capabilities.CapabilityDiscovery(targetContext) { false }, listOf(module))

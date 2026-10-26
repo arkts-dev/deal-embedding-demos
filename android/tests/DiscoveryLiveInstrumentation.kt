@@ -21,8 +21,8 @@ class DiscoveryLiveInstrumentation : Instrumentation() {
             Thread.sleep(1500)
             var reads = 0
             val native = NativeCapabilities(CapabilityContract("host/calendar", "Selected Calendar event and native-reviewed departure proposal", listOf(
-                CapabilityFunction("start", "Read selected event start minute and capture its revision", emptyList(), CapabilityType("int", minimumInt = 0, maximumInt = 1439)),
-                CapabilityFunction("propose", "Stage a departure minute for native user confirmation; never writes", listOf(CapabilityParameter("minute", CapabilityType("int", minimumInt = 0, maximumInt = 1439))), CapabilityType.NullType)
+                CapabilityFunction("start", "Read selected event start minute and capture its revision", emptyList(), CapabilityType("number", minimumNumber = 0.0, maximumNumber = 1439.0)),
+                CapabilityFunction("propose", "Stage a departure minute for native user confirmation; never writes", listOf(CapabilityParameter("minute", CapabilityType("number", minimumNumber = 0.0, maximumNumber = 1439.0))), CapabilityType.NullType)
             )), mapOf("start" to { _: JSONArray -> reads++; 900 }, "propose" to { _: JSONArray -> reads++; JSONObject.NULL }))
             val model = object : ModelClient { override fun complete(input: String, previous: String, diagnostics: String, cancellation: GenerationCancellation, log: EmbeddingLog): String = error("Unexpected heavy generation") }
             ApplicationProtocol(targetContext, Embedding(targetContext, CapabilityRegistry(targetContext, CapabilityDiscovery(targetContext) { false }, listOf(native)), model, EmbeddingConfig("preparation", emptyList(), "discovery-live-test"))).use { api ->

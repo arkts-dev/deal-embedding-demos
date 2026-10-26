@@ -13,6 +13,7 @@ class ToolkitInstrumentation : Instrumentation() {
     override fun onCreate(arguments: Bundle?) { super.onCreate(arguments); start() }
     override fun onStart() {
         val result = Bundle()
+        var phase = "bootstrap"
         try {
             val ctx = targetContext
             val model = object : ModelClient {
@@ -25,8 +26,11 @@ class ToolkitInstrumentation : Instrumentation() {
             val comparison = source("comparison")
             var id = ""
             api().use { p ->
+                phase = "load"
                 val e = p.load("Budget", comparison); id = e.id
+                phase = "run"
                 val s = p.run(e)
+                phase = "next"
                 fun tree() = p.next(s, "").snapshot.tree
                 fun checkResult(status:String, difference:Int) {
                     val t=tree()
@@ -69,7 +73,7 @@ class ToolkitInstrumentation : Instrumentation() {
                 val s=p.run(e); val t=p.next(s,"").snapshot.tree
                 check(ToolkitNodes.all(t).any { ToolkitNodes.integer(it,"minorUnits")==1700 })
                 p.dispatch(s,ToolkitNodes.slot(t,"Reset amounts"),null)
-                check(p.next(s,"").snapshot.tree.toString().contains("\"intValue\":1750"))
+                check(p.next(s,"").snapshot.tree.toString().contains("\"numberValue\":1750"))
                 p.close(s);p.forget(e)
                 val values=source("values"); val v=p.load("Hire options",values); val session=p.run(v)
                 val nodes=ToolkitNodes.all(p.next(session,"").snapshot.tree)
@@ -113,7 +117,7 @@ class ToolkitInstrumentation : Instrumentation() {
             check(runCatching { formatMoney(1750,"not-currency") }.isFailure)
             result.putString("toolkit","PASS exact sources, explicit over/under/equal, payload/bounds/reset, retained reconstruction, dynamic typed children, required props, publication, signed/localized money; no inference or provider reads")
             finish(0,result)
-        } catch(error:Throwable) { result.putString("failure",android.util.Log.getStackTraceString(error));finish(1,result) }
+        } catch(error:Throwable) { result.putString("failure",phase + ": " + android.util.Log.getStackTraceString(error));finish(1,result) }
     }
 }
 
@@ -121,7 +125,7 @@ internal object ToolkitNodes {
     fun all(node:JSONObject):List<JSONObject> = listOf(node)+(0 until node.getJSONArray("children").length()).flatMap { all(node.getJSONArray("children").getJSONObject(it)) }
     private fun prop(node:JSONObject,name:String):JSONObject? = node.optJSONArray("props")?.let { a -> (0 until a.length()).map { a.getJSONObject(it) }.firstOrNull { it.optString("name")==name } }
     fun string(node:JSONObject,name:String) = prop(node,name)?.optString("stringValue") ?: ""
-    fun integer(node:JSONObject,name:String) = prop(node,name)?.optInt("intValue") ?: Int.MIN_VALUE
+    fun integer(node:JSONObject,name:String) = prop(node,name)?.optInt("numberValue") ?: Int.MIN_VALUE
     fun slot(tree:JSONObject,label:String):Int {
         val node=all(tree).first { string(it,"label")==label || string(it,"text")==label }
         val props=node.getJSONArray("props")

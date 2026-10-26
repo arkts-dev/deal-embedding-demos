@@ -22,7 +22,7 @@ class HardeningInstrumentation:Instrumentation(){
             check(UpdateCursor::class.java.declaredFields.none{Map::class.java.isAssignableFrom(it.type)})
             for(invalid in listOf("forged",cursors.issue(10001),ancient+"x",UpdateCursor().issue(0))){check(runCatching{cursors.revision(invalid,10000)}.exceptionOrNull().let{it is ProtocolFailure&&it.code=="INVALID_CURSOR"})}
             var calls=0
-            val probe=NativeCapabilities(CapabilityContract("host/probe","probe",listOf(CapabilityFunction("ping","ping",emptyList(),CapabilityType.IntType))),mapOf("ping" to {_:JSONArray->++calls}))
+            val probe=NativeCapabilities(CapabilityContract("host/probe","probe",listOf(CapabilityFunction("ping","ping",emptyList(),CapabilityType.NumberType))),mapOf("ping" to {_:JSONArray->++calls}))
             val registry=CapabilityRegistry(context,CapabilityDiscovery(context){false},listOf(probe))
             val model=object:ModelClient{override fun complete(input:String,previous:String,diagnostics:String,cancellation:GenerationCancellation,log:EmbeddingLog):String=throw ProtocolFailure("AUDIT_LIMIT","Fixture provider refusal")}
             val config=EmbeddingConfig("experience",emptyList(),"hardening-${java.util.UUID.randomUUID()}")
@@ -37,9 +37,9 @@ class HardeningInstrumentation:Instrumentation(){
             check(runCatching{admission.receive(JSONObject().put("id",309).put("module","host/probe").put("function","ping").put("args",JSONArray()),0)}.isFailure)
             check(admission.drain(0).size==8)
             admission.receive(JSONObject().put("id",309).put("module","host/probe").put("function","ping").put("args",JSONArray()),0);check(admission.drain(0).single().getBoolean("ok"));admission.close()
-            val source=Source("""export class State {value:int=0;}
+            val source=Source("""export class State {value:number;}
 export class Increment {}
-export function initialState():State {return {};}
+export function initialState():State {return {value: 0};}
 // @ui-update
 export function increment(state:State,action:Increment):State {return {value:state.value+1};}
 ""","""import * as app from "./experience";
@@ -62,7 +62,7 @@ export view Main(state:app.State):View {ui.Column(){ui.IntText(value:state.value
                 val deliveries=field(mechanisms,"deliveries") as Map<*,*>
                 check((field(deliveries[session.id]!!,"waiters") as List<*>).isEmpty())
             }
-            val latest=api.next(session,first.cursor);check(latest.snapshot.tree.toString().contains("\"intValue\":50"))
+            val latest=api.next(session,first.cursor);check(latest.snapshot.tree.toString().contains("\"numberValue\":50"))
             check(runCatching{api.next(session,UpdateCursor().issue(0))}.exceptionOrNull().let{it is ProtocolFailure&&it.code=="INVALID_CURSOR"})
             api.close(session)
             // A received update can precede recomposition. A callback from the last
@@ -124,7 +124,7 @@ export view Main(state:app.State):View {ui.Column(){ui.IntText(value:state.value
             api.close(closeSession);check(StagingReclamation.pending(context)==0);api.forget(closeFailure)
             val request=api.request("Provider failure","Fixture request",api.snapshot(WireType("record"),"{}"))
             check(runCatching{api.generate(request)}.exceptionOrNull().let{it is ProtocolFailure&&it.code=="AUDIT_LIMIT"})
-            val rejectedPair=nativeSourceFixture(source.deal+"\nlet broken: int = ;",source.dealui)
+            val rejectedPair=nativeSourceFixture(source.deal+"\nlet broken: number = ;",source.dealui)
             var repeatCalls=0
             val repeatedModel=object:ModelClient{override fun complete(input:String,previous:String,diagnostics:String,cancellation:GenerationCancellation,log:EmbeddingLog):String { repeatCalls++;if(repeatCalls>5)throw ProtocolFailure("FIXTURE_DONE","fixture");return if(repeatCalls==1)rejectedPair else "invalid patch" }}
             ApplicationProtocol(context,Embedding(context,CapabilityRegistry(context,CapabilityDiscovery(context){false},emptyList()),repeatedModel,EmbeddingConfig("experience",emptyList(),"repeated-${java.util.UUID.randomUUID()}"))).use{other->

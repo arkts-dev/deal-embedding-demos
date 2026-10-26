@@ -10,7 +10,7 @@ import java.time.Instant
 class ShowService : SharedAppService() {
     override val capabilities by lazy {
         val text = WireType("string", maximum = 1024)
-        val fields = listOf("id", "show", "date", "venue", "act", "name", "specification", "from", "until", "location", "status").map { WireField(it, text) } + WireField("quantity", WireType("int"))
+        val fields = listOf("id", "show", "date", "venue", "act", "name", "specification", "from", "until", "location", "status").map { WireField(it, text) } + WireField("quantity", WireType("number"))
         nativeCapabilities(SharedCapabilityContract("host/show", "Shared synthetic show requirements, exact quantities, specifications and deadlines", functions = listOf(
             SharedCapabilityFunction("requirements", "Read the shared show plan, including unresolved equipment and catering needs", result = WireType("array", maximum = 32, element = WireType("record", fields = fields)))
         )), mapOf("requirements" to { _ ->

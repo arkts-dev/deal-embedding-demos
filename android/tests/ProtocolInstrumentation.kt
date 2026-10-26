@@ -11,13 +11,35 @@ class ProtocolInstrumentation:Instrumentation(){
  override fun onStart(){val result=Bundle();var embedding:Embedding?=null
  try{
   val context=targetContext
-  val probe=NativeCapabilities(CapabilityContract("host/probe","Protocol binding probe",listOf(CapabilityFunction("ping","Explicit probe",emptyList(),CapabilityType.IntType))),mapOf("ping" to {_:JSONArray->1}))
+  // DEAL has one numeric lane; integral constraints belong to native consumers.
+  CapabilityType.NumberType.validate(1.5)
+  WireType("number").validate(1.5)
+  for (invalid in listOf(Double.NaN, Double.POSITIVE_INFINITY, Double.NEGATIVE_INFINITY, "1.5")) {
+   check(runCatching { CapabilityType.NumberType.validate(invalid) }.isFailure)
+   check(runCatching { WireType("number").validate(invalid) }.isFailure)
+  }
+  check(runCatching { CapabilityType.parse(CapabilityType.NumberType.json().put("maximum", 1.5)) }.isFailure)
+  check(runCatching { WireType.parse(WireType("number").json().put("maximum", 1.5)) }.isFailure)
+  check(runCatching { CapabilityContract.parse(CapabilityContract("host/test","Numeric metadata",listOf(CapabilityFunction("read","Read",emptyList(),CapabilityType.NumberType))).json().put("version",1.5).toString()) }.isFailure)
+  var proposedMinute = -1
+  val calendar = dev.deal.apps.calendar.calendarCapabilities({ 960 }, { proposedMinute = it })
+  calendar.invoke("propose", JSONArray().put(916.0));check(proposedMinute == 916)
+  val vehicle = dev.deal.apps.vehicle.vehicleCapabilities()
+  check(vehicle.invoke("estimate", JSONArray().put(12.0)) == 29)
+  for (invalid in listOf(-1.0, 1.5, 1440.0, Double.MAX_VALUE)) {
+   check(runCatching { calendar.invoke("propose", JSONArray().put(invalid)) }.isFailure)
+  }
+  check(proposedMinute == 916)
+  for (invalid in listOf(0.0, 12.5, 1001.0, Double.MAX_VALUE)) {
+   check(runCatching { vehicle.invoke("estimate", JSONArray().put(invalid)) }.isFailure)
+  }
+  val probe=NativeCapabilities(CapabilityContract("host/probe","Protocol binding probe",listOf(CapabilityFunction("ping","Explicit probe",emptyList(),CapabilityType.NumberType))),mapOf("ping" to {_:JSONArray->1}))
   val registry=CapabilityRegistry(context,CapabilityDiscovery(context){false},listOf(probe))
   val model=object:ModelClient{override fun complete(input:String,previous:String,diagnostics:String,cancellation:GenerationCancellation,log:EmbeddingLog):String=error("Unexpected inference")}
   embedding=Embedding(context,registry,model,EmbeddingConfig("experience",emptyList(),"protocol-instrumentation"))
   val host=embedding
   check(host.refresh().any{it.module=="host/probe"})
-  val schema=WireType("record",fields=listOf(WireField("name",WireType("string",maximum=16)),WireField("count",WireType("int"),true)))
+  val schema=WireType("record",fields=listOf(WireField("name",WireType("string",maximum=16)),WireField("count",WireType("number"),true)))
   val facts=host.snapshot(schema,"{\"name\":\"Ada\"}")
   check(host.contextJson(facts).contains("Ada"));check(host.contextSchema(facts).fields.size==2)
   check(runCatching{host.snapshot(schema,"{\"name\":\"Ada\",\"extra\":1}")}.isFailure)
@@ -25,12 +47,12 @@ class ProtocolInstrumentation:Instrumentation(){
   check(runCatching{host.snapshot(WireType("record",fields=listOf(WireField("bad",WireType(""),true))),"{}")}.isFailure)
   check(runCatching{host.snapshot(schema,"{\"name\":\"Ada\"} trailing")}.isFailure)
   check(runCatching{host.snapshot(WireType("string",maximum=1),"\"😀\"")}.isFailure)
-  val optional=CapabilityType("record",fields=mapOf("value" to CapabilityType.IntType),optionalFields=setOf("value"))
+  val optional=CapabilityType("record",fields=mapOf("value" to CapabilityType.NumberType),optionalFields=setOf("value"))
   optional.validate(JSONObject());check(CapabilityType.parse(optional.json()).optionalFields==setOf("value"))
   val deal="""import * as probe from "host/probe";
-export class State { value: int = 0; }
+export class State { value: number ; }
 export class Increment {}
-export function initialState(): State { return {}; }
+export function initialState(): State { return {value: 0}; }
 // @ui-update
 export function increment(state: State, action: Increment): State { return { value: state.value + 1 }; }
 """
@@ -61,7 +83,8 @@ export view Main(state: app.State): View { ui.Column() { ui.Text(value: "Protoco
   // Invoke actual compiled DEAL declarations through the public native linkage.
   ProtocolController(context,host).use { controller ->
    check(controller.call("prepareCapabilities") as Int==1)
-   check(controller.call("defaults")=="defaults");check(controller.call("invalidGrant")=="grant error")
+   check(controller.call("construction")=="construction");check(controller.call("invalidGrant")=="grant error")
+   check(runCatching { controller.call("fractionalEvents") }.exceptionOrNull().let { it is ProtocolFailure && it.code == "INVALID_ARGUMENT" })
    val cancelled=controller.call("contexts") as String
    check(controller.call("cancelled",JSONArray().put(cancelled))=="cancelled")
    check((controller.call("lifecycle",JSONArray().put(deal).put(view)) as String).contains("cold"))
@@ -110,14 +133,14 @@ export view Main(state: app.State): View { ui.Column() { ui.Text(value: "Protoco
    }finally{slowRelease.countDown()}
   }
   val capabilityDeal="""import * as probe from "host/probe";
-export class State {value:int=0;}
+export class State {value:number;}
 export class Start {}
-export class Done {value:int=0;}
-export function initialState():State {return {};}
+export class Done {value:number;}
+export function initialState():State {return {value: 0};}
 // @ui-update
 export function start(state:State,action:Start):State {return state;}
 // @ui-effect
-export async function execute(state:State,action:Start):Done {let value:int=await probe.ping();return {value:value};}
+export async function execute(state:State,action:Start):Done {let value:number=await probe.ping();return {value:value};}
 // @ui-update
 export function done(state:State,action:Done):State {return {value:action.value};}
 """
@@ -144,7 +167,7 @@ export view Main(state:app.State):View {ui.Column(){ui.IntText(value:state.value
    val completedDeadline=System.currentTimeMillis()+10000
    while(capabilityCalls==0){check(System.currentTimeMillis()<completedDeadline);Thread.sleep(10)}
    Thread.sleep(100);check(capabilityCalls==1)
-   check(c.update(Session(s.getString("id"))).snapshot.tree.toString().contains("\"intValue\":1")){"Effect completion did not progress autonomously"}
+   check(c.update(Session(s.getString("id"))).snapshot.tree.toString().contains("\"numberValue\":1")){"Effect completion did not progress autonomously"}
    c.synchronous("revoke",JSONArray().put("host/probe"));c.call("dispatch",JSONArray().put(s.getString("id")).put(0));Thread.sleep(150);check(capabilityCalls==1)
    val observed=c.update(Session(s.getString("id")))
    check(c.call("invalidCursor",JSONArray().put(s.getString("id")).put("forged"))=="invalid cursor")

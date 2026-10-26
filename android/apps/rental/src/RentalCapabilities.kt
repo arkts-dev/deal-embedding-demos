@@ -12,17 +12,17 @@ fun rentalCapabilities(context: Context): NativeCapabilities {
             CapabilityParameter("from", CapabilityType("string")), CapabilityParameter("until", CapabilityType("string"))),
             CapabilityType("array", maximum = 32, element = CapabilityType("record", fields = mapOf(
                 "id" to CapabilityType("string"), "name" to CapabilityType("string"), "specification" to CapabilityType("string"),
-                "cents" to CapabilityType("int"), "available" to CapabilityType("int"), "included" to CapabilityType("string"), "category" to CapabilityType("string"),
+                "cents" to CapabilityType("number"), "available" to CapabilityType("number"), "included" to CapabilityType("string"), "category" to CapabilityType("string"),
                 "attributes" to CapabilityType("record", fields = mapOf(
                     "kind" to CapabilityType("string"), "adjustable" to CapabilityType("boolean"), "clipAdapter" to CapabilityType("boolean"),
                     "balanced" to CapabilityType("boolean"), "connectorFrom" to CapabilityType("string"), "connectorTo" to CapabilityType("string"),
-                    "lengthMm" to CapabilityType("int", minimumInt = 0))),
+                    "lengthMm" to CapabilityType("number", minimumNumber = 0.0))),
                 "components" to CapabilityType("array", maximum = 16, element = CapabilityType("record", fields = mapOf(
-                    "itemId" to CapabilityType("string"), "quantity" to CapabilityType("int", minimumInt = 1, maximumInt = 32)))))))),
+                    "itemId" to CapabilityType("string"), "quantity" to CapabilityType("number", minimumNumber = 1.0, maximumNumber = 32.0)))))))),
         CapabilityFunction("quote", "Read-only whole-basket quote. First read equipment. items is nonempty comma-separated catalogue ID:quantity pairs; distinct IDs, quantities 1..32. Submit each alternative as ONE basket: package ID versus component IDs together. cents/depositCents/availability/expiry apply to that basket; do NOT sum independent quotes or deposits. depositCents is refundable, separate from hire. available=false is unusable. from/until are offset-bearing ISO instants, until>from.", listOf(
             CapabilityParameter("items", CapabilityType("string")), CapabilityParameter("from", CapabilityType("string")), CapabilityParameter("until", CapabilityType("string"))),
-            CapabilityType("record", fields = mapOf("cents" to CapabilityType("int"), "depositCents" to CapabilityType("int"),
-                "expiresInMinutes" to CapabilityType("int"), "terms" to CapabilityType("string"), "available" to CapabilityType("boolean")))),
+            CapabilityType("record", fields = mapOf("cents" to CapabilityType("number"), "depositCents" to CapabilityType("number"),
+                "expiresInMinutes" to CapabilityType("number"), "terms" to CapabilityType("string"), "available" to CapabilityType("boolean")))),
         CapabilityFunction("proposeReservation", "Stage a reservation for native review", listOf(
             CapabilityParameter("items", CapabilityType("string")), CapabilityParameter("from", CapabilityType("string")),
             CapabilityParameter("until", CapabilityType("string")), CapabilityParameter("collector", CapabilityType("string"))),

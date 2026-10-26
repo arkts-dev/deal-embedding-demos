@@ -39,7 +39,7 @@ private fun rendererDefaultsFixture(enabled: Boolean?): JSONObject {
     fun prop(name: String, value: Any): JSONObject = JSONObject().put("name", name).apply {
         when (value) {
             is String -> put("kind", "string").put("stringValue", value)
-            is Int -> put("kind", "int").put("intValue", value)
+            is Int -> put("kind", "number").put("numberValue", value)
             is Boolean -> put("kind", "boolean").put("booleanValue", value)
         }
     }
@@ -48,7 +48,7 @@ private fun rendererDefaultsFixture(enabled: Boolean?): JSONObject {
         if (enabled != null) props.put(prop("enabled", enabled))
         props.put(JSONObject().put("name", event).put("kind", "action").put("actionSlot", slot))
         return JSONObject().put("component", "ui.$name").put("props", props).put("children", org.json.JSONArray())
-            .put("structural", name).put("keyKind", "string").put("keyInt", 0).put("keyString", name)
+            .put("structural", name).put("keyKind", "string").put("keyNumber", 0).put("keyString", name)
     }
     return JSONObject().put("component", "root").put("props", org.json.JSONArray()).put("children", org.json.JSONArray(listOf(
         component("Button", 1, "onClick", "text" to "Fixture button", "accessibilityLabel" to "Fixture button"),

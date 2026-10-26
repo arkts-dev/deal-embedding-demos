@@ -58,9 +58,9 @@ class GenerationGatewayInstrumentation : Instrumentation() {
                 check(runCatching { GenerationGatewayConfig(bad, "fixture") }.isFailure)
             }
             check(runCatching { GenerationGatewayConfig("https://example.com/generate", "bad\r\nheader") }.isFailure)
-            val source = Source("""export class State { value:int=7; }
+            val source = Source("""export class State { value:number; }
 export class Increment {}
-export function initialState():State {return {};}
+export function initialState():State {return {value: 7};}
 // @ui-update
 export function increment(state:State,action:Increment):State {return {value:state.value+1};}
 """, """import * as app from "./experience";
@@ -80,7 +80,7 @@ export view Main(state:app.State):View {ui.Column(){ui.IntText(value:state.value
             val unicodeDigest=java.security.MessageDigest.getInstance("SHA-256").digest("1:🌍1:界".toByteArray()).joinToString("") { "%02x".format(it) }
             check(GenerationTelemetry.revision(unicode)==unicodeDigest)
             // Canonical catalogues preserve field names/positional parameters while sorting inventories.
-            val intType=CapabilityType("int")
+            val intType=CapabilityType("number")
             val fields=linkedMapOf("optionalFields" to intType,"alpha" to intType)
             fun catalog(reverse:Boolean,parameters:List<CapabilityParameter>):String {
                 val keys=if(reverse)fields.entries.reversed().associate { it.toPair() } else fields
@@ -124,7 +124,7 @@ export view Main(state:app.State):View {ui.Column(){ui.IntText(value:state.value
                     }
                     api.dispatch(session, action(initial.snapshot.tree)!!, null)
                     val changed = api.next(session, initial.cursor)
-                    check(changed.snapshot.tree.toString().contains("\"intValue\":8"))
+                    check(changed.snapshot.tree.toString().contains("\"numberValue\":8"))
                     EmbeddingLog.flush(targetContext)
                     val inspected = api.retainedEvents().inspection(experiences = setOf(experience.id))
                     check(inspected.events.any { it.optString("stage") == "source" && it.optString("trace") == trace })
@@ -169,7 +169,7 @@ export view Main(state:app.State):View {ui.Column(){ui.IntText(value:state.value
                 val e=api.generate(request);check(repairCalls==3 && api.source(e)==source)
                 val s=api.run(e);val tree=api.next(s,"").snapshot.tree
                 val action=tree.getJSONArray("children").getJSONObject(1).getJSONArray("props").let { props -> (0 until props.length()).map { props.getJSONObject(it) }.first { it.optString("kind")=="action" }.getInt("actionSlot") }
-                api.dispatch(s,action,null);check(api.next(s,"").snapshot.tree.toString().contains("\"intValue\":8"));api.close(s);api.forget(e)
+                api.dispatch(s,action,null);check(api.next(s,"").snapshot.tree.toString().contains("\"numberValue\":8"));api.close(s);api.forget(e)
                 EmbeddingLog.flush(targetContext)
                 val records=api.retainedEvents().events.filter { it.optString("trace")==api.requestTrace(request) && it.optString("stage")=="repair-metrics" }.map { JSONObject(it.getString("target")) }
                 check(records.size==2) { "Expected exactly two repair records: $records" }

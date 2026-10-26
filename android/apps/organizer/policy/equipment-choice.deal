@@ -1,15 +1,12 @@
+import * as literals from "embedding/source-literals";
+import * as math from "std/math";
 import * as json from "std/json";
 import * as data from "embedding/policy-data";
 import * as tables from "std/table";
 import * as strings from "std/string";
 
 // Portable policy for the demonstrated catalogue workflow; hosts provide data mechanisms.
-function decimal(value: int): string {
-    if (value === 0) { return "0"; }
-    let out: string = "";
-    while (value > 0) { let digit: int = value % 10; out = strings.substring("0123456789", digit, digit + 1) + out; value = value / 10; }
-    return out;
-}
+function decimal(value: number): string { return literals.decimal(value); }
 function hasKind(fields: table, name: string, kind: string): boolean {
     try {
         let field: table = {};
@@ -28,10 +25,10 @@ function isPreparation(fn: table): boolean {
         let params: table[] = fn.parameters;
         let names: string[] = ["kind", "provider", "title", "detail", "price", "deadline"];
         if (params.length !== names.length) { return false; }
-        for (let i: int = 0; i < params.length; i = i + 1) {
+        { let i: number = 0; while (i < params.length) {
             let p: table = params[i]; let name: string = p.name; let type: table = p.type; let kind: string = type.kind;
             if (name !== names[i] || kind !== "string") { return false; }
-        }
+         i = i + 1; } }
         let result: table = fn.result; let kind: string = result.kind; let fields: table = result.fields;
         return kind === "record" && hasKind(fields, "staged", "boolean");
     } catch (error) { return false; }
@@ -43,7 +40,7 @@ function isCatalogue(fn: table): boolean {
         let element: table = result.element; let elementKind: string = element.kind;
         if (elementKind !== "record") { return false; }
         let fields: table = element.fields;
-        return hasKind(fields, "id", "string") && hasKind(fields, "name", "string") && hasKind(fields, "specification", "string") && hasKind(fields, "cents", "int") && hasKind(fields, "available", "int");
+        return hasKind(fields, "id", "string") && hasKind(fields, "name", "string") && hasKind(fields, "specification", "string") && hasKind(fields, "cents", "number") && hasKind(fields, "available", "number");
     } catch (error) { return false; }
 }
 function contextString(entries: table[], name: string): string {
@@ -52,8 +49,8 @@ function contextString(entries: table[], name: string): string {
 }
 function supportedContext(context: table, entries: table[]): boolean {
     try {
-        let quantity: int = context.quantity;
-        if (quantity < 1 || quantity > 128) { return false; }
+        let quantity: number = context.quantity;
+        if (math.floor(quantity) !== quantity || quantity < 1 || quantity > 128) { return false; }
         let requirement: string = context.requirement; let specification: string = context.specification;
         let start: string = contextString(entries, "from"); let until: string = context.until;
         if (strings.trim(requirement) === "" || strings.trim(specification) === "" || strings.trim(start) === "" || strings.trim(until) === "") { return false; }
@@ -78,10 +75,10 @@ export async function inventory(catalogJson: string, disclosed: string, entriesJ
                 let params: table[] = fn.parameters; let args: string[] = []; let valid: boolean = true;
                 for (let p: table of params) {
                     let value: string = "";
-                    let maximum: int = 0;
+                    let maximum: number = 0;
                     let readable: boolean = true;
                     try {
-                        let name: string = p.name; let type: table = p.type; let kind: string = type.kind; let bound: int = type.maximum; maximum = bound;
+                        let name: string = p.name; let type: table = p.type; let kind: string = type.kind; let bound: number = type.maximum; maximum = bound;
                         let found: boolean = false;
                         for (let entry: table of entries) {
                             let key: string = entry.key;
@@ -92,7 +89,7 @@ export async function inventory(catalogJson: string, disclosed: string, entriesJ
                     } catch (error) { readable = false; valid = false; }
                     // Host failure is not an unsupported catalogue. Await outside shape catches.
                     if (readable) {
-                        let length: int = await data.utf16Length(value);
+                        let length: number = await data.utf16Length(value);
                         if (length > maximum) { valid = false; }
                         args[args.length] = value;
                     }
@@ -171,7 +168,10 @@ export async function validate(raw: string, inventory: table): table {
     let selected: string = answers.read; let reads: table[] = inventory.reads;
     for (let read: table of reads) {
         let alias: string = read.alias;
-        if (alias === selected) { return { accepted: true, diagnostics: "", selection: { answers: answers, read: read, preparation: inventory.preparation, context: inventory.context, contextEntries: inventory.contextEntries } }; }
+        if (alias === selected) {
+            let preparation: table = inventory.preparation; let context: table = inventory.context; let entries: table[] = inventory.contextEntries;
+            return { accepted: true, diagnostics: "", selection: { answers: answers, read: read, preparation: preparation, context: context, contextEntries: entries } };
+        }
     }
     return { accepted: false, diagnostics: "CHOICE_ALIAS: invalid read" };
 }

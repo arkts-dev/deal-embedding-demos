@@ -13,7 +13,7 @@ fun todoCapabilities(context: Context): NativeCapabilities {
         CapabilityFunction("tasks", "Read tasks shared for a show", listOf(CapabilityParameter("show", CapabilityType("string", maximum = 120))),
             CapabilityType("array", element = CapabilityType("record", fields = mapOf(
                 "id" to CapabilityType("string"), "title" to CapabilityType("string"), "assignee" to CapabilityType("string"),
-                "due" to CapabilityType("string"), "complete" to CapabilityType("boolean"), "checks" to CapabilityType("int"), "done" to CapabilityType("int"))),
+                "due" to CapabilityType("string"), "complete" to CapabilityType("boolean"), "checks" to CapabilityType("number"), "done" to CapabilityType("number"))),
                 maximum = 64)),
         CapabilityFunction("task", "Read one shared task", listOf(CapabilityParameter("id", CapabilityType("string"))),
             CapabilityType("record", fields = mapOf("id" to CapabilityType("string"), "title" to CapabilityType("string"), "assignee" to CapabilityType("string"),

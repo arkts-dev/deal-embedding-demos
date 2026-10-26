@@ -11,13 +11,13 @@ fun pizzaCapabilities(context: Context): NativeCapabilities {
         CapabilityFunction("menu", "List the menu with prices, ingredients and dietary data", emptyList(),
             CapabilityType("array", maximum = 32, element = CapabilityType("record", fields = mapOf(
                 "id" to CapabilityType("string"), "name" to CapabilityType("string"), "size" to CapabilityType("string"),
-                "cents" to CapabilityType("int"), "vegan" to CapabilityType("boolean"), "vegetarian" to CapabilityType("boolean"),
+                "cents" to CapabilityType("number"), "vegan" to CapabilityType("boolean"), "vegetarian" to CapabilityType("boolean"),
                 "ingredients" to CapabilityType("string"), "allergens" to CapabilityType("string"))))),
         CapabilityFunction("delivery", "List delivery windows with whether each can meet a required-by time", listOf(
             CapabilityParameter("requiredBy", CapabilityType("string"))),
             CapabilityType("array", maximum = 8, element = CapabilityType("record", fields = mapOf(
                 "id" to CapabilityType("string"), "from" to CapabilityType("string"), "until" to CapabilityType("string"),
-                "meetsRequirement" to CapabilityType("boolean"), "deliveryCents" to CapabilityType("int"))))),
+                "meetsRequirement" to CapabilityType("boolean"), "deliveryCents" to CapabilityType("number"))))),
         CapabilityFunction("proposeOrder", "Stage an order for native review", listOf(
             CapabilityParameter("items", CapabilityType("string")), CapabilityParameter("windowId", CapabilityType("string")),
             CapabilityParameter("recipient", CapabilityType("string"))),

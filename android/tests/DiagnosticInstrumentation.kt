@@ -20,9 +20,9 @@ class DiagnosticInstrumentation:Instrumentation(){
     // Nonempty directory as temporary file makes write fail. As destination it makes rename fail.
     File(directory,"generation-status.json.tmp").mkdirs()
     DiagnosticFiles.write(directory,"generation-status.json","running")
-    val source=Source("""export class State {value:int=0;}
+    val source=Source("""export class State {value:number;}
 export class Increment {}
-export function initialState():State {return {};}
+export function initialState():State {return {value: 0};}
 // @ui-update
 export function increment(state:State,action:Increment):State {return {value:state.value+1};}
 ""","""import * as app from "./experience";

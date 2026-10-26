@@ -19,7 +19,7 @@ class DiscoveryDiagInstrumentation : Instrumentation() {
             val contracts = (0 until JSONArray(catalogue).length()).map { index ->
                 val o = JSONArray(catalogue).getJSONObject(index)
                 dev.deal.embedding.SharedCapabilityContract(o.getString("module"), o.getString("description"), functions = listOf(
-                    dev.deal.embedding.SharedCapabilityFunction(o.getString("function"), o.getString("description"), result = dev.deal.embedding.WireType("int"))))
+                    dev.deal.embedding.SharedCapabilityFunction(o.getString("function"), o.getString("description"), result = dev.deal.embedding.WireType("number"))))
             }
             val captured = CapturedDiscoveryInput(input, contracts)
             out.putString("result", runCatching { Discovery.parse(text, captured) }.fold({ if (it == null) "NULL" else "PARSED ${it.title}" }, { "${it.javaClass.simpleName}: ${it.message}" }))

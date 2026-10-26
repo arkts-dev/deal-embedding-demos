@@ -16,9 +16,9 @@ class ProtocolPolicyInstrumentation:Instrumentation(){
   val context=targetContext
   val detail=JSONObject().put("requirement","Boom stand").put("specification","Adjustable boom").put("quantity",1)
    .put("from","2026-10-16T14:15:00Z").put("until","2026-10-16T20:30:00Z").put("searchTerms",JSONArray().put("Boom").put("stand")).toString()
-  val deal="""export class State { value:int=0; }
+  val deal="""export class State { value:number; }
 export class Increment {}
-export function initialState():State {return {};}
+export function initialState():State {return {value: 0};}
 // @ui-update
 export function increment(state:State,action:Increment):State {return {value:state.value+1};}
 """
@@ -35,7 +35,7 @@ export view Main(state:app.State):View {ui.Column(){ui.Text(value:"Fixture sourc
   }
   var applicationCalls=0
   var staged:JSONArray?=null
-  val read=NativeCapabilities(CapabilityContract("host/probe","Equipment fixture",listOf(CapabilityFunction("equipment","Explicit equipment read",listOf(CapabilityParameter("from",CapabilityType("string")),CapabilityParameter("until",CapabilityType("string"))),CapabilityType("array",maximum=32,element=CapabilityType("record",fields=mapOf("id" to CapabilityType("string"),"name" to CapabilityType("string"),"specification" to CapabilityType("string"),"cents" to CapabilityType.IntType,"available" to CapabilityType.IntType,"included" to CapabilityType("string"),"category" to CapabilityType("string"))))))),mapOf("equipment" to {args:JSONArray->applicationCalls++;check(args.getString(0)=="2026-10-16T14:15:00Z"&&args.getString(1)=="2026-10-16T20:30:00Z");JSONArray().put(JSONObject().put("id","stand-1").put("name","Boom stand").put("specification","Adjustable boom").put("cents",800).put("available",3).put("included","").put("category","stand"))}))
+  val read=NativeCapabilities(CapabilityContract("host/probe","Equipment fixture",listOf(CapabilityFunction("equipment","Explicit equipment read",listOf(CapabilityParameter("from",CapabilityType("string")),CapabilityParameter("until",CapabilityType("string"))),CapabilityType("array",maximum=32,element=CapabilityType("record",fields=mapOf("id" to CapabilityType("string"),"name" to CapabilityType("string"),"specification" to CapabilityType("string"),"cents" to CapabilityType.NumberType,"available" to CapabilityType.NumberType,"included" to CapabilityType("string"),"category" to CapabilityType("string"))))))),mapOf("equipment" to {args:JSONArray->applicationCalls++;check(args.getString(0)=="2026-10-16T14:15:00Z"&&args.getString(1)=="2026-10-16T20:30:00Z");JSONArray().put(JSONObject().put("id","stand-1").put("name","Boom stand").put("specification","Adjustable boom").put("cents",800).put("available",3).put("included","").put("category","stand"))}))
   val prepare=NativeCapabilities(CapabilityContract("host/organizer","Native preparation fixture",listOf(CapabilityFunction("stage","Prepare for review",listOf("kind","provider","title","detail","price","deadline").map{CapabilityParameter(it,CapabilityType("string"))},CapabilityType("record",fields=mapOf("staged" to CapabilityType("boolean"),"reference" to CapabilityType("string")))))),mapOf("stage" to {args:JSONArray->applicationCalls++;staged=JSONArray(args.toString());JSONObject().put("staged",true).put("reference","fixture")}))
   fun choices(unsupported:Boolean=false,invalid:Boolean=false):String {
    val selected=JSONObject().put("purpose",if(unsupported)"unavailable" else "compare").put("headline",if(invalid)"forged" else "text").put("notice","none").put("read","read0")
@@ -103,7 +103,7 @@ export view Main(state:app.State):View {ui.Column(){ui.Text(value:"Fixture sourc
   val productionMechanisms=Embedding(context,productionRegistry,productionModel,EmbeddingConfig("experience",emptyList(),"protocol-production-${java.util.UUID.randomUUID()}",policyAssets="organizer-policy"))
   ApplicationProtocol(context,productionMechanisms).use{app->
     app.refresh().forEach{app.grant(it.module)}
-    val schema=WireType("record",fields=listOf(WireField("requirement",WireType("string")),WireField("specification",WireType("string")),WireField("quantity",WireType("int",minimumInt=1)),WireField("from",WireType("string")),WireField("until",WireType("string")),WireField("searchTerms",WireType("array",element=WireType("string"),maximum=8))))
+    val schema=WireType("record",fields=listOf(WireField("requirement",WireType("string")),WireField("specification",WireType("string")),WireField("quantity",WireType("number",minimumNumber=1.0)),WireField("from",WireType("string")),WireField("until",WireType("string")),WireField("searchTerms",WireType("array",element=WireType("string"),maximum=8))))
     applicationCalls=0;staged=null
     val request=app.request("Production workflow","Compare suitable equipment",app.snapshot(schema,detail))
     val prepared=app.generate(request);check(applicationCalls==0&&app.saved().isEmpty())

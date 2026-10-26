@@ -3,14 +3,14 @@
 const fs=require('fs'),path=require('path'),vm=require('vm'),assert=require('assert');
 const base=path.resolve(process.argv[2]),bindings=path.resolve(process.argv[3]);
 for(const name of ['sandbox.js','dealui-session.js','ui-session.js']) vm.runInThisContext(fs.readFileSync(path.join(bindings,name),'utf8'));
-configureDealCapabilities([{module:'host/sample',functions:[{name:'value',parameters:[],result:{kind:'int'}}]}]);
+configureDealCapabilities([{module:'host/sample',functions:[{name:'value',parameters:[],result:{kind:'number'}}]}]);
 function mount(name,state=null){
  const dir=path.join(base,name,'js'),factories={};
  function walk(d){for(const name of fs.readdirSync(d)){const f=path.join(d,name);if(fs.statSync(f).isDirectory())walk(f);else if(name.endsWith('.js'))factories[path.relative(dir,f).split(path.sep).join('/')]=new Function('require','module','exports','process','console',fs.readFileSync(f,'utf8'));}}
  walk(dir);mountDealUi(factories,'experience_entry.js',state);return dealUi;
 }
 const snapshot=s=>JSON.parse(s.snapshot()),nodes=n=>[n,...n.children.flatMap(nodes)],prop=(n,k)=>n.props.find(p=>p.name===k);
-const value=(n,k)=>{const p=prop(n,k);return p?.kind==='int'?p.intValue:p?.kind==='boolean'?p.booleanValue:p?.stringValue;};
+const value=(n,k)=>{const p=prop(n,k);return p?.kind==='number'?p.numberValue:p?.kind==='boolean'?p.booleanValue:p?.stringValue;};
 function slot(s,label){const n=nodes(snapshot(s).tree).find(n=>value(n,'label')===label||value(n,'text')===label);assert(n,label);return n.props.find(p=>p.kind==='action').actionSlot;}
 function result(s,status,amount){const ns=nodes(snapshot(s).tree);assert.equal(value(ns.find(n=>n.component.endsWith('.Comparison')),'status'),status);assert.equal(value(ns.find(n=>value(n,'label')==='Difference'),'minorUnits'),amount);}
 const tick=()=>new Promise(resolve=>setImmediate(resolve));

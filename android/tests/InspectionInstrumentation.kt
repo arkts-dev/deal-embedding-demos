@@ -30,9 +30,9 @@ class InspectionInstrumentation : Instrumentation() {
                     check(EventPage(entries,"",true).inspection(experiences=setOf("e")).incomplete)
                     check(EventPage(listOf(event("late",time=10),event("late",time=2),event("old",time=1)),"",false).inspection(since=10).events.size==2)
                     selected.events.first().put("trace","mutated"); check(entries.first().getString("trace")=="d2")
-                    val source = Source("""export class State {value:int=7;}
+                    val source = Source("""export class State {value:number;}
 export class Increment {}
-export function initialState():State {return {};}
+export function initialState():State {return {value: 7};}
 // @ui-update
 export function increment(state:State,action:Increment):State {return {value:state.value+1};}
 """, """import * as app from "./experience";
@@ -62,7 +62,7 @@ export view Main(state:app.State):View {ui.Column(){ui.IntText(value:state.value
                         }
                         api.dispatch(session,action(initial.snapshot.tree)!!,null)
                         val changed=api.next(session,initial.cursor)
-                        check(changed.snapshot.tree.toString().contains("\"intValue\":8"))
+                        check(changed.snapshot.tree.toString().contains("\"numberValue\":8"))
                         EmbeddingLog.flush(ctx)
                         val scoped=api.retainedEvents().inspection(experiences=setOf(experience.id))
                         val snapshots=scoped.events.filter{it.optString("stage")=="snapshot" && it.optString("outcome")=="produced"}

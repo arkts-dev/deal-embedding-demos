@@ -15,9 +15,9 @@ class ColdDraftInstrumentation : Instrumentation() {
             val model = object : ModelClient {
                 override fun complete(input:String,previous:String,diagnostics:String,cancellation:GenerationCancellation,log:EmbeddingLog):String = error("No inference")
             }
-            val source = Source("""export class State {value:int=18000;}
-export class Change {value:int=0;}
-export function initialState():State {return {};}
+            val source = Source("""export class State {value:number;}
+export class Change {value:number;}
+export function initialState():State {return {value: 18000};}
 // @ui-update
 export function change(state:State,action:Change):State {return {value:action.value};}
 """ + "\n", """import * as app from "./experience";
@@ -39,7 +39,7 @@ export view Main(state:app.State):View {ui.Column(){ui.IntField(value:state.valu
                     api.dispatch(session,slot,"18100")
                 } else {
                     check(phase == "read")
-                    check(tree.toString().contains("\"intValue\":18100")) { "Draft reset across process restart: $tree" }
+                    check(tree.toString().contains("\"numberValue\":18100")) { "Draft reset across process restart: $tree" }
                 }
                 api.close(session)
                 if (phase == "read") api.forget(e)

@@ -13,7 +13,7 @@ export async function offer(intent: string, context: embedding.GenerationContext
     let entries: string = await data.contextEntries(disclosed);
     let inventory: table = await equipment.inventory(catalog, disclosed, entries);
     let reads: table[] = inventory.reads;
-    if (reads.length === 0) { return { available: false }; }
+    if (reads.length === 0) { return { available: false, questions: [], stateJson: "" }; }
     let issued: table = await data.parse(equipment.issued(catalog, inventory));
     let decisions: table = issued.decisionQuestions;
     let keys: string[] = ["purpose", "headline", "notice", "read"];
@@ -40,12 +40,12 @@ export async function lower(stateJson: string, answers: types.ChoiceAnswer[]): t
     for (let answer: types.ChoiceAnswer of answers) { chosen[answer.question] = answer.choice; }
     let decision: table = await equipment.validate(json.stringify({ answers: chosen }), inventory);
     let accepted: boolean = decision.accepted;
-    if (!accepted) { let reason: string = decision.diagnostics; return { reason: reason }; }
+    if (!accepted) { let reason: string = decision.diagnostics; return { reason: reason, source: null }; }
     let selection: table = decision.selection;
     let envelope: string = await source.lower("experience", selection);
     let pair: table = await data.parse(envelope);
     let deal: string = pair.deal; let dealui: string = pair.dealui;
     let output: embedding.Source = { deal: deal, dealui: dealui };
-    return { source: output };
+    return { source: output, reason: "" };
 }
 export function main(): null { return null; }

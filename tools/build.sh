@@ -181,7 +181,7 @@ for app in "${TARGETS[@]}"; do
     case "$app" in
         calendar) profile="host";   sources=(android/apps/shared-ui/*.kt android/apps/calendar/src/*.kt); app_apis=("$EMBEDDING_JAR"); profile_jars=("$EMBEDDING_JAR" "${RUNTIME_JARS[@]}") ;;
         organizer) profile="host";  sources=(android/apps/shared-ui/*.kt android/apps/organizer/src/*.kt); app_apis=("$EMBEDDING_JAR"); profile_jars=("$EMBEDDING_JAR" "${RUNTIME_JARS[@]}") ;;
-        tests) profile="host";      sources=(android/tests/*.kt android/apps/shared-ui/*.kt android/apps/organizer/src/*.kt android/apps/calendar/src/*.kt android/apps/rental/src/RentalModel.kt android/apps/rental/src/RentalCapabilities.kt); app_apis=("$EMBEDDING_JAR"); profile_jars=("$EMBEDDING_JAR" "${RUNTIME_JARS[@]}") ;;
+        tests) profile="host";      sources=(android/tests/*.kt android/apps/shared-ui/*.kt android/apps/organizer/src/*.kt android/apps/calendar/src/*.kt android/apps/vehicle/src/VehicleCapabilities.kt android/apps/rental/src/RentalModel.kt android/apps/rental/src/RentalCapabilities.kt); app_apis=("$EMBEDDING_JAR"); profile_jars=("$EMBEDDING_JAR" "${RUNTIME_JARS[@]}") ;;
         *) profile="host";          sources=(android/apps/shared-ui/*.kt "android/apps/$app/src/"*.kt); app_apis=("$EMBEDDING_JAR"); profile_jars=("$EMBEDDING_JAR" "${RUNTIME_JARS[@]}") ;;
     esac
     if [[ "$profile" == host ]]; then
