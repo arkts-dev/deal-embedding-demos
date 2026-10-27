@@ -64,8 +64,8 @@ class CompactInstrumentation : Instrumentation() {
     else->error("Unexpected fixture call")
    }
   }})}
-  for(task in listOf("budget","departure","food","equipment","fragment-budget","fragment-departure","fragment-food","fragment-equipment")){
-   val scenario=task.removePrefix("fragment-")
+  for(task in listOf("budget","departure","food","equipment","fragment-budget","fragment-departure","fragment-food","fragment-equipment","composed-budget","composed-departure","composed-food","composed-equipment")){
+   val scenario=task.removePrefix("fragment-").removePrefix("composed-")
    val fixture=JSONObject(context.assets.open("behavior-fixtures/$task.json").bufferedReader().use{it.readText()})
    val emitted=BehaviorCandidate(contracts).assemble(fixture)
    ApplicationProtocol(targetContext,Embedding(targetContext,CapabilityRegistry(targetContext,CapabilityDiscovery(targetContext){false},providers),object:ModelClient{override fun complete(input:String,previous:String,diagnostics:String,cancellation:GenerationCancellation,log:EmbeddingLog):String=error("No inference in maintained device fixture")},EmbeddingConfig("experience",emptyList(),"behavior-$task-${UUID.randomUUID()}"))).use{api->

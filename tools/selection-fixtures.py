@@ -19,7 +19,8 @@ def laboratory():
  return dict(title='Lab station',inputs=[I('zone','Zone','text','north'),I('headcount','Stations','integer',1,1,10)],resources=[R('inventory',B('host/laboratory','inventory'),'$zone',L(True))],selection=dict(source='$inventory',id='sku',label='caption',cost=L(0),capacity='$row.stock',eligible=E('ge','$row.stock',L(1)),budget=L(0),quotas=[Q('$headcount','$headcount',E('eq','$row.spec.role',L(role))) for role in ['sensor','power','logger']],components=dict(path='contents',id='skuRef',quantity='units')),evaluation=dict(binding=B('host/laboratory','assess'),arguments=['$zone',dict(basket='$candidate.items',encoding='records',idField='sku',quantityField='units'),L(7)],cost='$reply.charge',eligible='$reply.ok',ttlMillis='$reply.validForMs'))
 
 def contracts():
- cs=f.contracts()
+ # This isolated prototype has a different laboratory signature from composed fixtures.
+ cs=[c for c in f.contracts() if c['module']!='host/laboratory']
  n=dict(kind='number',maximum=128,minimumNumber=-1e12,maximumNumber=1e12);s=dict(kind='string',maximum=128,minimumNumber=-1e12,maximumNumber=1e12);b=dict(kind='boolean',maximum=128,minimumNumber=-1e12,maximumNumber=1e12)
  def rec(**fields):return dict(kind='record',maximum=128,minimumNumber=-1e12,maximumNumber=1e12,fields=fields)
  def arr(t):return dict(kind='array',maximum=128,minimumNumber=-1e12,maximumNumber=1e12,element=t)

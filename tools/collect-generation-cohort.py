@@ -109,7 +109,17 @@ for r in results:
         message = json.loads(artifacts[e['artifact']]); calls = []
         for call in message.get('tool_calls', []):
             f = call['function']; args = json.loads(f['arguments'])
-            calls.append({'name': f['name'], 'argumentChars':len(f['arguments']), 'file':args.get('file'), 'edits':len(args.get('edits', [])), 'start_line':args.get('start_line'), 'end_line':args.get('end_line'), 'reason':args.get('reason'), 'customCharacters':sum(len(s.get('body','')) for s in args.get('custom',[])), 'operations':dict(collections.Counter(n.get('kind') for n in args.get('behaviors',[]))) if 'behaviors' in args else {args['kind']:1} if 'kind' in args else dict(collections.Counter(n.get('op') for n in args.get('nodes',[])))})
+            malformed=[]
+            def records(key):
+                value=args.get(key,[])
+                if not isinstance(value,list) or any(not isinstance(item,dict) for item in value):
+                    malformed.append(key);return []
+                return value
+            entries=records('fragments') if 'fragments' in args else records('behaviors') if 'behaviors' in args else records('nodes')
+            kind='op' if 'fragments' not in args and 'behaviors' not in args else 'kind'
+            counted=dict(collections.Counter(n.get(kind) for n in entries))
+            if 'kind' in args and 'fragments' not in args and 'behaviors' not in args:counted={args['kind']:1}
+            calls.append({'name': f['name'], 'argumentChars':len(f['arguments']), 'file':args.get('file'), 'edits':len(records('edits')), 'start_line':args.get('start_line'), 'end_line':args.get('end_line'), 'reason':args.get('reason'), 'customCharacters':sum(len(s.get('body','')) for s in records('custom')), 'operations':counted, 'malformedArrays':malformed})
         responses.append({'calls':calls})
     operations.append({'scenario':r['scenario'],'responses':responses})
 (cohort / 'numbers.json').write_text(json.dumps(numbers, indent=2)+'\n')

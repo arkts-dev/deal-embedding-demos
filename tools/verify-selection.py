@@ -10,7 +10,7 @@ def run(args,name):
  if r.returncode:print(r.stdout);raise SystemExit(r.returncode)
  return r.stdout
 cp='build/embedding-library/aar/classes.jar:build/behavior-four/json.jar';compiler=ROOT/'dependencies/deal-embedding/android/src/compiler'
-run(['/snap/kotlin/current/bin/kotlinc','-jvm-target','21','-classpath',cp,'-d',OUT/'host',compiler/'BehaviorCandidate.kt',compiler/'MaintainedComposition.kt',compiler/'SelectionComposition.kt','tools/SelectionHarness.kt'],'kotlin')
+run(['/snap/kotlin/current/bin/kotlinc','-jvm-target','21','-classpath',cp,'-d',OUT/'host',compiler/'BehaviorCandidate.kt',compiler/'MaintainedComposition.kt',compiler/'MaintainedFormula.kt',compiler/'FragmentComposition.kt',compiler/'SelectionComposition.kt','tools/SelectionHarness.kt'],'kotlin')
 run(['javac','--release','21','-cp','build/embedding-library/classes','-d',OUT/'host','dependencies/deal-embedding/tools/ToolkitHarness.java'],'java')
 run([sys.executable,'tools/selection-fixtures.py',OUT/'plans'],'fixtures')
 for task in ['food','equipment','laboratory']:

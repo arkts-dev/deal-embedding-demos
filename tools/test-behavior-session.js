@@ -11,7 +11,38 @@ function slot(s,label){const n=nodes(snapshot(s).tree).find(n=>(value(n,'label')
 const state=s=>JSON.parse(s.state()),requests=()=>JSON.parse(dealCapabilities.take()),tick=()=>new Promise(r=>setImmediate(r));
 async function deliver(fn,v,ok=true){const req=requests();assert.equal(req.length,1);assert.equal(req[0].function,fn);dealCapabilities.deliver([{id:req[0].id,ok,value:v,error:ok?undefined:{code:'UNAVAILABLE',message:'Private provider error'}}]);await tick();await tick();}
 (async()=>{
- let s=mount('budget');assert.equal(state(s).m_difference,1750);s.dispatch(slot(s,'Approved'),'20000');assert.equal(state(s).m_difference,-250);assert.equal(state(s).m_status,'Under budget');s.dispatch(slot(s,'Committed'),'20000');assert.equal(state(s).m_status,'Equal');s.dispatch(slot(s,'Approved'),'1.5');assert.equal(state(s).m_approved,20000);const cp=JSON.parse(s.checkpoint());s.dispose();s=mount('budget',cp);assert.equal(state(s).m_difference,0);s.dispose();
+ let s=mount('composed-budget');assert.equal(state(s).m_balanceDifference,1750);s.dispatch(slot(s,'Approved'),'20000');assert.equal(state(s).m_balanceStatus,'Under budget');s.dispatch(slot(s,'Committed'),'20000');assert.equal(state(s).m_balanceStatus,'Equal');s.dispose();
+ s=mount('composed-departure');assert.equal(requests().length,0);s.dispatch(slot(s,'Get travel estimate'));await deliver('estimate',29);assert.equal(state(s).m_leaveValue,916);assert.equal(state(s).m_inspectValue,906);s.dispatch(slot(s,'Start'),'985');assert.equal(state(s).m_leaveValue,941);s.dispatch(slot(s,'Get travel estimate'));s.dispatch(slot(s,'Distance (km)'),'13');await deliver('estimate',29);assert.equal(state(s).m_travelPresent,false);assert.equal(state(s).m_leavePresent,false);s.dispose();
+ s=mount('composed-food');s.dispatch(slot(s,'Load menu and delivery'));
+ await deliver('menu',[{id:'opaque-a',name:'Standard',cents:1000,vegan:false,diameterMm:300},{id:'opaque-b',name:'Plant',cents:1200,vegan:true,diameterMm:300}]);
+ await deliver('delivery',[{id:'timely',from:'17:45',until:'18:15',meetsRequirement:true,deliveryCents:500},{id:'late',from:'18:30',until:'19:00',meetsRequirement:false,deliveryCents:500}]);
+ assert.equal(state(s).m_mealValid,true);assert.equal(state(s).m_mealTotal,6900);assert.equal(state(s).m_mealCount,6);
+ s.dispatch(slot(s,'Standard'),'3');assert.equal(state(s).m_mealValid,false);s.dispatch(slot(s,'Standard'),'4');assert.equal(state(s).m_mealValid,true);
+ s.dispatch(slot(s,'19:00'),'late');assert.equal(state(s).m_mealValid,false);s.dispatch(slot(s,'18:15'),'timely');assert.equal(state(s).m_mealValid,true);
+ s.dispatch(slot(s,'Load menu and delivery'));await deliver('menu',null,false);assert.equal(state(s).m_mealValid,false);assert.equal(state(s).m_menuPresent,false);
+ s.dispatch(slot(s,'Required by'),'1120');s.dispatch(slot(s,'Load menu and delivery'));await deliver('menu',[{id:'opaque-b',name:'Plant',cents:1,vegan:true,diameterMm:300}]);let deadlineRequest=requests();assert.deepEqual(deadlineRequest[0].args,['18:40']);dealCapabilities.deliver([{id:deadlineRequest[0].id,ok:true,value:[{id:'late',from:'18:30',until:'19:00',meetsRequirement:false,deliveryCents:500}]}]);await tick();await tick();assert.equal(state(s).m_mealValid,false);
+ s.dispatch(slot(s,'Quantity'),'33');s.dispatch(slot(s,'Budget'),'100000');s.dispatch(slot(s,'Load menu and delivery'));await deliver('menu',[{id:'opaque-b',name:'Plant',cents:1,vegan:true,diameterMm:300}]);await deliver('delivery',[{id:'timely',from:'17:45',until:'18:15',meetsRequirement:true,deliveryCents:500}]);assert.equal(state(s).m_mealCount,33);assert.equal(state(s).m_mealValid,true);s.dispose();
+ s=mount('composed-independent');s.dispatch(slot(s,'Read left'));s.dispatch(slot(s,'Read right'));
+ assert.equal(value(nodes(snapshot(s).tree).find(n=>value(n,'label')==='Left input'),'enabled'),false);
+ let simultaneous=requests();assert.equal(simultaneous.length,2);s.dispatch(slot(s,'Left input'),'13');
+ dealCapabilities.deliver(simultaneous.map(r=>({id:r.id,ok:true,value:r.args[0]===12?29:37})));await tick();await tick();assert.equal(state(s).m_firstPresent,false);assert.equal(state(s).m_secondPresent,true);assert.equal(state(s).m_secondResult,37);s.dispose();
+ s=mount('composed-optional');s.dispatch(slot(s,'Read optional'));await deliver('read',{});assert.equal(state(s).m_resourcePresent,true);assert.equal(state(s).m_amountPresent,false);s.dispatch(slot(s,'Read optional'));await deliver('read',{amount:1.25});assert.equal(state(s).m_amountPresent,true);assert.equal(state(s).m_amountValue,1.25);assert.equal(state(s).m_amountText,'1.25');s.dispose();
+ s=mount('composed-transfer');s.dispatch(slot(s,'Load laboratory'));let laboratory=requests();assert.deepEqual(laboratory[0].args,['cold',true,7]);dealCapabilities.deliver([{id:laboratory[0].id,ok:true,value:[{code:'shared',title:'Interchangeable unit',stock:1,features:{compatible:true},parts:[]}]}]);await tick();await tick();assert.equal(state(s).m_unitsBaskets.length,0,'One physical unit cannot fulfill three overlapping roles');
+ s.dispatch(slot(s,'Load laboratory'));await deliver('catalogue',[{code:'shared',title:'Interchangeable unit',stock:3,features:{compatible:true},parts:[]}]);assert.equal(state(s).m_unitsBaskets.length,1);assert.equal(state(s).m_unitsBaskets[0].m_items[0].m_quantity,3);s.dispose();
+ s=mount('independent');
+ s.dispatch(slot(s,'Read left'));s.dispatch(slot(s,'Read right'));
+ let pending=requests();assert.equal(pending.length,2);
+ const leftRequest=pending.find(r=>r.args[0]===12),rightRequest=pending.find(r=>r.args[0]===16);
+ dealCapabilities.deliver([{id:rightRequest.id,ok:true,value:37}]);await tick();await tick();
+ assert.equal(snapshot(s).fault,'');assert.equal(JSON.parse(s.checkpoint()??'null'),null,'Still awaiting independent left read');
+ dealCapabilities.deliver([{id:leftRequest.id,ok:true,value:29}]);await tick();await tick();
+ assert.equal(state(s).m_leftReady,true);assert.equal(state(s).m_rightReady,true);assert.equal(state(s).m_leftResult,29);assert.equal(state(s).m_rightResult,37);
+ s.dispatch(slot(s,'Read left'));s.dispatch(slot(s,'Read right'));pending=requests();
+ s.dispatch(slot(s,'left input'),'13');
+ dealCapabilities.deliver(pending.map(r=>({id:r.id,ok:true,value:r.args[0]===12?29:38})));await tick();await tick();
+ assert.equal(state(s).m_leftInput,13);assert.equal(state(s).m_leftReady,false);assert.equal(state(s).m_rightReady,true);assert.equal(state(s).m_rightResult,38,'Unrelated invalidation must not discard completion');
+ s.dispose();
+ s=mount('budget');assert.equal(state(s).m_difference,1750);s.dispatch(slot(s,'Approved'),'20000');assert.equal(state(s).m_difference,-250);assert.equal(state(s).m_status,'Under budget');s.dispatch(slot(s,'Committed'),'20000');assert.equal(state(s).m_status,'Equal');s.dispatch(slot(s,'Approved'),'1.5');assert.equal(state(s).m_approved,20000);const cp=JSON.parse(s.checkpoint());s.dispose();s=mount('budget',cp);assert.equal(state(s).m_difference,0);s.dispose();
  s=mount('departure');assert.equal(requests().length,0);s.dispatch(slot(s,'Get travel estimate'));await deliver('estimate',29);assert.equal(state(s).m_leave,916);assert.equal(state(s).m_inspection,906);s.dispatch(slot(s,'Start'),'985');assert.equal(state(s).m_leave,941);assert.equal(state(s).m_inspection,931);s.dispatch(slot(s,'Distance (km)'),'13');assert.equal(state(s).m_loaded,false);s.dispatch(slot(s,'Get travel estimate'));await deliver('estimate',34);assert.equal(state(s).m_leave,936);s.dispose();
  s=mount('departure');s.dispatch(slot(s,'Get travel estimate'));s.dispatch(slot(s,'Distance (km)'),'13');await deliver('estimate',29);assert.equal(state(s).m_distance,13);assert.equal(state(s).m_loaded,false,'A completion for old provider inputs must not restore validity');assert.equal(state(s).m_loading,false);s.dispose();
  s=mount('food');assert.equal(requests().length,0);s.dispatch(slot(s,'Load menu and delivery'));
@@ -36,6 +67,20 @@ async function deliver(fn,v,ok=true){const req=requests();assert.equal(req.lengt
  s.dispatch(clock(),'1000');s.dispatch(clock(),'901000');assert.equal(state(s).m_packageUsable,false);assert.equal(state(s).m_fresh,false);
  const saved=JSON.parse(s.checkpoint());s.dispose();s=mount('equipment',saved);s.dispatch(clock(),'-1000000');assert.equal(state(s).m_fresh,false);
  s.dispatch(slot(s,'Read equipment and quote alternatives'));s.dispatch(clock(),'-1100000');await deliver('equipment',items.filter(i=>i.id==='stand-opaque'));assert.equal(state(s).m_fresh,false);assert.equal(state(s).m_loading,false);s.dispatch(slot(s,'Read equipment and quote alternatives'));await deliver('equipment',items.filter(i=>i.id==='stand-opaque'));assert.equal(requests().length,0);assert.equal(state(s).m_packageUsable,false);assert.equal(state(s).m_separateUsable,false);assert.equal(state(s).m_packageQuote.m_available,false);s.dispose();
+ s=mount('composed-equipment');s.dispatch(slot(s,'Read equipment and quote alternatives'));await deliver('equipment',items);
+ let quoted=0;
+ while(true) {
+  const batch=requests();if(batch.length===0)break;assert.equal(batch.length,1);const q=batch[0];assert.equal(q.function,'quote');
+  const parts=q.args[0].split(',').map(x=>x.split(':'));assert(parts.every(x=>Number(x[1])>0));
+  const packageOnly=parts.length===1&&parts[0][0]==='package-opaque';
+  dealCapabilities.deliver([{id:q.id,ok:true,value:{cents:packageOnly?1200:1300,depositCents:5000,available:true,expiresInMinutes:15}}]);quoted++;await tick();await tick();
+ }
+ assert(quoted>=2);assert.equal(snapshot(s).fault,'');assert.equal(state(s).m_offersPresent,true);assert.equal(state(s).m_offersStatus,'Within budget');assert(state(s).m_offersCurrent.some(q=>q.m_cost===1200));assert(state(s).m_offersCurrent.some(q=>q.m_cost===1300));assert(state(s).m_offersCurrent.every(q=>q.m_deposit===5000));
+ s.dispatch(slot(s,'Hire budget'),'1250');assert(state(s).m_offersWithin.every(q=>q.m_cost<=1250));
+ const composedClock=nodes(snapshot(s).tree).find(n=>n.component.endsWith('.SessionClock')).props.find(p=>p.kind==='action').actionSlot;
+ const latestExpiry=Math.max(...state(s).m_offersResults.map(q=>q.m_expiresAt));s.dispatch(composedClock,String(latestExpiry));assert.equal(state(s).m_offersCurrent.length,0);
+ const composedSaved=JSON.parse(s.checkpoint());s.dispose();s=mount('composed-equipment',composedSaved);const restoredClock=nodes(snapshot(s).tree).find(n=>n.component.endsWith('.SessionClock')).props.find(p=>p.kind==='action').actionSlot;s.dispatch(restoredClock,'-1000');assert.equal(state(s).m_offersFresh,false);s.dispose();
+ s=mount('composed-equipment');s.dispatch(slot(s,'Read equipment and quote alternatives'));await deliver('equipment',items.map(x=>({...x,available:x.id==='stand-opaque'?0:x.available})));assert.equal(requests().length,0,'Packages must not bypass component stock');assert.equal(state(s).m_offersResults.length,0);s.dispose();
  s=mount('join');assert.deepEqual(state(s).m_joined.map(r=>[r.m_id,r.m_total]),[['opaque-b',11],['opaque-a',10]]);s.dispose();
  s=mount('custom-budget');assert.equal(state(s).m_difference,1750);s.dispose();
  s=mount('optional');s.dispatch(slot(s,'Read optional'));await deliver('read',{});assert.equal(state(s).m_present,false);assert.equal(state(s).m_value,0);s.dispatch(slot(s,'Read optional'));await deliver('read',{amount:1.25});assert.equal(state(s).m_present,true);assert.equal(state(s).m_value,1.25);s.dispose();

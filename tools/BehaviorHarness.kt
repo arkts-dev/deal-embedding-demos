@@ -12,7 +12,28 @@ fun main(args:Array<String>) {
     val emitter=BehaviorCandidate(contracts,plan.has("custom"))
     val pair=emitter.assemble(plan)
     check(pair.toString()==emitter.assemble(plan).toString()) { "Nondeterministic maintained emission" }
+    if(input.nameWithoutExtension=="composed-food")check(Regex("function allocate[0-9]+\\(").findAll(pair.getString("deal")).count()==1) { "Identical typed allocation helpers must be shared across actions" }
     fun rejected(bad:JSONObject) { check(runCatching{emitter.assemble(bad)}.exceptionOrNull() is BehaviorCandidate.Rejected) }
+    if(plan.has("fragments")) {
+        rejected(JSONObject(plan.toString()).put("unexpected",true))
+        rejected(JSONObject(plan.toString()).apply { getJSONArray("fragments").put(getJSONArray("fragments").getJSONObject(0)) })
+        rejected(JSONObject(plan.toString()).apply { getJSONArray("fragments").getJSONObject(0).getJSONObject("config").put("extra",true) })
+        listOf("fragments","commands","display").forEach { key ->
+            val error=runCatching { emitter.assemble(JSONObject(plan.toString()).put(key,plan.getJSONArray(key).toString())) }.exceptionOrNull()
+            check(error is BehaviorCandidate.Rejected && error.message.orEmpty().contains("actual JSON array")) { "Encoded $key must reject with native-array advice: $error" }
+        }
+        rejected(JSONObject(plan.toString()).apply {
+            getJSONArray("fragments").put(JSONObject().put("id","cycle").put("kind","result").put("config",JSONObject().put("label","Cycle").put("format","number").put("value",JSONObject().put("expr","cycle.value"))))
+        })
+        rejected(JSONObject(plan.toString()).apply {
+            getJSONArray("fragments").put(JSONObject().put("id","missing").put("kind","result").put("config",JSONObject().put("label","Missing").put("format","number").put("value",JSONObject().put("expr","absent.value"))))
+        })
+        File(output,"experience.deal").writeText(pair.getString("deal"));File(output,"experience.dealui").writeText(pair.getString("dealui"))
+        val externals=JSONObject()
+        contracts.forEachIndexed{i,c->val f="host$i.d.deal";File(output,f).writeText(CapabilityBindings.declaration(c));externals.put(c.module,JSONObject().put("declaration",f))}
+        File(output,"deal.json").writeText(JSONObject().put("languageVersion","1.4").put("backend","js").put("moduleRoots",JSONArray().put("src")).put("externals",externals).toString())
+        return
+    }
     if(plan.has("kind")) {
         val behavior=JSONObject(plan.toString()).apply{remove("title")}
         val wrapped=JSONObject().put("title",plan.getString("title")).put("behaviors",JSONArray().put(behavior))
@@ -37,6 +58,28 @@ fun main(args:Array<String>) {
         contracts.forEachIndexed{i,c->val f="host$i.d.deal";File(output,f).writeText(CapabilityBindings.declaration(c));externals.put(c.module,JSONObject().put("declaration",f))}
         File(output,"deal.json").writeText(JSONObject().put("languageVersion","1.4").put("backend","js").put("moduleRoots",JSONArray().put("src")).put("externals",externals).toString())
         return
+    }
+    if(input.nameWithoutExtension=="food") {
+        val allocation=plan.getJSONArray("nodes").let { a -> (0 until a.length()).map(a::getJSONObject).single { it.getString("op")=="allocate" } }
+        fun helpers(change:(JSONObject)->Unit):Int {
+            val variant=JSONObject(plan.toString())
+            val node=JSONObject(allocation.toString()).put("id","additionalAllocation");change(node)
+            variant.getJSONArray("nodes").put(node)
+            variant.getJSONArray("actions").put(JSONObject().put("id","AdditionalAllocate").put("fields",JSONArray()).put("steps",JSONArray()).put("updates",JSONArray().put(JSONObject().put("field","rows").put("node","additionalAllocation"))))
+            val source=emitter.assemble(variant).getString("deal")
+            return Regex("function allocate[0-9]+\\(").findAll(source).count()
+        }
+        check(helpers { it.getJSONObject("params").getJSONArray("quotas").getJSONObject(0).put("minimum","zero") }==1) { "Runtime quota minima must not split identical typed helpers" }
+        check(helpers { it.getJSONObject("params").put("cost","diameterMm") }==2) { "Distinct cost fields must not share helpers" }
+        check(helpers { it.getJSONObject("params").getJSONArray("quotas").put(JSONObject().put("field","vegan").put("minimum","zero")) }==2) { "Different quota arities must not share helpers" }
+        check(pair.toString()==emitter.assemble(plan).toString()) { "Helper cache must reset between different plans" }
+    }
+    if(input.nameWithoutExtension=="independent") {
+        rejected(JSONObject(plan.toString()).apply {
+            getJSONArray("actions").getJSONObject(1).getJSONArray("steps").getJSONObject(0).put("bind","leftResult")
+        })
+        check(pair.getString("deal").contains("m_workflowReadleftEpoch"))
+        check(pair.getString("deal").contains("m_workflowReadrightEpoch"))
     }
     rejected(JSONObject(plan.toString()).put("functions","return 42;"))
     rejected(JSONObject(plan.toString()).apply { getJSONArray("state").getJSONObject(0).put("unexpected",true) })

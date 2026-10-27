@@ -26,16 +26,10 @@ CUSTOM_SCHEMA['required']=list(CUSTOM_SCHEMA['properties'])
 CUSTOM_SCHEMA['properties']['nodes']['items']['anyOf'].append(obj({'id':TEXT,'op':{'type':'string','enum':['custom']},'args':arr(TEXT),'params':obj({'section':TEXT})}))
 def schema_tool(name,description,schema):
     return {'type':'function','function':{'name':name,'description':description,'strict':True,'parameters':schema}}
-MAINTAINED_SCHEMA=json.loads((Path(__file__).resolve().parents[1]/'dependencies/deal-embedding/ui/maintained-contract.json').read_text())
-# Native tools select one complete fragment directly; avoid a nested union container.
-# No extra selector request: choosing the fragment and supplying its requirements is one call.
-MAINTAINED_TOOLS=[]
-for variant in MAINTAINED_SCHEMA['properties']['behaviors']['items']['anyOf']:
-    kind=variant['properties']['kind']['enum'][0]
-    schema=json.loads(json.dumps(variant))
-    schema['properties']={'title':TEXT,**schema['properties']}
-    schema['required']=list(schema['properties'])
-    MAINTAINED_TOOLS.append(schema_tool('submit_compact_'+kind,'Compose the '+kind+' maintained state/handler/view fragment. Supply requirements and disclosed bindings, no graph or source. Canonical emission happens once.',schema))
+MAINTAINED_SCHEMA=json.loads((Path(__file__).resolve().parents[1]/'dependencies/deal-embedding/ui/fragment-contract.json').read_text())
+# One native request selects any number of bundled fragment instances and connects semantic
+# ports. Every nested config/role/quota/argument is schema-constrained data, never encoded JSON.
+MAINTAINED_TOOLS=[schema_tool('submit_compact','Compose maintained fragment instances using semantic configuration, pure formulas and disclosed provider bindings. Commands name targets; the embedding derives dependencies, execution, state, handlers and views. Materialize once, then exact-source repair only.',MAINTAINED_SCHEMA)]
 COMPACT_TOOLS=MAINTAINED_TOOLS+[
  schema_tool('submit_custom','Explicit slow path for genuinely uncovered behavior: typed maintained graph plus named custom DEAL function bodies. State why maintained operations cannot implement it. Raw bodies are measured custom coverage, never fast-path coverage.',CUSTOM_SCHEMA),
  tool('source_fallback','Last resort: explicitly select full-source generation only for behavior not representable by maintained operations or typed custom sections. All preceding work remains charged.',{'reason':TEXT},['reason'])]

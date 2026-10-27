@@ -93,7 +93,11 @@ class FrameworkE2eInstrumentation: Instrumentation() {
         // These are runtime actions, never capability reads during discovery/source construction.
         if(name!="budget") {
             val actions=nodes(t).filter { slot(it)!=null && it.optString("component").let { c -> c.endsWith(".Button")||c.endsWith(".PrimaryAction")||c.endsWith(".SecondaryAction") } }
-            val load=actions.firstOrNull { text(it).lowercase().let { v -> listOf("read","load","fetch","check","estimate","find","compare","refresh","compute","calculate").any(v::contains) } }
+            fun isReadAction(n:JSONObject)=text(n).lowercase().let { v -> listOf("read","load","fetch","check","estimate","find","compare","refresh","compute","calculate").any(v::contains) }
+            // A visible local recalculation may precede the explicit provider command.
+            // Prefer its primary action; do not mistake a secondary local edit for loading.
+            val load=actions.firstOrNull { it.optString("component").endsWith(".PrimaryAction") && isReadAction(it) }
+                ?: actions.firstOrNull(::isReadAction)
             if(load==null)error("No explicit action to read provider data. Observed actionable labels: ${actions.joinToString { text(it) }}")
             initialReadSlot=slot(load)!!
             s.dispatch(initialReadSlot,null);t=settle(s)
@@ -178,7 +182,7 @@ class FrameworkE2eInstrumentation: Instrumentation() {
             val late=nodes(t).firstOrNull { n -> n.optString("component").endsWith(".Option") && slot(n)!=null && text(n).contains("18:45") } ?: throw AssessmentIncomplete("Additional food check: no supported late-window Option control")
             val value=ToolkitNodes.string(late,"value")
             if(value.isEmpty())throw AssessmentIncomplete("Additional food check: late-window payload unavailable")
-            s.dispatch(slot(late)!!,JSONObject.quote(value));t=settle(s)
+            s.dispatch(slot(late)!!,value);t=settle(s)
             val comparison=nodes(t).filter { it.optString("component").endsWith(".Comparison") }.joinToString(" "){text(it)}
             if(comparison.isEmpty())throw AssessmentIncomplete("Additional food check: unsupported feasibility presentation")
             check(listOf("not feasible","infeasible","invalid","not ready","cannot","late","misses").any { comparison.contains(it,true) }) { "Selecting an actual late delivery window must invalidate feasibility with otherwise valid quantities/budget. Observed status: $comparison" }

@@ -78,14 +78,21 @@ class GatewayTest(unittest.TestCase):
         self.assertNotIn('submit_compact',[t['function']['name'] for t in tools_for(body)])
 
     def test_behavior_contract_is_closed_and_no_raw_maintained_source(self):
-        maintained={'type':'object','properties':{'title':{'type':'string'},'behaviors':{'type':'array','items':{'anyOf':[dict(t['function']['parameters'],properties={k:v for k,v in t['function']['parameters']['properties'].items() if k!='title'}) for t in COMPACT_TOOLS if t['function']['name'].startswith('submit_compact_')]}}},'required':['title','behaviors'],'additionalProperties':False}
+        maintained=next(t['function']['parameters'] for t in COMPACT_TOOLS if t['function']['name']=='submit_compact')
         self.assertFalse(maintained['additionalProperties'])
         self.assertNotIn('functions',maintained['properties'])
         self.assertNotIn('view',maintained['properties'])
-        self.assertEqual(set(maintained['properties']),{'title','behaviors'})
-        variants=maintained['properties']['behaviors']['items']['anyOf']
-        self.assertEqual({v['properties']['kind']['enum'][0] for v in variants},{'comparison','providerSchedule','allocation','quotedAlternatives'})
-        for v in variants:self.assertFalse({'state','nodes','actions','views'} & set(v['properties']))
+        self.assertEqual(set(maintained['properties']),{'title','fragments','commands','display'})
+        variants=maintained['properties']['fragments']['items']['anyOf']
+        self.assertEqual({v['properties']['kind']['enum'][0] for v in variants},{'input','read','choice','allocation','alternatives','quotes','comparison','result'})
+        for v in variants:self.assertFalse({'state','nodes','actions','views'} & set(v['properties']['config']['properties']))
+        self.assertFalse(any(t['function']['name'].startswith('submit_compact_') for t in COMPACT_TOOLS))
+        import jsonschema
+        import importlib.util
+        spec=importlib.util.spec_from_file_location('fixtures','tools/behavior-fixtures.py');fixtures=importlib.util.module_from_spec(spec);spec.loader.exec_module(fixtures)
+        for plan in fixtures.composed().values():jsonschema.validate(plan,maintained)
+        malformed=fixtures.composed()['composed-food'];malformed['fragments'][-1]['config']['quotas']=json.dumps(malformed['fragments'][-1]['config']['quotas'])
+        with self.assertRaises(jsonschema.ValidationError):jsonschema.validate(malformed,maintained)
         def no_type_unions(value):
             if isinstance(value,dict):
                 self.assertNotIsInstance(value.get('type'),list,'Maintain native grammar without ambiguous scalar unions')

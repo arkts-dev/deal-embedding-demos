@@ -43,7 +43,7 @@ class CollectorTest(unittest.TestCase):
                 {'sequence':6,'trace':'trace','stage':'source','outcome':'response','artifact':'maintained'}]
             entries = {'files/framework-e2e-results.json':json.dumps(result),
                        'files/embedding-log/events.jsonl':'\n'.join(json.dumps(e) for e in events),
-                       'files/embedding-log/maintained.json':json.dumps({'tool_calls':[{'function':{'name':'submit_compact','arguments':json.dumps({'title':'Fixture','behaviors':[{'kind':'comparison'}]})}}]}),
+                       'files/embedding-log/maintained.json':json.dumps({'tool_calls':[{'function':{'name':'submit_compact','arguments':json.dumps({'title':'Fixture','fragments':[{'id':'first','kind':'comparison'},{'id':'second','kind':'comparison'}],'commands':[],'display':['first','second']})}},{'function':{'name':'submit_compact','arguments':json.dumps({'title':'Rejected','fragments':'encoded string'})}}]}),
                        'shared_prefs/fixture.xml':'<map><string name="workspace.example.sourceEncoding">base64</string><string name="workspace.example.deal">'+base64.b64encode(b'canonical bytes').decode()+'</string></map>'}
             with tarfile.open(cohort/'final.tar','w') as archive:
                 for name, content in entries.items():
@@ -61,6 +61,8 @@ class CollectorTest(unittest.TestCase):
             self.assertEqual(numbers[0]['behaviorRoute']['operations'],{'add':2})
             self.assertEqual(numbers[0]['behaviorRoute']['reason'],'fixture')
             observations=json.loads((cohort/'native-tool-observations.json').read_text())
-            self.assertEqual(observations[0]['responses'][1]['calls'][0]['operations'],{'comparison':1})
+            self.assertEqual(observations[0]['responses'][1]['calls'][0]['operations'],{'comparison':2})
+            self.assertEqual(observations[0]['responses'][1]['calls'][1]['malformedArrays'],['fragments'])
+            self.assertEqual(observations[0]['responses'][1]['calls'][1]['operations'],{})
 
 if __name__ == '__main__': unittest.main()
