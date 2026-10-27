@@ -93,7 +93,7 @@ class FrameworkE2eInstrumentation: Instrumentation() {
         // These are runtime actions, never capability reads during discovery/source construction.
         if(name!="budget") {
             val actions=nodes(t).filter { slot(it)!=null && it.optString("component").let { c -> c.endsWith(".Button")||c.endsWith(".PrimaryAction")||c.endsWith(".SecondaryAction") } }
-            val load=actions.firstOrNull { text(it).lowercase().let { v -> listOf("load","fetch","check","estimate","find","compare","refresh","compute","calculate").any(v::contains) } }
+            val load=actions.firstOrNull { text(it).lowercase().let { v -> listOf("read","load","fetch","check","estimate","find","compare","refresh","compute","calculate").any(v::contains) } }
             if(load==null)error("No explicit action to read provider data. Observed actionable labels: ${actions.joinToString { text(it) }}")
             initialReadSlot=slot(load)!!
             s.dispatch(initialReadSlot,null);t=settle(s)
