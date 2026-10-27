@@ -80,3 +80,22 @@ Read-only replay of all 140 captured plan arguments reproduced admission indepen
 Maintained component facts now use bare names, prop types/defaults and event contracts, not executable `ui.Component(...)` or action source. Guidance explicitly separates state declarations from derived assignments, event payload from action fields, boolean validity from numeric cached data, and scalar/record result projection. The emitter reports independent binding failures together with plan paths while leaving the workspace unchanged. Four maintained compiler/runtime fixtures still pass; gateway and collector tests pass. Route/custom-volume/operation metadata now survives content-artifact eviction, including a compiled-logger regression for metadata longer than the previous 160-character target cap.
 
 The recovery build was installed and byte-verified for Organizer, tests and Pizza. Android maintained fixtures, oversized exact transfer, gateway/exact repair and logging failure/capture/eviction regressions passed. This establishes verification of the correction, not live-model adherence or speed. Any subsequent cohort must have a new archive and retain the failed cohort unchanged.
+
+## Separately archived recovery cohort
+
+After renewed authorization, embedding `23f8211` and root `478fecb` were measured with the same Flash/Cerebras/low-reasoning/provider-maximum settings. Generated-only cleanup again verified preserved domain/authority; no build overlapped inference, no extra selector/verifier or candidate feedback was introduced. This is a second cohort, not a replacement or retiming of the first.
+
+| Scenario | Discovery inference | Generation to frame | Total to frame | Model | Check | Replies | Outcome |
+|---|---:|---:|---:|---:|---:|---:|---|
+| Budget | 1.842 s | 9.037 s | 15.596 s | 5.498 s | 2.578 s | 1 | Supplied assertions passed |
+| Departure | 2.482 s | 16.568 s | 20.146 s | 12.326 s | 3.057 s | 3 | Original assessor rejected numeric Time output; separate inference-free reassessment passed |
+| Food | Not finalized | No frame | Unknown | At least 288.182 s completed-provider time | No accepted pair | 93 completed | Full-source fallback and stalled exact repair |
+| Equipment | Not reached | — | — | — | — | — | Not assessed |
+
+Budget/departure accepted maintained-only, with zero custom characters, fallback or canonical source repairs. Budget improved against the first failed cohort but remains slower than v1.4 (15.596 versus 11.443 seconds). Departure also remains slower than v1.4 (20.146 versus 13.382 seconds). There is no valid four-task aggregate or demonstrated overall speed improvement.
+
+Food had seven rejected maintained submissions before explicitly selecting full-source fallback. Rejections included provider/local nominal type mismatch and a list key written as bare `id` rather than `$row.id`; the fallback reason misattributed the latter to provider projection. Provider transport failures also occurred. The full-source artifact then underwent 25 applied exact repairs without reaching a checked frame before the operator stopped the run for no progress. Gateway admission counted 102 source requests and three discoveries; 97 completed source provider replies were observed (1/3/93), leaving failed/in-flight request costs incompletely known. Known source usage is a lower bound: **2,072,916 input / 318,741 completion / 250,268 reasoning / 1,677,312 cached tokens**. This run fails the maintained-only food contract, regardless of the supplied-plan test passes.
+
+Departure's saved tree already contained native Time values 916 and 906 (15:16 and 15:06), plus actual travel 29. The assessor searched only string props, so its original failure was a representation gap, not proof of wrong arithmetic. The assessor now recognizes numeric Time output without changing expected arithmetic. A separate saved-source reassessment with inference disabled passed initial times and edited-start expectations. Its result is stored separately; original timed results and original failure receipt remain immutable.
+
+Private continuous captures and derived receipts are frozen in `build/maintained-recovery-four-evidence.tar.gz` with a verified SHA-256 receipt. The first cohort's archive remains unchanged. A subsequent list-key diagnostic/guidance correction and assessor fix were host-tested, rebuilt, installed and byte-verified, but were not measured in another live cohort. Ordinary promptless end-to-end visual approval and complete four-task live success remain unestablished.

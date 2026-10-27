@@ -36,6 +36,9 @@ class FrameworkE2eInstrumentation: Instrumentation() {
     override fun onCreate(arguments:Bundle?){super.onCreate(arguments);enabled=arguments?.getString("live")=="true";selftest=arguments?.getString("selftest")=="true";reassess=arguments?.getString("reassess").orEmpty();savedStorage=arguments?.getString("storage").orEmpty();savedExperience=arguments?.getString("experience").orEmpty();additionalOnly=arguments?.getString("additional")=="true";start()}
     private fun nodes(t:JSONObject)=ToolkitNodes.all(t)
     private fun text(n:JSONObject)=n.getJSONArray("props").let { p -> (0 until p.length()).map { p.getJSONObject(it).optString("stringValue") }.filter { it.isNotEmpty() }.joinToString(" ") }
+    private fun showsTime(t:JSONObject,minutes:Int):Boolean = nodes(t).any { n ->
+        n.optString("component").endsWith(".Time") && ToolkitNodes.integer(n,"value")==minutes
+    } || nodes(t).any { text(it).contains("%02d:%02d".format(java.util.Locale.US,minutes/60,minutes%60)) }
     private fun slot(n:JSONObject):Int?=n.getJSONArray("props").let { p -> (0 until p.length()).map { p.getJSONObject(it) }.firstOrNull { it.optString("kind")=="action" }?.getInt("actionSlot") }
     private fun amount(t:JSONObject,cents:Int)=nodes(t).any { it.optString("component").endsWith(".Money") && ToolkitNodes.integer(it,"minorUnits")==cents } || nodes(t).any { text(it).contains("%.2f".format(java.util.Locale.US,cents/100.0)) }
     private class AssessmentIncomplete(message:String):Exception(message)
@@ -111,7 +114,7 @@ class FrameworkE2eInstrumentation: Instrumentation() {
             }
             "departure" -> {
                 val rendered=nodes(t).joinToString(" "){text(it)}
-                check(rendered.contains("15:16") && rendered.contains("15:06")){"Actual Vehicle29min:16:00 minus15 unload minus29 travel gives15:16; inspection10 earlier15:06. Observed:$rendered"}
+                check(showsTime(t,916) && showsTime(t,906)){"Actual Vehicle29min:16:00 minus15 unload minus29 travel gives15:16; inspection10 earlier15:06. Observed:$rendered"}
                 val fields=nodes(t).filter { it.optString("component").let { c -> c.endsWith(".IntField") || c.endsWith(".TimeField") } }
                 val start=fields.firstOrNull { ToolkitNodes.integer(it,"value")==960 }
                 if(start!=null){s.dispatch(slot(start)!!,"985");t=settle(s)}
@@ -122,12 +125,12 @@ class FrameworkE2eInstrumentation: Instrumentation() {
                     s.dispatch(slot(minute)!!,"25");t=settle(s)
                 }
                 // Some correct workflows clear results on edits and require an explicit refresh.
-                if(!nodes(t).joinToString(" "){text(it)}.contains("15:41")) {
+                if(!showsTime(t,941)) {
                     val refresh=nodes(t).firstOrNull { slot(it)==initialReadSlot }
                     if(refresh!=null){s.dispatch(slot(refresh)!!,null);t=settle(s)}
                 }
                 val changed=nodes(t).joinToString(" "){text(it)}
-                check(changed.contains("15:41")&&changed.contains("15:31")){"Editing start to16:25 must recompute departure15:41/inspection15:31; observed:$changed"}
+                check(showsTime(t,941)&&showsTime(t,931)){"Editing start to16:25 must recompute departure15:41/inspection15:31; observed:$changed"}
             }
             "food" -> {
                 val loadedText=nodes(t).joinToString(" "){text(it)}
