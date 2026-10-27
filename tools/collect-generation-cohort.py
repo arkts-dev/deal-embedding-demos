@@ -99,7 +99,7 @@ for r in results:
         message = json.loads(artifacts[e['artifact']]); calls = []
         for call in message.get('tool_calls', []):
             f = call['function']; args = json.loads(f['arguments'])
-            calls.append({'name': f['name'], 'argumentChars':len(f['arguments']), 'file':args.get('file'), 'edits':len(args.get('edits', [])), 'start_line':args.get('start_line'), 'end_line':args.get('end_line'), 'reason':args.get('reason'), 'customCharacters':sum(len(s.get('body','')) for s in args.get('custom',[])), 'operations':dict(collections.Counter(n.get('op') for n in args.get('nodes',[])))})
+            calls.append({'name': f['name'], 'argumentChars':len(f['arguments']), 'file':args.get('file'), 'edits':len(args.get('edits', [])), 'start_line':args.get('start_line'), 'end_line':args.get('end_line'), 'reason':args.get('reason'), 'customCharacters':sum(len(s.get('body','')) for s in args.get('custom',[])), 'operations':dict(collections.Counter(n.get('kind') for n in args.get('behaviors',[]))) if 'behaviors' in args else dict(collections.Counter(n.get('op') for n in args.get('nodes',[])))})
         responses.append({'calls':calls})
     operations.append({'scenario':r['scenario'],'responses':responses})
 (cohort / 'numbers.json').write_text(json.dumps(numbers, indent=2)+'\n')

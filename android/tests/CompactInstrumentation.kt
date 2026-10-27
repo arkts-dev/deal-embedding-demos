@@ -64,7 +64,8 @@ class CompactInstrumentation : Instrumentation() {
     else->error("Unexpected fixture call")
    }
   }})}
-  for(task in listOf("budget","departure","food","equipment")){
+  for(task in listOf("budget","departure","food","equipment","fragment-budget","fragment-departure","fragment-food","fragment-equipment")){
+   val scenario=task.removePrefix("fragment-")
    val fixture=JSONObject(context.assets.open("behavior-fixtures/$task.json").bufferedReader().use{it.readText()})
    val emitted=BehaviorCandidate(contracts).assemble(fixture)
    ApplicationProtocol(targetContext,Embedding(targetContext,CapabilityRegistry(targetContext,CapabilityDiscovery(targetContext){false},providers),object:ModelClient{override fun complete(input:String,previous:String,diagnostics:String,cancellation:GenerationCancellation,log:EmbeddingLog):String=error("No inference in maintained device fixture")},EmbeddingConfig("experience",emptyList(),"behavior-$task-${UUID.randomUUID()}"))).use{api->
@@ -72,9 +73,9 @@ class CompactInstrumentation : Instrumentation() {
     val readsBefore=providerReads;val exp=api.load(task,Source(emitted.getString("deal"),emitted.getString("dealui")));val session=api.run(exp)
     fun nodes(n:JSONObject):List<JSONObject> = listOf(n)+(0 until n.getJSONArray("children").length()).flatMap{nodes(n.getJSONArray("children").getJSONObject(it))}
     var tree=api.next(session,"").snapshot.tree;check(providerReads==readsBefore)
-    if(task!="budget"){
+    if(scenario!="budget"){
      val button=nodes(tree).first{it.getString("component").endsWith(".PrimaryAction")};val props=button.getJSONArray("props");val action=(0 until props.length()).map{props.getJSONObject(it)}.first{it.optString("kind")=="action"}.getInt("actionSlot");api.dispatch(session,action,null)
-     val expected=when(task){"departure"->"15:16";"food"->"Ready";else->"Within budget"};val end=System.currentTimeMillis()+15000
+     val expected=when(scenario){"departure"->"15:16";"food"->"Ready";else->"Within budget"};val end=System.currentTimeMillis()+15000
      while(!tree.toString().contains(expected)){check(System.currentTimeMillis()<end){"$task: $tree"};Thread.sleep(20);tree=api.next(session,"").snapshot.tree}
     }else check(tree.toString().contains("1750"))
     api.close(session);api.forget(exp)

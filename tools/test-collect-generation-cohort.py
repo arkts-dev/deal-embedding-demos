@@ -24,9 +24,11 @@ class CollectorTest(unittest.TestCase):
                 {'sequence':2,'trace':'trace','stage':'source','outcome':'response','artifact':'evicted'},
                 {'sequence':3,'trace':'trace','stage':'request-summary','outcome':'completed','target':json.dumps(summary(7))},
                 {'sequence':4,'trace':'trace','stage':'composition','outcome':'assembled','target':json.dumps({'route':'custom-section','customCharacters':23,'operations':{'add':2},'reason':'fixture'}),'artifact':'evicted-route'},
-                {'sequence':5,'trace':'trace','stage':'composition','outcome':'checked','target':json.dumps({'route':'custom-section','fallbacks':1,'repairs':0})}]
+                {'sequence':5,'trace':'trace','stage':'composition','outcome':'checked','target':json.dumps({'route':'custom-section','fallbacks':1,'repairs':0})},
+                {'sequence':6,'trace':'trace','stage':'source','outcome':'response','artifact':'maintained'}]
             entries = {'files/framework-e2e-results.json':json.dumps(result),
                        'files/embedding-log/events.jsonl':'\n'.join(json.dumps(e) for e in events),
+                       'files/embedding-log/maintained.json':json.dumps({'tool_calls':[{'function':{'name':'submit_compact','arguments':json.dumps({'title':'Fixture','behaviors':[{'kind':'comparison'}]})}}]}),
                        'shared_prefs/fixture.xml':'<map><string name="workspace.example.sourceEncoding">base64</string><string name="workspace.example.deal">'+base64.b64encode(b'canonical bytes').decode()+'</string></map>'}
             with tarfile.open(cohort/'final.tar','w') as archive:
                 for name, content in entries.items():
@@ -43,5 +45,7 @@ class CollectorTest(unittest.TestCase):
             self.assertEqual(numbers[0]['behaviorRoute']['customCharacters'],23)
             self.assertEqual(numbers[0]['behaviorRoute']['operations'],{'add':2})
             self.assertEqual(numbers[0]['behaviorRoute']['reason'],'fixture')
+            observations=json.loads((cohort/'native-tool-observations.json').read_text())
+            self.assertEqual(observations[0]['responses'][1]['calls'][0]['operations'],{'comparison':1})
 
 if __name__ == '__main__': unittest.main()

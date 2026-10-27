@@ -26,7 +26,8 @@ CUSTOM_SCHEMA['required']=list(CUSTOM_SCHEMA['properties'])
 CUSTOM_SCHEMA['properties']['nodes']['items']['anyOf'].append(obj({'id':TEXT,'op':{'type':'string','enum':['custom']},'args':arr(TEXT),'params':obj({'section':TEXT})}))
 def schema_tool(name,description,schema):
     return {'type':'function','function':{'name':name,'description':description,'strict':True,'parameters':schema}}
-COMPACT_TOOLS=[schema_tool('submit_compact','Mandatory first path: submit a typed behavioral graph, without executable source. Maintained operations emit canonical DEAL/Deal UI once. Literal values and state initializers are JSON text, never expressions.',BEHAVIOR_SCHEMA),
+MAINTAINED_SCHEMA=json.loads((Path(__file__).resolve().parents[1]/'dependencies/deal-embedding/ui/maintained-contract.json').read_text())
+COMPACT_TOOLS=[schema_tool('submit_compact','Compose maintained state/handler/view fragments. Supply requirements and disclosed provider/field bindings, not state graphs or source. One complete behavior per screen. Emission materializes canonical DEAL/Deal UI once.',MAINTAINED_SCHEMA),
  schema_tool('submit_custom','Explicit slow path for genuinely uncovered behavior: typed maintained graph plus named custom DEAL function bodies. State why maintained operations cannot implement it. Raw bodies are measured custom coverage, never fast-path coverage.',CUSTOM_SCHEMA),
  tool('source_fallback','Last resort: explicitly select full-source generation only for behavior not representable by maintained operations or typed custom sections. All preceding work remains charged.',{'reason':TEXT},['reason'])]
 

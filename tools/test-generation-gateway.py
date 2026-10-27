@@ -82,6 +82,10 @@ class GatewayTest(unittest.TestCase):
         self.assertFalse(maintained['additionalProperties'])
         self.assertNotIn('functions',maintained['properties'])
         self.assertNotIn('view',maintained['properties'])
+        self.assertEqual(set(maintained['properties']),{'title','behaviors'})
+        variants=maintained['properties']['behaviors']['items']['anyOf']
+        self.assertEqual({v['properties']['kind']['enum'][0] for v in variants},{'comparison','providerSchedule','allocation','quotedAlternatives'})
+        for v in variants:self.assertFalse({'state','nodes','actions','views'} & set(v['properties']))
         self.assertEqual(set(maintained['required']),set(maintained['properties']))
         def check(schema):
             if isinstance(schema,dict):

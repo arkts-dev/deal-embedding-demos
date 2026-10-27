@@ -13,6 +13,22 @@ fun main(args:Array<String>) {
     val pair=emitter.assemble(plan)
     check(pair.toString()==emitter.assemble(plan).toString()) { "Nondeterministic maintained emission" }
     fun rejected(bad:JSONObject) { check(runCatching{emitter.assemble(bad)}.exceptionOrNull() is BehaviorCandidate.Rejected) }
+    if(plan.has("behaviors")) {
+        rejected(JSONObject(plan.toString()).put("functions","return 42;"))
+        rejected(JSONObject(plan.toString()).apply{getJSONArray("behaviors").getJSONObject(0).put("unexpected",true)})
+        rejected(JSONObject(plan.toString()).apply{getJSONArray("behaviors").put(getJSONArray("behaviors").getJSONObject(0))})
+        val kind=plan.getJSONArray("behaviors").getJSONObject(0).getString("kind")
+        if(kind!="comparison")rejected(JSONObject(plan.toString()).apply{
+            val behavior=getJSONArray("behaviors").getJSONObject(0)
+            val binding=behavior.getJSONObject(when(kind){"providerSchedule"->"estimate";"allocation"->"menu";else->"catalogue"})
+            binding.put("module","host/undisclosed")
+        })
+        File(output,"experience.deal").writeText(pair.getString("deal"));File(output,"experience.dealui").writeText(pair.getString("dealui"))
+        val externals=JSONObject()
+        contracts.forEachIndexed{i,c->val f="host$i.d.deal";File(output,f).writeText(CapabilityBindings.declaration(c));externals.put(c.module,JSONObject().put("declaration",f))}
+        File(output,"deal.json").writeText(JSONObject().put("languageVersion","1.4").put("backend","js").put("moduleRoots",JSONArray().put("src")).put("externals",externals).toString())
+        return
+    }
     rejected(JSONObject(plan.toString()).put("functions","return 42;"))
     rejected(JSONObject(plan.toString()).apply { getJSONArray("state").getJSONObject(0).put("unexpected",true) })
     rejected(JSONObject(plan.toString()).apply { getJSONArray("nodes").getJSONObject(0).put("op","unsupported") })

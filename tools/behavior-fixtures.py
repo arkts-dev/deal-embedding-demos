@@ -83,6 +83,15 @@ def equipment():
  p.control('budget','Hire budget','money',step=100)
  p.view('load','PrimaryAction',text=p.lit('loadText','Read equipment and quote alternatives'),events=[p.event('onClick','Load')]);p.view('packageHire','Money',label=p.lit('packageLabel','Package hire'),minorUnits='$state.packageQuote.cents');p.view('separateHire','Money',label=p.lit('separateLabel','Separate hire'),minorUnits='$state.separateQuote.cents');p.view('packageDeposit','Money',label=p.lit('depositLabel','Refundable package deposit'),minorUnits='$state.packageQuote.depositCents');p.view('comparison','Comparison',status=status,children=['packageHire','separateHire','packageDeposit']);p.view('clock','SessionClock',events=[p.event('onTick','Tick',epoch='$payload')]);p.view('root','Column',children=['clock','load','comparison']);return p
 
+def fragments():
+ def p(title,b):return dict(title=title,behaviors=[b])
+ cap=lambda module,function:dict(module=module,function=function)
+ return {
+ 'fragment-budget':p('Budget reconciliation',dict(kind='comparison',limit=18000,actual=19750,limitLabel='Approved',actualLabel='Committed')),
+ 'fragment-departure':p('Departure',dict(kind='providerSchedule',start=960,input=12,before=15,inspection=10,estimate=cap('host/trip','estimate'))),
+ 'fragment-food':p('Crew dinner',dict(kind='allocation',total=6,minimum=2,budget=8000,size=300,deadline=1110,menu=cap('host/pizza','menu'),delivery=cap('host/pizza','delivery'),fields=dict(id='id',name='name',cost='cents',category='vegan',size='diameterMm',windowId='id',windowStart='from',windowEnd='until',eligible='meetsRequirement',deliveryCost='deliveryCents'))),
+ 'fragment-equipment':p('Equipment hire',dict(kind='quotedAlternatives',budget=2000,**{'from':'2026-10-23T14:15:00Z','until':'2026-10-23T20:30:00Z'},catalogue=cap('host/rental','equipment'),quote=cap('host/rental','quote'),fields=dict(id='id',name='name',cost='cents',stock='available',components='components',componentId='itemId',componentQuantity='quantity',quoteCost='cents',deposit='depositCents',available='available',ttl='expiresInMinutes'),groups=[dict(label='Stand',constraints=[dict(field='kind',operator='eq',value='stand'),dict(field='adjustable',operator='eq',value=True),dict(field='clipAdapter',operator='eq',value=True)]),dict(label='Cable',constraints=[dict(field='kind',operator='eq',value='cable'),dict(field='balanced',operator='eq',value=True),dict(field='connectorFrom',operator='eq',value='XLR female'),dict(field='connectorTo',operator='eq',value='XLR male'),dict(field='lengthMm',operator='ge',value=10000)])]))}
+
 def custom_budget():
  p=budget();p.p['custom']=[dict(id='difference',parameters=[dict(name='left',type='number'),dict(name='right',type='number')],result='number',body='return right - left;')];p.p['reason']='Explicit custom-section test only; maintained subtract exists and production must not use this reason.'
  n=next(n for n in p.p['nodes'] if n['id']=='subtract');n.update(op='custom',args=['$state.approved','$state.committed'],params=dict(section='difference'));return p
@@ -109,4 +118,5 @@ if __name__=='__main__':
  import sys
  out=pathlib.Path(sys.argv[1]);out.mkdir(parents=True,exist_ok=True)
  for name,f in [('budget',budget),('departure',departure),('food',food),('equipment',equipment),('custom-budget',custom_budget),('optional',optional_result),('join',join_result)]:f().save(out,name)
+ for name,p in fragments().items():(out/(name+'.json')).write_text(json.dumps(p,indent=2))
  (out/'contracts.json').write_text(json.dumps(contracts(),indent=2))
