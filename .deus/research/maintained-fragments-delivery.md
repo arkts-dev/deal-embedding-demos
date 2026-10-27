@@ -3,7 +3,7 @@ kind: research
 id: maintained-fragments-delivery
 created_at: 2026-10-27T00:00:00Z
 updated_at: 2026-10-27T00:00:00Z
-status: measured-four-scenario-pass
+status: measurements-retained-architectural-acceptance-withdrawn
 references:
   - .deus/research/maintained-generation-four.md
   - .deus/research/v14-first-frame-four.md
@@ -25,7 +25,11 @@ gaps:
   - Equipment discovery failed in the preceding independently archived cohort.
 ---
 
-## Delivered behavior
+## Acceptance correction
+
+The architectural delivery interpretation is withdrawn. The four-task measurements below remain valid for the measured bytes, but the production fragments embed fixed task workflows: departure/inspection arithmetic, menu/delivery allocation, exactly two requirement roles, literal attributes coupling and unjustified quantity limits. They do not establish reusable behavioral composition. The objective is not delivered. See `.deus/research/selection-architecture-prototype.md` for the isolated recovery experiment and its failed model-authoring gate.
+
+## Measured behavior, not architectural acceptance
 
 The model selects a maintained comparison, provider schedule, constrained editable allocation or authoritative quoted-alternatives fragment. It supplies requirements and disclosed bindings, not state/action/view graphs. Maintained code owns those graphs, provider sequencing, allocation, component matching, invalidation and freshness. The four workflows require no custom source. Provider records, stock, eligibility, whole-basket prices and deposits remain authoritative.
 
