@@ -21,7 +21,7 @@ import jsonschema
 schema=json.loads(pathlib.Path('dependencies/deal-embedding/ui/behavior-contract.json').read_text())
 maintained_schema=json.loads(pathlib.Path('dependencies/deal-embedding/ui/maintained-contract.json').read_text())
 for task in ['budget','departure','food','equipment']:
- jsonschema.validate(json.loads((OUT/'plans'/f'fragment-{task}.json').read_text()),maintained_schema)
+ data=json.loads((OUT/'plans'/f'fragment-{task}.json').read_text()); title=data.pop('title');jsonschema.validate(dict(title=title,behaviors=[data]),maintained_schema)
 for task in ['budget','departure','food','equipment','optional','join']:
  jsonschema.validate(json.loads((OUT/'plans'/f'{task}.json').read_text()),schema)
 for task in ['fragment-food','fragment-equipment','fragment-budget','fragment-departure','budget','departure','food','equipment','custom-budget','optional','join']:

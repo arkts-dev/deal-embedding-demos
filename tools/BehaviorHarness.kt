@@ -13,15 +13,17 @@ fun main(args:Array<String>) {
     val pair=emitter.assemble(plan)
     check(pair.toString()==emitter.assemble(plan).toString()) { "Nondeterministic maintained emission" }
     fun rejected(bad:JSONObject) { check(runCatching{emitter.assemble(bad)}.exceptionOrNull() is BehaviorCandidate.Rejected) }
-    if(plan.has("behaviors")) {
+    if(plan.has("kind")) {
+        val behavior=JSONObject(plan.toString()).apply{remove("title")}
+        val wrapped=JSONObject().put("title",plan.getString("title")).put("behaviors",JSONArray().put(behavior))
+        check(pair.toString()==emitter.assemble(wrapped).toString())
         rejected(JSONObject(plan.toString()).put("functions","return 42;"))
-        rejected(JSONObject(plan.toString()).put("behaviors",plan.getJSONArray("behaviors").toString()))
-        rejected(JSONObject(plan.toString()).apply{getJSONArray("behaviors").getJSONObject(0).put("unexpected",true)})
-        rejected(JSONObject(plan.toString()).apply{getJSONArray("behaviors").put(getJSONArray("behaviors").getJSONObject(0))})
-        val kind=plan.getJSONArray("behaviors").getJSONObject(0).getString("kind")
+        rejected(JSONObject(wrapped.toString()).put("behaviors",wrapped.getJSONArray("behaviors").toString()))
+        rejected(JSONObject(plan.toString()).put("unexpected",true))
+        rejected(JSONObject(wrapped.toString()).apply{getJSONArray("behaviors").put(getJSONArray("behaviors").getJSONObject(0))})
+        val kind=plan.getString("kind")
         if(kind!="comparison")rejected(JSONObject(plan.toString()).apply{
-            val behavior=getJSONArray("behaviors").getJSONObject(0)
-            val binding=behavior.getJSONObject(when(kind){"providerSchedule"->"estimate";"allocation"->"menu";else->"catalogue"})
+            val binding=getJSONObject(when(kind){"providerSchedule"->"estimate";"allocation"->"menu";else->"catalogue"})
             binding.put("module","host/undisclosed")
         })
         File(output,"experience.deal").writeText(pair.getString("deal"));File(output,"experience.dealui").writeText(pair.getString("dealui"))

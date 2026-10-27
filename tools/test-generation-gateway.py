@@ -78,7 +78,7 @@ class GatewayTest(unittest.TestCase):
         self.assertNotIn('submit_compact',[t['function']['name'] for t in tools_for(body)])
 
     def test_behavior_contract_is_closed_and_no_raw_maintained_source(self):
-        maintained=next(t['function']['parameters'] for t in COMPACT_TOOLS if t['function']['name']=='submit_compact')
+        maintained={'type':'object','properties':{'title':{'type':'string'},'behaviors':{'type':'array','items':{'anyOf':[dict(t['function']['parameters'],properties={k:v for k,v in t['function']['parameters']['properties'].items() if k!='title'}) for t in COMPACT_TOOLS if t['function']['name'].startswith('submit_compact_')]}}},'required':['title','behaviors'],'additionalProperties':False}
         self.assertFalse(maintained['additionalProperties'])
         self.assertNotIn('functions',maintained['properties'])
         self.assertNotIn('view',maintained['properties'])

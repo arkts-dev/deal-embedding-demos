@@ -27,7 +27,16 @@ CUSTOM_SCHEMA['properties']['nodes']['items']['anyOf'].append(obj({'id':TEXT,'op
 def schema_tool(name,description,schema):
     return {'type':'function','function':{'name':name,'description':description,'strict':True,'parameters':schema}}
 MAINTAINED_SCHEMA=json.loads((Path(__file__).resolve().parents[1]/'dependencies/deal-embedding/ui/maintained-contract.json').read_text())
-COMPACT_TOOLS=[schema_tool('submit_compact','Compose maintained state/handler/view fragments. Supply requirements and disclosed provider/field bindings, not state graphs or source. One complete behavior per screen. Emission materializes canonical DEAL/Deal UI once.',MAINTAINED_SCHEMA),
+# Native tools select one complete fragment directly; avoid a nested union container.
+# No extra selector request: choosing the fragment and supplying its requirements is one call.
+MAINTAINED_TOOLS=[]
+for variant in MAINTAINED_SCHEMA['properties']['behaviors']['items']['anyOf']:
+    kind=variant['properties']['kind']['enum'][0]
+    schema=json.loads(json.dumps(variant))
+    schema['properties']={'title':TEXT,**schema['properties']}
+    schema['required']=list(schema['properties'])
+    MAINTAINED_TOOLS.append(schema_tool('submit_compact_'+kind,'Compose the '+kind+' maintained state/handler/view fragment. Supply requirements and disclosed bindings, no graph or source. Canonical emission happens once.',schema))
+COMPACT_TOOLS=MAINTAINED_TOOLS+[
  schema_tool('submit_custom','Explicit slow path for genuinely uncovered behavior: typed maintained graph plus named custom DEAL function bodies. State why maintained operations cannot implement it. Raw bodies are measured custom coverage, never fast-path coverage.',CUSTOM_SCHEMA),
  tool('source_fallback','Last resort: explicitly select full-source generation only for behavior not representable by maintained operations or typed custom sections. All preceding work remains charged.',{'reason':TEXT},['reason'])]
 
