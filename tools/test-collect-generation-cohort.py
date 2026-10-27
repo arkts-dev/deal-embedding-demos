@@ -22,7 +22,9 @@ class CollectorTest(unittest.TestCase):
             events = [
                 {'sequence':1,'trace':'trace','stage':'request-summary','outcome':'completed','target':json.dumps(summary(999))},
                 {'sequence':2,'trace':'trace','stage':'source','outcome':'response','artifact':'evicted'},
-                {'sequence':3,'trace':'trace','stage':'request-summary','outcome':'completed','target':json.dumps(summary(7))}]
+                {'sequence':3,'trace':'trace','stage':'request-summary','outcome':'completed','target':json.dumps(summary(7))},
+                {'sequence':4,'trace':'trace','stage':'composition','outcome':'assembled','target':json.dumps({'route':'custom-section','customCharacters':23,'operations':{'add':2},'reason':'fixture'}),'artifact':'evicted-route'},
+                {'sequence':5,'trace':'trace','stage':'composition','outcome':'checked','target':json.dumps({'route':'custom-section','fallbacks':1,'repairs':0})}]
             entries = {'files/framework-e2e-results.json':json.dumps(result),
                        'files/embedding-log/events.jsonl':'\n'.join(json.dumps(e) for e in events),
                        'shared_prefs/fixture.xml':'<map><string name="workspace.example.sourceEncoding">base64</string><string name="workspace.example.deal">'+base64.b64encode(b'canonical bytes').decode()+'</string></map>'}
@@ -37,6 +39,9 @@ class CollectorTest(unittest.TestCase):
             self.assertEqual(numbers[1]['status'],'not_rendered')
             self.assertNotIn('runMs',numbers[1])
             self.assertEqual((cohort/'fixture-accepted.deal').read_bytes(),b'canonical bytes')
-            self.assertEqual(json.loads((root/'verification.json').read_text())['missingArtifacts'],['evicted'])
+            self.assertEqual(json.loads((root/'verification.json').read_text())['missingArtifacts'],['evicted','evicted-route'])
+            self.assertEqual(numbers[0]['behaviorRoute']['customCharacters'],23)
+            self.assertEqual(numbers[0]['behaviorRoute']['operations'],{'add':2})
+            self.assertEqual(numbers[0]['behaviorRoute']['reason'],'fixture')
 
 if __name__ == '__main__': unittest.main()

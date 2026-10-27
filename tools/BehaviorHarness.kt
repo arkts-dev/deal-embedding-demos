@@ -19,6 +19,13 @@ fun main(args:Array<String>) {
     val cyclic=JSONObject(plan.toString());cyclic.getJSONArray("nodes").put(JSONObject().put("id","cycle").put("op","abs").put("args",JSONArray().put("cycle")).put("params",JSONObject()));rejected(cyclic)
     rejected(JSONObject(plan.toString()).apply { getJSONArray("state").getJSONObject(0).put("initial",getJSONArray("state").getJSONObject(0).getString("initial")+" trailing") })
     if(plan.getJSONArray("actions").length()>0) rejected(JSONObject(plan.toString()).apply { getJSONArray("actions").getJSONObject(0).put("fields",JSONArray().put(JSONObject().put("name","same").put("type","number")).put(JSONObject().put("name","same").put("type","number"))) })
+    val bindingErrors=JSONObject(plan.toString()).apply {
+        getJSONArray("derived").put(JSONObject().put("field","missingComputed").put("node",getJSONArray("nodes").getJSONObject(0).getString("id")))
+        if(getJSONArray("controls").length()>0)getJSONArray("controls").getJSONObject(0).put("invalidate",JSONArray().put("missingValidity"))
+        else getJSONArray("controls").put(JSONObject().put("field",getJSONArray("state").getJSONObject(0).getString("name")).put("label","Test").put("widget","integer").put("minimum",0).put("maximum",100).put("step",1).put("invalidate",JSONArray().put("missingValidity")))
+    }
+    val diagnostic=runCatching{emitter.assemble(bindingErrors)}.exceptionOrNull()
+    check(diagnostic is BehaviorCandidate.Rejected && diagnostic.message.orEmpty().contains("missingComputed") && diagnostic.message.orEmpty().contains("missingValidity")) { "Binding feedback must report independent errors together: $diagnostic" }
     File(output,"experience.deal").writeText(pair.getString("deal"));File(output,"experience.dealui").writeText(pair.getString("dealui"))
     val externals=JSONObject()
     contracts.forEachIndexed{i,c->val f="host$i.d.deal";File(output,f).writeText(CapabilityBindings.declaration(c));externals.put(c.module,JSONObject().put("declaration",f))}

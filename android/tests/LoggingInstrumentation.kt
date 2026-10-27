@@ -23,6 +23,11 @@ class LoggingInstrumentation : Instrumentation() {
             val directory = File(context.filesDir, "embedding-log")
             fun events() = listOf("previous.jsonl", "events.jsonl").flatMap { name -> File(directory, name).takeIf { it.exists() }?.readLines().orEmpty() }.map { JSONObject(it) }
             check(events().last { it.getString("trace") == log.run }.getString("content") == "omitted")
+            val route=JSONObject().put("route","custom-section").put("customCharacters",123).put("operations",JSONObject((1..30).associate{"operation$it" to it})).put("reason","Explicit measured custom computation").toString()
+            check(route.length>160)
+            log.event("composition","assembled",target=route)
+            EmbeddingLog.flush(context)
+            check(events().last{it.getString("trace")==log.run}.getString("target")==route)
             EmbeddingLog.capture(context, true)
             log.operation("host", detail = "PRIVATE_SENTINEL") { child -> child.event("compiler-ui", "completed", detail = "payload") }
             log.event("host", "response", detail = "x".repeat(300000))

@@ -71,6 +71,15 @@ for r in results:
         raw=artifacts.get(e.get('artifact')) or e.get('target','')
         try:route_detail=json.loads(raw)
         except (ValueError,TypeError):pass
+    assembled_detail=None
+    assembled_events=[e for e in composition_events if e['outcome']=='assembled']
+    if assembled_events:
+        e=assembled_events[-1]
+        raw=artifacts.get(e.get('artifact')) or e.get('target','')
+        try:assembled_detail=json.loads(raw)
+        except (ValueError,TypeError):pass
+    if route_detail and assembled_detail:
+        route_detail.update({key:assembled_detail[key] for key in ['operations','customCharacters','reason'] if key in assembled_detail})
     n['behaviorRoute']=route_detail
     n['fallbackReasons']=[artifacts.get(e.get('artifact')) or e.get('target') for e in composition_events if e['outcome']=='fallback']
     n['behaviorCaptureComplete']=bool(route_detail) if composition_events else None

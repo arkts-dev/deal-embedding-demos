@@ -28,6 +28,7 @@ async function instruction(previous,diagnostics,operational=false){
  assert(text.includes('submit_compact'));assert(text.includes('submit_custom'));assert(text.includes('source_fallback'));assert(text.includes('never submit/reassemble/overwrite'));assert(text.includes('Provider quote remains authoritative'));
  const workflow=vm.runInContext('guidance.workflow.$f()',ctx);assert(workflow.includes('never emulate a provider formula'));assert(workflow.includes('unless manual selection was explicitly requested'));assert(workflow.includes('Use typed maintained operations'));
  assert(text.includes('SessionClock'));assert(text.includes('Optional provider fields'));assert(!text.includes('custom DEAL helper functions only'));
+ assert(!text.includes('ui.Column('));assert(!text.includes('action app.Action'));assert(text.includes('bare name'));assert(text.includes('derived only recomputes an existing field'));assert(text.includes('node is empty only when bind is empty'));
  const sourceText=vm.runInContext('guidance.sourceGuidance.$f()',ctx);assert(sourceText.includes('DEAL 1.4 SOURCE RULES'));assert(sourceText.includes('Unicode'));
  const previous=JSON.stringify({deal:'export class State {}',dealui:'ui.Column() {\nui.Toggle(value: true, checked: false)\n}'});
  const diagnostic=JSON.stringify([{code:'UI2051',file:'experience.dealui',line:2}]);
