@@ -3,7 +3,7 @@ kind: research
 id: composition-resume
 created_at: 2026-10-27T17:37:49Z
 updated_at: 2026-10-27T20:00:00Z
-status: semantics-pass-latency-regression-investigating
+status: maintained-coverage-pass-live-semantics-unreliable
 references:
   - .deus/research/composed-generation-four.md
   - .deus/research/maintained-fragments-delivery.md
@@ -23,9 +23,9 @@ sources:
   - Separate inference-free saved-source food reassessments
   - deal-studio-ohos revision 6c8d78056d21ea118bec33aa835573a121561778
 gaps:
-  - The corrected architecture passes supplied semantics, but reliable latency improvement is not established.
+  - Supplied runtime coverage passes; latest faster live cohort failed departure semantics, so correct measured delivery is not established.
   - Ordinary equipment journey was exercised; remaining ordinary journeys and visual approval are incomplete.
-  - Postmeasurement helper sharing, native-array diagnostics and final submission reminder need separate first-frame measurement.
+  - Post-hardening cohort measured56.884s with3/4 supplied passes; inspection bound to event end, and extra late-food check inconclusive.
 ---
 
 # Resume here
@@ -78,4 +78,4 @@ Allocation helper definitions now share only matching typed row/quantity/cost/or
 
 Missing-field diagnostics now list available nested field/type paths; encoded root arrays reject explicitly. A final generic reminder restates actual arrays, visible display membership, quoted string formulas and disclosed nesting. Settings/authority/recovery unchanged. Collector handles rejected encoded arrays without repairing them. Isolated prototype verification initially failed duplicate laboratory fixture modules; separate signatures fixed the fixture and independent regression passed.
 
-Continue existing authorization through verification and a separately archived unchanged-settings cohort after these justified changes. Never rerun simply to obtain a favorable number. Preserve both prior cohorts, every failed probe and original assessor failures. Update findings and commit each affected repository independently, no push. Claim completion only with correct behavior and defensible measured improvement; otherwise state the exact remaining regression.
+The separately archived post-hardening cohort ran on root36bc8e3/embeddingc702ebb (UI6d445cd/DEAL890d9dfc), with unchanged settings and byte-matched release. Latest Compact/gateway/Logging/RentalRead/Protocol passed. Cohort total56.884s (budget12.610, departure12.301, food16.376, equipment15.597), generation38.214/model20.168/check13.768s;5source/4discovery/0chooser;usage87435/17903/14805/65536. All maintained-only, no canonical edits/custom/fallbacks; one equipment rejection. Budget/food/equipment passed supplied assertions. Departure failed inspection16:50 instead of15:06: exact native formula was `1020 - inspectionBuffer.value`, binding to event end despite explicit before-departure facts. Travel29/departure15:16 were correct. This is model semantic binding failure, not formula parser arithmetic. Additional late-food check was inconclusive because model filtered ineligible choices out; model also authored quantity maximum32. Preserve original cohort and do not inject expected formulas/repair/retime it. Continuous capture complete; archive gzip/SHA256 verified. Gateway stopped. Further semantic-adherence work must be justified, not repeated prompt roulette or a task-specific hidden solver. Continue existing authorization through further investigation. Never rerun simply to obtain a favorable number. Preserve both prior cohorts, every failed probe and original assessor failures. Update findings and commit each affected repository independently, no push. Claim completion only with correct behavior and defensible measured improvement; otherwise state the exact remaining regression.

@@ -3,7 +3,7 @@ kind: research
 id: composed-generation-four
 created_at: 2026-10-27T19:40:00Z
 updated_at: 2026-10-27T19:40:00Z
-status: semantics-pass-latency-regression-investigating
+status: maintained-coverage-pass-live-semantics-unreliable
 references:
   - ../research/composition-resume.md
   - dependencies/deal-embedding/android/src/compiler/FragmentComposition.kt
@@ -29,7 +29,7 @@ gaps:
 
 # Outcome
 
-Independent bundled fragments now cover all four workflows through real maintained emission and runtime. A fresh cohort passed four supplied semantic checks plus the additional late-window check. **Latency regressed: 80.116 seconds versus the 69.522-second DEAL 1.4 baseline (+15.2%).** This is not completion of the unchanged objective.
+Independent bundled fragments cover all four workflows through real maintained emission and runtime. One fresh cohort passed four supplied semantic checks plus the additional late-window check but regressed to **80.116 seconds versus the 69.522-second DEAL 1.4 baseline (+15.2%)**. After verified helper sharing and authoring diagnostics/guidance changes, a separate cohort took **56.884 seconds (−18.2%) but failed departure semantics**. Neither establishes correct completion with reliable measured improvement. The unchanged objective remains unmet.
 
 ## What changed
 
@@ -66,6 +66,23 @@ Total 80.116s; generation 63.364s; model 44.661s; checking 14.774s. All four sup
 Equipment's first reply consumed 40960 completion tokens and 29.060s provider receipt time, but returned encoded fragments and omitted commands/display. The next two were rejected for omitted visible instances and flattened provider attributes. Final submission passed. Actual captured requests include `strict:true`, the full nested schema, all root required fields, required tool choice and no parallel compact calls. Strict schema validity is **not** established merely by the request flag: the returned first reply demonstrably violated it. No response was silently corrected.
 
 Official documentation supports nested schemas, nonrecursive refs and non-root unions; the contract is below the documented depth/text limits. Unsupported string patterns were removed after an earlier failed probe; the provider's exact rejection reason was not retained there. A strict-request flag alone does not explain or excuse the later violations. Credentials/reasoning text were not retained.
+
+## Separate post-hardening cohort: faster but semantically failed
+
+Measured root `36bc8e3`, embedding `c702ebb`, unchanged UI/DEAL/settings, after deterministic verification, release installation/pulled-byte matching and native regressions. No build overlap, semantic feedback, candidateTest, selector/verifier calls, runner retries or retiming. Generated-only cleanup was archived and retained preferences verified. The gateway was stopped after completion.
+
+| Task | Discovery stage | Generation→frame | Total→frame | Model | Check | Replies |
+|---|---:|---:|---:|---:|---:|---:|
+| Budget | 5.787s | 6.563s | 12.610s | 3.805s | 1.929s | 1 |
+| Departure | 3.436s | 8.652s | 12.301s | 4.881s | 2.745s | 1 |
+| Food | 4.591s | 11.564s | 16.376s | 5.348s | 5.034s | 1 |
+| Equipment | 3.973s | 11.435s | 15.597s | 6.134s | 4.060s | 2 |
+
+Total56.884s; generation38.214/model20.168/check13.768s. Five source replies/four discovery/zero chooser. Usage87435 input/17903 completion/14805 reasoning/65536 cached. All routes maintained-only, zero custom/fallback/canonical edits; one equipment pre-materialization rejection. No missing capture artifacts. The cohort archive passed gzip and SHA256 verification; later read-only derived plan extracts are separate from its original contents.
+
+Budget, food and equipment passed supplied assertions. Departure failed: actual travel29 and departure15:16 were correct, but inspection showed16:50 instead of15:06. Exact native arguments authored `1020 - inspectionBuffer.value`, incorrectly binding inspection to the event end rather than departure. The request explicitly said inspection before departure; this is a model semantic binding error, not a parser precedence or arithmetic defect. Do not change arithmetic semantics or inject a fixture-specific answer to conceal it. Food's additional late-window assertion was inconclusive: the authored choice source filtered out ineligible options, so no supported late Option existed. Its quantity bound32 is model-authored, not a maintained-fragment ceiling.
+
+A lower total from a three-of-four semantic cohort is not successful latency delivery. The prior all-four80.116s regression and original50.725s food assessor failure remain unchanged. Further work must improve semantic relation/choice adherence without hidden solvers, task-specific templates, silent plan correction or changed model settings—not rerun until a favorable number appears.
 
 ## Verification and remaining work
 
