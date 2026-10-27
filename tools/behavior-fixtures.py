@@ -123,5 +123,7 @@ if __name__=='__main__':
    for group in behavior.get('groups',[]):
     for constraint in group['constraints']:
      value=constraint.pop('value');constraint.update(valueType='boolean' if isinstance(value,bool) else 'number' if isinstance(value,(int,float)) else 'string',text=value if isinstance(value,str) else '',number=value if isinstance(value,(int,float)) and not isinstance(value,bool) else 0,boolean=value if isinstance(value,bool) else False)
+  for behavior in p['behaviors']:
+   if 'groups' in behavior:behavior['groups']=json.dumps(behavior['groups'])
   (out/(name+'.json')).write_text(json.dumps(dict(title=p['title'],**p['behaviors'][0]),indent=2))
  (out/'contracts.json').write_text(json.dumps(contracts(),indent=2))
