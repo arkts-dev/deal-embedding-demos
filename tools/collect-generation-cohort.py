@@ -78,6 +78,16 @@ for r in results:
         raw=artifacts.get(e.get('artifact')) or e.get('target','')
         try:assembled_detail=json.loads(raw)
         except (ValueError,TypeError):pass
+    # A published checked source can outlive the last composition event in a capture.
+    # Retain the evidence boundary rather than inventing a missing checked event.
+    if not route_detail and summary and summary.get('sourceChecked'):
+        materialized=[e for e in composition_events if e['outcome']=='materialized']
+        if materialized:
+            e=materialized[-1]
+            try:
+                route_detail=json.loads(artifacts.get(e.get('artifact')) or e.get('target',''))
+                route_detail.update(repairs=summary.get('totalAdmittedEdits'),evidenceBasis='materialized-route-and-checked-request-summary')
+            except (ValueError,TypeError):pass
     if route_detail and assembled_detail:
         route_detail.update({key:assembled_detail[key] for key in ['operations','customCharacters','reason'] if key in assembled_detail})
     n['behaviorRoute']=route_detail

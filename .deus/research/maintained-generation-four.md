@@ -26,6 +26,10 @@ gaps:
   - Supplied-plan execution does not prove arbitrary-prose interpretation or visual acceptance.
 ---
 
+## Historical scope
+
+This report preserves the earlier low-level graph cohorts and their failures. The subsequent requirement-only fragment implementation, all intervening failures and measured four-task delivery are recorded in [maintained-fragments-delivery.md](maintained-fragments-delivery.md). Do not apply the historical outcome below to those later bytes.
+
 ## Implementation
 
 Replaced the raw-body compact composer with a closed typed graph emitter. Maintained operations cover arithmetic, formatting, projection/filter/join/aggregation, immutable keyed edits, constrained allocation, component-ID matching, basket serialization and ordered capability workflows. Capability records remain provider-owned. Initial construction emits canonical DEAL/Deal UI once; all later repair uses revision-bound atomic exact edits. Custom typed sections and full-source fallback remain explicit, distinct routes. No selector/verifier model call was added.

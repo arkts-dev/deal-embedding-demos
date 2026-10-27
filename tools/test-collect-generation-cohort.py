@@ -13,6 +13,21 @@ import unittest
 COLLECTOR = pathlib.Path(__file__).with_name('collect-generation-cohort.py')
 
 class CollectorTest(unittest.TestCase):
+    def test_checked_summary_retains_materialized_route_without_checked_event(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root=pathlib.Path(directory);cohort=root/'cohort';cohort.mkdir()
+            summary={'tokens':{'initial':{'in':1,'out':1,'reasoning':0,'cached':0},'repair':{'in':0,'out':0,'reasoning':0,'cached':0}},'initialModelMs':1,'repairModelMs':0,'checkingMs':1,'sourceChecked':True,'totalAdmittedEdits':0}
+            events=[{'sequence':1,'trace':'t','stage':'composition','outcome':'assembled','target':json.dumps({'operations':{'comparison':1},'customCharacters':0,'reason':''})},{'sequence':2,'trace':'t','stage':'composition','outcome':'materialized','target':json.dumps({'route':'maintained-only','fallbacks':0})},{'sequence':3,'trace':'t','stage':'request-summary','outcome':'completed','target':json.dumps(summary)}]
+            with tarfile.open(cohort/'final.tar','w') as archive:
+                for name,value in {'files/framework-e2e-results.json':json.dumps([{'scenario':'budget','trace':'t'}]),'files/embedding-log/events.jsonl':'\n'.join(json.dumps(e) for e in events)}.items():
+                    raw=value.encode();entry=tarfile.TarInfo(name);entry.size=len(raw);archive.addfile(entry,io.BytesIO(raw))
+            subprocess.run([sys.executable,str(COLLECTOR),str(root)],check=True,stdout=subprocess.DEVNULL)
+            result=json.loads((cohort/'numbers.json').read_text())[0]
+            self.assertEqual(result['behaviorRoute']['route'],'maintained-only')
+            self.assertEqual(result['behaviorRoute']['repairs'],0)
+            self.assertEqual(result['behaviorRoute']['operations'],{'comparison':1})
+            self.assertEqual(result['behaviorRoute']['evidenceBasis'],'materialized-route-and-checked-request-summary')
+
     def test_latest_summary_missing_capture_and_unrendered_result(self):
         with tempfile.TemporaryDirectory() as directory:
             root = pathlib.Path(directory); cohort = root / 'cohort'; cohort.mkdir()

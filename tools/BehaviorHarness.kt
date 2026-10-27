@@ -22,6 +22,12 @@ fun main(args:Array<String>) {
         rejected(JSONObject(plan.toString()).put("unexpected",true))
         rejected(JSONObject(wrapped.toString()).apply{getJSONArray("behaviors").put(getJSONArray("behaviors").getJSONObject(0))})
         val kind=plan.getString("kind")
+        if(kind=="quotedAlternatives") {
+            rejected(JSONObject(plan.toString()).put("groups",plan.getString("groups")+" false"))
+            rejected(JSONObject(plan.toString()).put("groups","{}"))
+            rejected(JSONObject(plan.toString()).put("groups","not data"))
+            rejected(JSONObject(plan.toString()).put("groups",JSONArray(plan.getString("groups"))))
+        }
         if(kind!="comparison")rejected(JSONObject(plan.toString()).apply{
             val binding=getJSONObject(when(kind){"providerSchedule"->"estimate";"allocation"->"menu";else->"catalogue"})
             binding.put("module","host/undisclosed")
