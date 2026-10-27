@@ -17,19 +17,18 @@ def obj(properties):
 def arr(items): return {'type':'array','items':items}
 TEXT={'type':'string'}
 FIELD=obj({'name':TEXT,'type':TEXT})
-INITIAL=obj({'name':TEXT,'type':TEXT,'value':TEXT})
-COMPACT_PROPERTIES={
- 'imports':arr(obj({'alias':TEXT,'module':TEXT})),
- 'records':arr(obj({'name':TEXT,'fields':arr(FIELD)})),
- 'state':arr(INITIAL),
- 'derived':arr(obj({'name':TEXT,'type':TEXT,'value':TEXT,'depends':arr(TEXT),'expression':TEXT})),
- 'controls':arr(obj({'field':TEXT,'label':TEXT,'format':{'type':'string','enum':['integer','euro-cents']},'minimum':{'type':'number'},'maximum':{'type':'number'},'step':{'type':'number'},'invalidate':arr(TEXT)})),
- 'actions':arr(obj({'name':TEXT,'fields':arr(FIELD),'body':TEXT})),
- 'effects':arr(obj({'name':TEXT,'label':TEXT,'body':TEXT})),
- 'functions':TEXT,'view':TEXT
-}
-COMPACT_TOOLS=[tool('submit_compact','Materialize one typed compact candidate into canonical DEAL and Deal UI; validate and compile it atomically. No provider execution.',COMPACT_PROPERTIES,list(COMPACT_PROPERTIES)),
- tool('source_fallback','Explicitly select full-source generation only when the compact contract cannot express the task. All elapsed work remains charged.',{'reason':TEXT},['reason'])]
+# Portable behavioral contract is packaged by the embedding owner, not duplicated here.
+from pathlib import Path
+BEHAVIOR_SCHEMA=json.loads((Path(__file__).resolve().parents[1]/'dependencies/deal-embedding/ui/behavior-contract.json').read_text())
+CUSTOM_SCHEMA=json.loads(json.dumps(BEHAVIOR_SCHEMA))
+CUSTOM_SCHEMA['properties'].update({'reason':TEXT,'custom':arr(obj({'id':TEXT,'parameters':arr(FIELD),'result':TEXT,'body':TEXT}))})
+CUSTOM_SCHEMA['required']=list(CUSTOM_SCHEMA['properties'])
+CUSTOM_SCHEMA['properties']['nodes']['items']['anyOf'].append(obj({'id':TEXT,'op':{'type':'string','enum':['custom']},'args':arr(TEXT),'params':obj({'section':TEXT})}))
+def schema_tool(name,description,schema):
+    return {'type':'function','function':{'name':name,'description':description,'strict':True,'parameters':schema}}
+COMPACT_TOOLS=[schema_tool('submit_compact','Mandatory first path: submit a typed behavioral graph, without executable source. Maintained operations emit canonical DEAL/Deal UI once. Literal values and state initializers are JSON text, never expressions.',BEHAVIOR_SCHEMA),
+ schema_tool('submit_custom','Explicit slow path for genuinely uncovered behavior: typed maintained graph plus named custom DEAL function bodies. State why maintained operations cannot implement it. Raw bodies are measured custom coverage, never fast-path coverage.',CUSTOM_SCHEMA),
+ tool('source_fallback','Last resort: explicitly select full-source generation only for behavior not representable by maintained operations or typed custom sections. All preceding work remains charged.',{'reason':TEXT},['reason'])]
 
 def tools_for(body):
     _,sep,state=body['input'].rpartition(TURN_BOUNDARY)
@@ -45,7 +44,10 @@ def source_messages(body):
     transcript=json.loads(state)['messages']
     if not isinstance(transcript,list):raise ValueError('Invalid native tool transcript')
     from gateway_transport import stable_messages
-    return stable_messages(dict(body,input=prefix))+transcript
+    messages=stable_messages(dict(body,input=prefix))
+    if body.get('previous'):
+        messages.append({'role':'user','content':'CURRENT CANONICAL SOURCE (exact decoded pair; sole repair authority)\n'+body['previous']+'\nCURRENT CHECK DIAGNOSTICS\n'+body.get('diagnostics','')})
+    return messages+transcript
 
 def initial_write_batch(body):
     # Host-authored workspace state, not a guess from transcript text or `previous`.

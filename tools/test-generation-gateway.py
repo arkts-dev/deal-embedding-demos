@@ -77,6 +77,23 @@ class GatewayTest(unittest.TestCase):
         self.assertNotIn('write_file',[t['function']['name'] for t in tools_for(body)])
         self.assertNotIn('submit_compact',[t['function']['name'] for t in tools_for(body)])
 
+    def test_behavior_contract_is_closed_and_no_raw_maintained_source(self):
+        maintained=next(t['function']['parameters'] for t in COMPACT_TOOLS if t['function']['name']=='submit_compact')
+        self.assertFalse(maintained['additionalProperties'])
+        self.assertNotIn('functions',maintained['properties'])
+        self.assertNotIn('view',maintained['properties'])
+        self.assertEqual(set(maintained['required']),set(maintained['properties']))
+        def check(schema):
+            if isinstance(schema,dict):
+                if schema.get('type')=='object':
+                    self.assertFalse(schema['additionalProperties'])
+                    self.assertEqual(set(schema['required']),set(schema['properties']))
+                for value in schema.values():check(value)
+            elif isinstance(schema,list):
+                for value in schema:check(value)
+        for tool in COMPACT_TOOLS:check(tool['function']['parameters'])
+        self.assertIn('submit_custom',[t['function']['name'] for t in COMPACT_TOOLS])
+
     def test_read_schema(self):
         schema=next(t['function']['parameters'] for t in SOURCE_TOOLS if t['function']['name']=='read_file')
         self.assertEqual(set(schema['required']),{'file','start_line','end_line'})
@@ -111,6 +128,7 @@ class GatewayTest(unittest.TestCase):
         namespace['infer'](body);self.assertFalse(seen[-1]['parallel_tool_calls'])
         body.update(input='rules\nSOURCE OPERATION\nrepair\nNATIVE TOOL TURN\n'+json.dumps({'messages':history,'initialWrites':False}),previous='host-bound-pair')
         namespace['infer'](body);self.assertEqual(seen[-1]['messages'][-2:],history);self.assertFalse(seen[-1]['parallel_tool_calls'])
+        self.assertTrue(any('CURRENT CANONICAL SOURCE' in m.get('content','') and 'host-bound-pair' in m['content'] for m in seen[-1]['messages']))
         self.assertFalse(initial_write_batch({'input':'rules\nNATIVE TOOL TURN\n{"messages":[]}'}))
         namespace['options'].repair_reasoning='none'
         with self.assertRaisesRegex(ValueError,'enabled'):namespace['infer'](body)

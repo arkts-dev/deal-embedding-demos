@@ -112,7 +112,7 @@ class FrameworkE2eInstrumentation: Instrumentation() {
             "departure" -> {
                 val rendered=nodes(t).joinToString(" "){text(it)}
                 check(rendered.contains("15:16") && rendered.contains("15:06")){"Actual Vehicle29min:16:00 minus15 unload minus29 travel gives15:16; inspection10 earlier15:06. Observed:$rendered"}
-                val fields=nodes(t).filter { it.optString("component").endsWith(".IntField") }
+                val fields=nodes(t).filter { it.optString("component").let { c -> c.endsWith(".IntField") || c.endsWith(".TimeField") } }
                 val start=fields.firstOrNull { ToolkitNodes.integer(it,"value")==960 }
                 if(start!=null){s.dispatch(slot(start)!!,"985");t=settle(s)}
                 else {

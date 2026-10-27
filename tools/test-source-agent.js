@@ -18,7 +18,7 @@ async function scenario(replies,verify,compact=false){
    } else if(r.module==='embedding/model'){
     const state=JSON.parse(r.args[0].split('\nNATIVE TOOL TURN\n')[1]);
     if(!compact && calls===0 && offset===0){assert.equal(state.compact,true);offset=1;v=msg(call('source_fallback',{reason:'Legacy source mechanics fixture'}));}
-    else {assert(calls<replies.length,'Unexpected retry '+r.args[0]);if(!compact)state.messages=state.messages.slice(2);verify?.(calls,r.args,state);v=replies[calls++];}
+    else {assert(calls<replies.length,'Unexpected retry '+r.args[0]);if(!compact && state.messages[0]?.tool_calls?.[0]?.function?.name==='source_fallback')state.messages=state.messages.slice(2);verify?.(calls,r.args,state);v=replies[calls++];}
    } else if(r.module==='embedding/checker'){
     checks.push(r.args);v={accepted:r.args[0]==='valid',candidateId:r.args[0]==='valid'?'checked':'',diagnostics:'[]'};
    } else if(r.module==='embedding/observer') {if(r.args[0]==='patch'&&r.args[1]==='completed')patches.push(JSON.parse(r.args[2]));v=null;}
@@ -33,7 +33,7 @@ const msg=(...tool_calls)=>JSON.stringify({role:'assistant',content:'',tool_call
 (async()=>{
  let r=await scenario([msg(call('submit_compact',{invalid:true})),msg(call('submit_compact',{deal:'broken',dealui:'UI'})),msg(call('submit_compact',{deal:'valid',dealui:'UI'})),msg(call('edit_sources',{edits:[{file:'deal',search:'broken',replacement:'valid'}]}))],(n,args,state)=>{
   if(n===1){assert(state.messages.at(-1).content.includes('COMPACT_PLAN'));assert.equal(args[1],'');}
-  if(n===2){const v=JSON.parse(state.messages.at(-1).content);assert.equal(v.source.deal,'broken');assert.equal(JSON.parse(args[1]).deal,'broken');}
+  if(n===2){const v=JSON.parse(state.messages.at(-1).content);assert.equal(v.checked,false);assert.equal(JSON.parse(args[1]).deal,'broken');}
   if(n===3)assert(state.messages.at(-1).content.includes('FILES_EXIST'));
  },true);assert.equal(r.calls,4);assert.equal(r.checks.length,2);assert(r.patches[0].accepted);
  r=await scenario([msg(call('write_file',{file:'deal',source:'broken'})),msg(call('write_file',{file:'dealui',source:'UI'})),msg(call('edit_sources',{edits:[{file:'deal',search:'missing',replacement:'valid'}]})),msg(call('write_file',{file:'deal',source:'valid'})),msg(call('read_file',{file:'deal'})),msg(call('edit_sources',{edits:[{file:'deal',search:'broken',replacement:'valid'}]}))],(n,args,state)=>{

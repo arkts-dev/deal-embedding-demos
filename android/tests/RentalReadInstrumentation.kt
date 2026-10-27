@@ -18,6 +18,16 @@ class RentalReadInstrumentation : Instrumentation() {
             override fun getSharedPreferences(name: String, mode: Int) = super.getSharedPreferences("$namespace-$name", mode)
         }
         try {
+            val pizza = dev.deal.apps.pizza.pizzaCapabilities(ctx)
+            val menu = pizza.invoke("menu",JSONArray()) as JSONArray
+            check((0 until menu.length()).all { menu.getJSONObject(it).getInt("diameterMm") == 300 })
+            for (bad in listOf("", "6:30", "24:00", "18:60", "18:30:00", " 18:30", "2026-10-23T18:30")) {
+                check(runCatching { pizza.invoke("delivery",JSONArray().put(bad)) }.isFailure) { "Accepted malformed deadline $bad" }
+            }
+            val early = pizza.invoke("delivery",JSONArray().put("18:00")) as JSONArray
+            check((0 until early.length()).none { early.getJSONObject(it).getBoolean("meetsRequirement") })
+            val later = pizza.invoke("delivery",JSONArray().put("18:45")) as JSONArray
+            check((0 until later.length()).count { later.getJSONObject(it).getBoolean("meetsRequirement") } == 2)
             val native = rentalCapabilities(ctx)
             val start = "2026-10-23T14:15:00Z"
             val end = "2026-10-23T20:30:00Z"
@@ -55,6 +65,6 @@ class RentalReadInstrumentation : Instrumentation() {
             result.putString("rental", "PASS exact quote prices/deposit, strict basket/instant validation, aggregate component stock, no quote persistence")
             finish(0, result)
         } catch (error: Throwable) { result.putString("failure", android.util.Log.getStackTraceString(error)); finish(1, result) }
-        finally { listOf("rental", "proposals").forEach { targetContext.deleteSharedPreferences("$namespace-$it") } }
+        finally { listOf("rental", "pizza", "proposals").forEach { targetContext.deleteSharedPreferences("$namespace-$it") } }
     }
 }

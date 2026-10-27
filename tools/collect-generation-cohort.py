@@ -63,6 +63,17 @@ for r in results:
              checkingMs=summary['checkingMs'] if summary else None,
              compilerMs={s: sum(e['durationMs'] for e in sub if e['stage'] == s and e['outcome'] in ['completed', 'failed']) for s in ['compiler-ui', 'compiler-deal']},
              composition=collections.Counter(e['outcome'] for e in sub if e['stage'] == 'composition'))
+    composition_events=[e for e in sub if e['stage']=='composition']
+    route_events=[e for e in composition_events if e['outcome']=='checked']
+    route_detail=None
+    if route_events:
+        e=route_events[-1]
+        raw=artifacts.get(e.get('artifact')) or e.get('target','')
+        try:route_detail=json.loads(raw)
+        except (ValueError,TypeError):pass
+    n['behaviorRoute']=route_detail
+    n['fallbackReasons']=[artifacts.get(e.get('artifact')) or e.get('target') for e in composition_events if e['outcome']=='fallback']
+    n['behaviorCaptureComplete']=bool(route_detail) if composition_events else None
     numbers.append(n)
     for ext in ['deal', 'dealui']:
         if 'experience' not in r: continue
@@ -79,7 +90,7 @@ for r in results:
         message = json.loads(artifacts[e['artifact']]); calls = []
         for call in message.get('tool_calls', []):
             f = call['function']; args = json.loads(f['arguments'])
-            calls.append({'name': f['name'], 'argumentChars':len(f['arguments']), 'file':args.get('file'), 'edits':len(args.get('edits', [])), 'start_line':args.get('start_line'), 'end_line':args.get('end_line')})
+            calls.append({'name': f['name'], 'argumentChars':len(f['arguments']), 'file':args.get('file'), 'edits':len(args.get('edits', [])), 'start_line':args.get('start_line'), 'end_line':args.get('end_line'), 'reason':args.get('reason'), 'customCharacters':sum(len(s.get('body','')) for s in args.get('custom',[])), 'operations':dict(collections.Counter(n.get('op') for n in args.get('nodes',[])))})
         responses.append({'calls':calls})
     operations.append({'scenario':r['scenario'],'responses':responses})
 (cohort / 'numbers.json').write_text(json.dumps(numbers, indent=2)+'\n')

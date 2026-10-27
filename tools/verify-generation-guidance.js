@@ -23,13 +23,12 @@ async function instruction(previous,diagnostics,operational=false){
 }
 (async()=>{
  const text=vm.runInContext('guidance.guidance.$f()',ctx);
- assert(text.includes('literal Unicode character'));assert(text.includes('DEAL does not support Unicode escape sequences'));assert(text.includes('record["from"]'));assert(!text.includes('String-key indexing like'));
- assert(text.includes('RESERVED IDENTIFIERS (derived from the compiler lexer)'));assert(text.includes('from, function'));assert(!text.includes('number_literal'));
- assert(text.includes('required props: label, minorUnits'));assert(text.includes('requires children of types Money|Metric'));assert(text.includes('Compact construction contract'));assert(text.includes('backend never calculates a winner'));
- assert(text.includes('submit_compact'));assert(text.includes('source_fallback'));assert(text.includes('both null for full source'));assert(text.includes('Tool strings decode to literal source'));assert(text.includes('never the renderer'));assert(text.includes('actual returned records after explicit loading'));assert(text.includes('A required provider result must come from that provider'));
- const workflow=vm.runInContext('guidance.workflow.$f()',ctx);assert(workflow.includes('never emulate a provider formula'));assert(workflow.includes('unless manual selection was explicitly requested'));assert(workflow.includes('Use submit_compact'));
- assert(text.includes('CURRENT selected provider records'));assert(text.includes('after every relevant edit, selection and load completion'));assert(text.includes('including provider eligibility flags'));
- assert(!text.includes('CHECKED ASYNC EXAMPLE'));assert(text.includes('dependency'));assert(text.includes('No top-level execution'));
+ assert(text.includes('typed operation graph'));assert(text.includes('not DEAL expressions'));assert(text.includes('Dependencies are derived from references'));
+ assert(text.includes('required props: label, minorUnits'));assert(text.includes('requires children of types Money|Metric'));assert(text.includes('backend never calculates a winner'));
+ assert(text.includes('submit_compact'));assert(text.includes('submit_custom'));assert(text.includes('source_fallback'));assert(text.includes('never submit/reassemble/overwrite'));assert(text.includes('Provider quote remains authoritative'));
+ const workflow=vm.runInContext('guidance.workflow.$f()',ctx);assert(workflow.includes('never emulate a provider formula'));assert(workflow.includes('unless manual selection was explicitly requested'));assert(workflow.includes('Use typed maintained operations'));
+ assert(text.includes('SessionClock'));assert(text.includes('Optional provider fields'));assert(!text.includes('custom DEAL helper functions only'));
+ const sourceText=vm.runInContext('guidance.sourceGuidance.$f()',ctx);assert(sourceText.includes('DEAL 1.4 SOURCE RULES'));assert(sourceText.includes('Unicode'));
  const previous=JSON.stringify({deal:'export class State {}',dealui:'ui.Column() {\nui.Toggle(value: true, checked: false)\n}'});
  const diagnostic=JSON.stringify([{code:'UI2051',file:'experience.dealui',line:2}]);
  const result=await instruction(previous,diagnostic);

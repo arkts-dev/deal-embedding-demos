@@ -58,12 +58,8 @@ class GenerationGatewayInstrumentation : Instrumentation() {
                 check(runCatching { GenerationGatewayConfig(bad, "fixture") }.isFailure)
             }
             check(runCatching { GenerationGatewayConfig("https://example.com/generate", "bad\r\nheader") }.isFailure)
-            fun compact(body: String = "next.value = state.value+1;") = JSONObject().put("imports",org.json.JSONArray()).put("records",org.json.JSONArray())
-                .put("state",org.json.JSONArray().put(JSONObject().put("name","value").put("type","number").put("value","7")))
-                .put("derived",org.json.JSONArray()).put("controls",org.json.JSONArray()).put("effects",org.json.JSONArray())
-                .put("actions",org.json.JSONArray().put(JSONObject().put("name","Increment").put("fields",org.json.JSONArray()).put("body",body)))
-                .put("functions","").put("view","ui.IntText(value:state.value) ui.Button(text:\"Increment\",onClick:action app.Increment {})")
-            val emitted = CompactCandidate.assemble(compact(), emptySet())
+            fun compact() = counterBehaviorPlan()
+            val emitted = BehaviorCandidate(emptyList()).assemble(compact())
             val source = Source(emitted.getString("deal"), emitted.getString("dealui"))
             // Locality is mechanically measured with explicit baselines, not semantic acceptance.
             val telemetryBase=ExperienceSource("a\nb\nc","ui")
@@ -144,28 +140,35 @@ class GenerationGatewayInstrumentation : Instrumentation() {
                 }
             }
             // Actual compiled delta orchestration, source windows and exact revision-bound patch.
-            val broken=Source(source.deal.replace("next.value = state.value+1;","next.value = state.value+;"),source.dealui)
+            val broken=Source(source.deal.replace("next.m_value = v1;","next.m_value = v1 +;"),source.dealui)
             var repairCalls=0
             val patchModel=object:ModelClient {
                 override fun complete(input:String,previous:String,diagnostics:String,cancellation:GenerationCancellation,log:EmbeddingLog):String {
                     repairCalls++
-                    if(repairCalls==1) { check(input.contains("SOURCE OPERATION\ninitial"));return nativeCompactFixture(compact("next.value = state.value+;")) }
-                    check(repairCalls in 2..3 && input.contains("SOURCE OPERATION\nrepair")) { "Patch operation marker/call bound" }
+                    if(repairCalls==1) { check(input.contains("SOURCE OPERATION\ninitial"));return nativeFallbackFixture() }
+                    if(repairCalls==2)return nativeSourceFixture(broken.deal,broken.dealui)
+                    check(repairCalls in 3..4 && input.contains("SOURCE OPERATION\nrepair")) { "Patch operation marker/call bound" }
                     check(input.contains("smallest rejected source region") && input.contains("Clustered source; patch file:")) { "Patch diagnostic window missing at call $repairCalls" }
                     check(JSONObject(previous).getString("deal")==broken.deal) { "Rejected patch changed base" }
-                    if(repairCalls==2)return nativePatchFixture("wrong-revision","next.value = state.value+;","next.value = state.value+1;")
+                    if(repairCalls==3)return nativePatchFixture("wrong-revision","next.m_value = v1 +;","next.m_value = v1;")
                     check(input.contains("PATCH_NO_MATCH") && diagnostics.isNotBlank()) { "Patch failure or original diagnostics missing" }
                     check(!input.contains("return both complete source strings"))
                     val digestText="${broken.deal.length}:${broken.deal}${broken.dealui.length}:${broken.dealui}"
                     val digest=java.security.MessageDigest.getInstance("SHA-256").digest(digestText.toByteArray()).joinToString("") { "%02x".format(it) }
-                    return nativePatchFixture(digest,"next.value = state.value+;","next.value = state.value+1;")
+                    return nativePatchFixture(digest,"next.m_value = v1 +;","next.m_value = v1;")
                 }
             }
             ApplicationProtocol(targetContext,Embedding(targetContext,CapabilityRegistry(targetContext,CapabilityDiscovery(targetContext){false},emptyList()),patchModel,EmbeddingConfig("experience",emptyList(),"patch-${UUID.randomUUID()}"))).use { api ->
                 val request=api.request("Patch fixture","Editable counter",api.snapshot(WireType("record"),"{}"))
-                val e=api.generate(request);check(repairCalls==3 && api.source(e)==source)
+                val e=api.generate(request);check(repairCalls==4 && api.source(e)==source)
                 val s=api.run(e);val tree=api.next(s,"").snapshot.tree
-                val action=tree.getJSONArray("children").getJSONObject(1).getJSONArray("props").let { props -> (0 until props.length()).map { props.getJSONObject(it) }.first { it.optString("kind")=="action" }.getInt("actionSlot") }
+                fun actionSlot(node:JSONObject):Int? {
+                    val props=node.getJSONArray("props")
+                    (0 until props.length()).map{props.getJSONObject(it)}.firstOrNull{it.optString("kind")=="action"}?.let{return it.getInt("actionSlot")}
+                    val children=node.getJSONArray("children");for(i in 0 until children.length())actionSlot(children.getJSONObject(i))?.let{return it}
+                    return null
+                }
+                val action=checkNotNull(actionSlot(tree))
                 api.dispatch(s,action,null);check(api.next(s,"").snapshot.tree.toString().contains("\"numberValue\":8"));api.close(s);api.forget(e)
                 EmbeddingLog.flush(targetContext)
                 val records=api.retainedEvents().events.filter { it.optString("trace")==api.requestTrace(request) && it.optString("stage")=="repair-metrics" }.map { JSONObject(it.getString("target")) }

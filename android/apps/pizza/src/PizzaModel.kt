@@ -7,7 +7,7 @@ import java.util.UUID
 
 val PIZZA_ZONE: ZoneId = ZoneId.of("Europe/Berlin")
 
-data class MenuItem(val id: String, val name: String, val size: String, val cents: Int, val vegan: Boolean, val vegetarian: Boolean, val ingredients: String, val allergens: String)
+data class MenuItem(val id: String, val name: String, val size: String, val cents: Int, val vegan: Boolean, val vegetarian: Boolean, val ingredients: String, val allergens: String, val diameterMm: Int)
 data class DeliveryWindow(val id: String, val from: LocalTime, val until: LocalTime, val guaranteed: Boolean)
 data class Order(
     val id: String, val show: String, val lines: Map<String, Int>, val windowId: String, val address: String, val instructions: String,
@@ -20,9 +20,9 @@ class PizzaStore(private val context: Context) {
     private val prefs = context.getSharedPreferences("pizza", 0)
 
     val menu: List<MenuItem> = listOf(
-        MenuItem("margherita", "Margherita", "30 cm", 1000, vegan = false, vegetarian = true, "Tomato, mozzarella, basil", "Milk, wheat"),
-        MenuItem("garden", "Garden Vegan", "30 cm", 1200, vegan = true, vegetarian = true, "Tomato, plant-based cheese, seasonal vegetables", "Wheat"),
-        MenuItem("pepperoni", "Pepperoni", "30 cm", 1300, vegan = false, vegetarian = false, "Tomato, mozzarella, pepperoni", "Meat, milk, wheat"),
+        MenuItem("margherita", "Margherita", "30 cm", 1000, vegan = false, vegetarian = true, "Tomato, mozzarella, basil", "Milk, wheat", diameterMm = 300),
+        MenuItem("garden", "Garden Vegan", "30 cm", 1200, vegan = true, vegetarian = true, "Tomato, plant-based cheese, seasonal vegetables", "Wheat", diameterMm = 300),
+        MenuItem("pepperoni", "Pepperoni", "30 cm", 1300, vegan = false, vegetarian = false, "Tomato, mozzarella, pepperoni", "Meat, milk, wheat", diameterMm = 300),
     )
 
     val windows: List<DeliveryWindow> = listOf(

@@ -181,7 +181,7 @@ for app in "${TARGETS[@]}"; do
     case "$app" in
         calendar) profile="host";   sources=(android/apps/shared-ui/*.kt android/apps/calendar/src/*.kt); app_apis=("$EMBEDDING_JAR"); profile_jars=("$EMBEDDING_JAR" "${RUNTIME_JARS[@]}") ;;
         organizer) profile="host";  sources=(android/apps/shared-ui/*.kt android/apps/organizer/src/*.kt); app_apis=("$EMBEDDING_JAR"); profile_jars=("$EMBEDDING_JAR" "${RUNTIME_JARS[@]}") ;;
-        tests) profile="host";      sources=(android/tests/*.kt android/apps/shared-ui/*.kt android/apps/organizer/src/*.kt android/apps/calendar/src/*.kt android/apps/vehicle/src/VehicleCapabilities.kt android/apps/rental/src/RentalModel.kt android/apps/rental/src/RentalCapabilities.kt); app_apis=("$EMBEDDING_JAR"); profile_jars=("$EMBEDDING_JAR" "${RUNTIME_JARS[@]}") ;;
+        tests) profile="host";      sources=(android/tests/*.kt android/apps/shared-ui/*.kt android/apps/organizer/src/*.kt android/apps/calendar/src/*.kt android/apps/vehicle/src/VehicleCapabilities.kt android/apps/rental/src/RentalModel.kt android/apps/rental/src/RentalCapabilities.kt android/apps/pizza/src/PizzaModel.kt android/apps/pizza/src/PizzaCapabilities.kt); app_apis=("$EMBEDDING_JAR"); profile_jars=("$EMBEDDING_JAR" "${RUNTIME_JARS[@]}") ;;
         *) profile="host";          sources=(android/apps/shared-ui/*.kt "android/apps/$app/src/"*.kt); app_apis=("$EMBEDDING_JAR"); profile_jars=("$EMBEDDING_JAR" "${RUNTIME_JARS[@]}") ;;
     esac
     if [[ "$profile" == host ]]; then
@@ -215,6 +215,7 @@ for app in "${TARGETS[@]}"; do
         rm -rf "build/assets/$app"; mkdir -p "build/assets/$app"
         cp -r build/embedding-consumer/assets/* "build/assets/$app/"
         if [[ "$app" == organizer || "$app" == tests ]]; then python3 tools/build-organizer-policy.py; fi
+        if [[ "$app" == tests ]]; then python3 tools/behavior-fixtures.py "build/assets/$app/behavior-fixtures"; fi
     fi
     resource_link "$app" "build/$app/unsigned.apk"
     find "build/$app/rjava" -name '*.java' > build/r-sources.txt
