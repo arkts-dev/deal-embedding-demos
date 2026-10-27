@@ -15,6 +15,7 @@ fun main(args:Array<String>) {
     fun rejected(bad:JSONObject) { check(runCatching{emitter.assemble(bad)}.exceptionOrNull() is BehaviorCandidate.Rejected) }
     if(plan.has("behaviors")) {
         rejected(JSONObject(plan.toString()).put("functions","return 42;"))
+        rejected(JSONObject(plan.toString()).put("behaviors",plan.getJSONArray("behaviors").toString()))
         rejected(JSONObject(plan.toString()).apply{getJSONArray("behaviors").getJSONObject(0).put("unexpected",true)})
         rejected(JSONObject(plan.toString()).apply{getJSONArray("behaviors").put(getJSONArray("behaviors").getJSONObject(0))})
         val kind=plan.getJSONArray("behaviors").getJSONObject(0).getString("kind")

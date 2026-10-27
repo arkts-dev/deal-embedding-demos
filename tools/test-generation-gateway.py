@@ -86,6 +86,13 @@ class GatewayTest(unittest.TestCase):
         variants=maintained['properties']['behaviors']['items']['anyOf']
         self.assertEqual({v['properties']['kind']['enum'][0] for v in variants},{'comparison','providerSchedule','allocation','quotedAlternatives'})
         for v in variants:self.assertFalse({'state','nodes','actions','views'} & set(v['properties']))
+        def no_type_unions(value):
+            if isinstance(value,dict):
+                self.assertNotIsInstance(value.get('type'),list,'Maintain native grammar without ambiguous scalar unions')
+                for v in value.values():no_type_unions(v)
+            elif isinstance(value,list):
+                for v in value:no_type_unions(v)
+        no_type_unions(maintained)
         self.assertEqual(set(maintained['required']),set(maintained['properties']))
         def check(schema):
             if isinstance(schema,dict):

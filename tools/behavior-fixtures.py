@@ -118,5 +118,10 @@ if __name__=='__main__':
  import sys
  out=pathlib.Path(sys.argv[1]);out.mkdir(parents=True,exist_ok=True)
  for name,f in [('budget',budget),('departure',departure),('food',food),('equipment',equipment),('custom-budget',custom_budget),('optional',optional_result),('join',join_result)]:f().save(out,name)
- for name,p in fragments().items():(out/(name+'.json')).write_text(json.dumps(p,indent=2))
+ for name,p in fragments().items():
+  for behavior in p['behaviors']:
+   for group in behavior.get('groups',[]):
+    for constraint in group['constraints']:
+     value=constraint.pop('value');constraint.update(valueType='boolean' if isinstance(value,bool) else 'number' if isinstance(value,(int,float)) else 'string',text=value if isinstance(value,str) else '',number=value if isinstance(value,(int,float)) and not isinstance(value,bool) else 0,boolean=value if isinstance(value,bool) else False)
+  (out/(name+'.json')).write_text(json.dumps(p,indent=2))
  (out/'contracts.json').write_text(json.dumps(contracts(),indent=2))
