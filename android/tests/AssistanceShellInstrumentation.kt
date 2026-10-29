@@ -42,7 +42,7 @@ class AssistanceShellInstrumentation : Instrumentation() {
                 }
                 fun api(name: String) = ApplicationProtocol(context, Embedding(context,
                     CapabilityRegistry(context, CapabilityDiscovery(context) { false }, emptyList()), model,
-                    EmbeddingConfig("experience", emptyList(), name, retainState = true)))
+                    RuntimeConfig("experience", emptyList(), name, retainState = true)))
                 val source = Source(targetContext.assets.open("ui/comparison.deal").bufferedReader().use { it.readText() },
                     targetContext.assets.open("ui/comparison.dealui").bufferedReader().use { it.readText() })
                 check(AssistanceShell.stores(context) == listOf(store))

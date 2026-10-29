@@ -1,5 +1,7 @@
 package dev.deal.apps.rental
 
+import dev.deal.embedding.*
+import dev.deal.embedding.WireField
 import android.content.Context
 import dev.deal.embedding.capabilities.*
 import org.json.*
@@ -9,26 +11,17 @@ fun rentalCapabilities(context: Context): NativeCapabilities {
     val store = RentalStore(context)
     val contract = CapabilityContract("host/rental", "Rental catalogue, availability, quotes and reservations", listOf(
         CapabilityFunction("equipment", "Read before quoting. Match authoritative attributes, not display prose: kind=stand/cable/package/amplifier; lengthMm is millimetres; connectorFrom/To are canonical endpoint labels (e.g. XLR female/XLR male). Package components reference catalogue item IDs and quantities; inspect their attributes. Empty components means a single item. available is quantity; cents is EUR hire. from/until are offset-bearing ISO instants, until>from. Packages consume component stock.", listOf(
-            CapabilityParameter("from", CapabilityType("string")), CapabilityParameter("until", CapabilityType("string"))),
-            CapabilityType("array", maximum = 32, element = CapabilityType("record", fields = mapOf(
-                "id" to CapabilityType("string"), "name" to CapabilityType("string"), "specification" to CapabilityType("string"),
-                "cents" to CapabilityType("number"), "available" to CapabilityType("number"), "included" to CapabilityType("string"), "category" to CapabilityType("string"),
-                "attributes" to CapabilityType("record", fields = mapOf(
-                    "kind" to CapabilityType("string"), "adjustable" to CapabilityType("boolean"), "clipAdapter" to CapabilityType("boolean"),
-                    "balanced" to CapabilityType("boolean"), "connectorFrom" to CapabilityType("string"), "connectorTo" to CapabilityType("string"),
-                    "lengthMm" to CapabilityType("number", minimumNumber = 0.0))),
-                "components" to CapabilityType("array", maximum = 16, element = CapabilityType("record", fields = mapOf(
-                    "itemId" to CapabilityType("string"), "quantity" to CapabilityType("number", minimumNumber = 1.0, maximumNumber = 32.0)))))))),
+            Parameter("from", WireType("string")), Parameter("until", WireType("string"))),
+            WireType("array", maximum = 32, element = WireType("record", fields = listOf(WireField("id", WireType("string")), WireField("name", WireType("string")), WireField("specification", WireType("string")), WireField("cents", WireType("number")), WireField("available", WireType("number")), WireField("included", WireType("string")), WireField("category", WireType("string")), WireField("attributes", WireType("record", fields = listOf(WireField("kind", WireType("string")), WireField("adjustable", WireType("boolean")), WireField("clipAdapter", WireType("boolean")), WireField("balanced", WireType("boolean")), WireField("connectorFrom", WireType("string")), WireField("connectorTo", WireType("string")), WireField("lengthMm", WireType("number", minimumNumber = 0.0))))), WireField("components", WireType("array", maximum = 16, element = WireType("record", fields = listOf(WireField("itemId", WireType("string")), WireField("quantity", WireType("number", minimumNumber = 1.0, maximumNumber = 32.0)))))))))),
         CapabilityFunction("quote", "Read-only whole-basket quote. First read equipment. items is nonempty comma-separated catalogue ID:quantity pairs; distinct IDs, quantities 1..32. Submit each alternative as ONE basket: package ID versus component IDs together. cents/depositCents/availability/expiry apply to that basket; do NOT sum independent quotes or deposits. depositCents is refundable, separate from hire. available=false is unusable. from/until are offset-bearing ISO instants, until>from.", listOf(
-            CapabilityParameter("items", CapabilityType("string")), CapabilityParameter("from", CapabilityType("string")), CapabilityParameter("until", CapabilityType("string"))),
-            CapabilityType("record", fields = mapOf("cents" to CapabilityType("number"), "depositCents" to CapabilityType("number"),
-                "expiresInMinutes" to CapabilityType("number"), "terms" to CapabilityType("string"), "available" to CapabilityType("boolean")))),
+            Parameter("items", WireType("string")), Parameter("from", WireType("string")), Parameter("until", WireType("string"))),
+            WireType("record", fields = listOf(WireField("cents", WireType("number")), WireField("depositCents", WireType("number")), WireField("expiresInMinutes", WireType("number")), WireField("terms", WireType("string")), WireField("available", WireType("boolean"))))),
         CapabilityFunction("proposeReservation", "Stage a reservation for native review", listOf(
-            CapabilityParameter("items", CapabilityType("string")), CapabilityParameter("from", CapabilityType("string")),
-            CapabilityParameter("until", CapabilityType("string")), CapabilityParameter("collector", CapabilityType("string"))),
-            CapabilityType("record", fields = mapOf("proposalId" to CapabilityType("string"), "state" to CapabilityType("string")))),
-        CapabilityFunction("outcome", "Read a reservation proposal outcome", listOf(CapabilityParameter("proposalId", CapabilityType("string"))),
-            CapabilityType("record", fields = mapOf("state" to CapabilityType("string"), "reservationId" to CapabilityType("string"), "detail" to CapabilityType("string")))),
+            Parameter("items", WireType("string")), Parameter("from", WireType("string")),
+            Parameter("until", WireType("string")), Parameter("collector", WireType("string"))),
+            WireType("record", fields = listOf(WireField("proposalId", WireType("string")), WireField("state", WireType("string"))))),
+        CapabilityFunction("outcome", "Read a reservation proposal outcome", listOf(Parameter("proposalId", WireType("string"))),
+            WireType("record", fields = listOf(WireField("state", WireType("string")), WireField("reservationId", WireType("string")), WireField("detail", WireType("string"))))),
     ))
     fun period(args: JSONArray, start: Int): Pair<Long, Long> {
         val from = java.time.Instant.parse(args.getString(start)).toEpochMilli()

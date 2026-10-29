@@ -12,6 +12,9 @@ fun main() {
     check(left.name=="subtract" && (left.arguments[0] as MaintainedFormula.Expression.Operation).name=="subtract")
     check((parse("1.25e2") as MaintainedFormula.Expression.Literal).value==125.0)
     check((parse("\"a\\u263a\\n\"") as MaintainedFormula.Expression.Literal).value=="a☺\n")
+    listOf("(","!","-","+", ")", "===" ).forEach { value ->
+        check((parse(org.json.JSONObject.quote(value)) as MaintainedFormula.Expression.Literal).value==value)
+    }
     check(MaintainedFormula.references(parse("true || !false")).isEmpty())
     check(MaintainedFormula.references(parse("x + "+"1 + ".repeat(100)+"2"))==setOf("x"))
     listOf("", "a = 1", "a; b", "host.quote(items)", "await read()", "foo(1)",

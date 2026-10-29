@@ -4,5 +4,4 @@ import dev.deal.shell.SharedAppService
 
 class PizzaService : SharedAppService() {
     override val capabilities by lazy { pizzaCapabilities(this) }
-    override val delayMillis = 1200L
 }

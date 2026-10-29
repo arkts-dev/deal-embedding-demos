@@ -1,5 +1,7 @@
 package dev.deal.apps.todo
 
+import dev.deal.embedding.*
+import dev.deal.embedding.WireField
 import android.content.Context
 import dev.deal.embedding.capabilities.*
 import org.json.*
@@ -9,23 +11,20 @@ fun todoCapabilities(context: Context): NativeCapabilities {
     val store = TaskStore(context)
     val contract = CapabilityContract("host/todo", "Show tasks: assigned work, deadlines, checklists and proposal outcomes", listOf(
         CapabilityFunction("unfinished", "Read opted-in unfinished task titles for foreground preparation discovery; no task writes", emptyList(),
-            CapabilityType("array", element = CapabilityType("record", fields = mapOf("id" to CapabilityType("string", maximum = 64), "title" to CapabilityType("string", maximum = 120), "complete" to CapabilityType("boolean"))), maximum = 8)),
-        CapabilityFunction("tasks", "Read tasks shared for a show", listOf(CapabilityParameter("show", CapabilityType("string", maximum = 120))),
-            CapabilityType("array", element = CapabilityType("record", fields = mapOf(
-                "id" to CapabilityType("string"), "title" to CapabilityType("string"), "assignee" to CapabilityType("string"),
-                "due" to CapabilityType("string"), "complete" to CapabilityType("boolean"), "checks" to CapabilityType("number"), "done" to CapabilityType("number"))),
+            WireType("array", element = WireType("record", fields = listOf(WireField("id", WireType("string", maximum = 64)), WireField("title", WireType("string", maximum = 120)), WireField("complete", WireType("boolean")))), maximum = 8)),
+        CapabilityFunction("tasks", "Read tasks shared for a show", listOf(Parameter("show", WireType("string", maximum = 120))),
+            WireType("array", element = WireType("record", fields = listOf(WireField("id", WireType("string")), WireField("title", WireType("string")), WireField("assignee", WireType("string")), WireField("due", WireType("string")), WireField("complete", WireType("boolean")), WireField("checks", WireType("number")), WireField("done", WireType("number")))),
                 maximum = 64)),
-        CapabilityFunction("task", "Read one shared task", listOf(CapabilityParameter("id", CapabilityType("string"))),
-            CapabilityType("record", fields = mapOf("id" to CapabilityType("string"), "title" to CapabilityType("string"), "assignee" to CapabilityType("string"),
-                "due" to CapabilityType("string"), "complete" to CapabilityType("boolean"), "status" to CapabilityType("string")))),
+        CapabilityFunction("task", "Read one shared task", listOf(Parameter("id", WireType("string"))),
+            WireType("record", fields = listOf(WireField("id", WireType("string")), WireField("title", WireType("string")), WireField("assignee", WireType("string")), WireField("due", WireType("string")), WireField("complete", WireType("boolean")), WireField("status", WireType("string"))))),
         CapabilityFunction("proposeTask", "Stage a task proposal for native review", listOf(
-            CapabilityParameter("title", CapabilityType("string", maximum = 120)), CapabilityParameter("assignee", CapabilityType("string", maximum = 60)),
-            CapabilityParameter("due", CapabilityType("string")), CapabilityParameter("location", CapabilityType("string", maximum = 120)),
-            CapabilityParameter("instructions", CapabilityType("string", maximum = 512)),
-            CapabilityParameter("checks", CapabilityType("array", element = CapabilityType("string", maximum = 120), maximum = 16))),
-            CapabilityType("record", fields = mapOf("proposalId" to CapabilityType("string"), "state" to CapabilityType("string")))),
-        CapabilityFunction("outcome", "Read the persistent outcome of a task proposal", listOf(CapabilityParameter("proposalId", CapabilityType("string"))),
-            CapabilityType("record", fields = mapOf("state" to CapabilityType("string"), "taskId" to CapabilityType("string"), "detail" to CapabilityType("string")))),
+            Parameter("title", WireType("string", maximum = 120)), Parameter("assignee", WireType("string", maximum = 60)),
+            Parameter("due", WireType("string")), Parameter("location", WireType("string", maximum = 120)),
+            Parameter("instructions", WireType("string", maximum = 512)),
+            Parameter("checks", WireType("array", element = WireType("string", maximum = 120), maximum = 16))),
+            WireType("record", fields = listOf(WireField("proposalId", WireType("string")), WireField("state", WireType("string"))))),
+        CapabilityFunction("outcome", "Read the persistent outcome of a task proposal", listOf(Parameter("proposalId", WireType("string"))),
+            WireType("record", fields = listOf(WireField("state", WireType("string")), WireField("taskId", WireType("string")), WireField("detail", WireType("string"))))),
     ))
     return NativeCapabilities(contract, mapOf(
         "unfinished" to { _ -> JSONArray(store.tasks().filter { !it.complete }.take(8).map { task -> JSONObject().put("id", task.id).put("title", task.title.take(120)).put("complete", false) }) },

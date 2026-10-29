@@ -12,8 +12,8 @@ class AgendaService : SharedAppService() {
     override val capabilities by lazy {
         val text = WireType("string", maximum = 2048)
         val row = WireType("record", fields = listOf("id", "title", "from", "until", "location", "notes").map { WireField(it, text) })
-        nativeCapabilities(SharedCapabilityContract("host/agenda", "Read the shared synthetic Gig Demo schedule; never personal calendars or writes", functions = listOf(
-            SharedCapabilityFunction("events", "Read dedicated demo events on an ISO local date in Europe/Berlin", listOf(Parameter("date", WireType("string", maximum = 10))), WireType("array", maximum = 32, element = row))
+        nativeCapabilities(CapabilityContract("host/agenda", "Read the shared synthetic Gig Demo schedule; never personal calendars or writes", functions = listOf(
+            CapabilityFunction("events", "Read dedicated demo events on an ISO local date in Europe/Berlin", listOf(Parameter("date", WireType("string", maximum = 10))), WireType("array", maximum = 32, element = row))
         )), mapOf("events" to { args ->
             val day = LocalDate.parse(args.getString(0))
             JSONArray(ShowAgenda(this).events(day).take(32).map { event -> JSONObject()

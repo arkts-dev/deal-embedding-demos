@@ -8,12 +8,20 @@ import java.io.File
 fun main(args:Array<String>) {
     val input=File(args[0]);val output=File(args[1]).apply{mkdirs()}
     val contracts=JSONArray(File(args[2]).readText()).let{a->(0 until a.length()).map{CapabilityContract.parse(a.getJSONObject(it).toString())}}
+    val original=contracts.first()
+    val functions=original.functions.toMutableList()
+    val registration=NativeCapabilities(original.copy(functions=functions),functions.associate { it.name to { _:JSONArray -> JSONObject.NULL as Any } })
+    functions.clear()
+    check(registration.contract.functions==original.functions) { "Registration must freeze app-authored contracts" }
+    (registration.contract.functions as? MutableList<*>)?.clear()
+    check(registration.contract.functions==original.functions) { "Returned metadata must not mutate registration authority" }
     val plan=JSONObject(input.readText())
     val emitter=BehaviorCandidate(contracts,plan.has("custom"))
-    val pair=emitter.assemble(plan)
-    check(pair.toString()==emitter.assemble(plan).toString()) { "Nondeterministic maintained emission" }
-    if(input.nameWithoutExtension=="composed-food")check(Regex("function allocate[0-9]+\\(").findAll(pair.getString("deal")).count()==1) { "Identical typed allocation helpers must be shared across actions" }
-    fun rejected(bad:JSONObject) { check(runCatching{emitter.assemble(bad)}.exceptionOrNull() is BehaviorCandidate.Rejected) }
+    fun assemble(value:JSONObject)=emitter.assemble(if(value.has("kind")||value.has("behaviors"))LegacyCompositionFixture(contracts).expand(value)else value)
+    val pair=assemble(plan)
+    check(pair.toString()==assemble(plan).toString()) { "Nondeterministic maintained emission" }
+    if(input.nameWithoutExtension=="composed-food")check(pair.getString("deal").contains("allocation.allocate(")) { "Allocation must use the authored portable algorithm" }
+    fun rejected(bad:JSONObject) { check(runCatching{assemble(bad)}.exceptionOrNull() is BehaviorCandidate.Rejected) }
     if(plan.has("fragments")) {
         rejected(JSONObject(plan.toString()).put("unexpected",true))
         rejected(JSONObject(plan.toString()).apply { getJSONArray("fragments").put(getJSONArray("fragments").getJSONObject(0)) })
@@ -37,7 +45,7 @@ fun main(args:Array<String>) {
     if(plan.has("kind")) {
         val behavior=JSONObject(plan.toString()).apply{remove("title")}
         val wrapped=JSONObject().put("title",plan.getString("title")).put("behaviors",JSONArray().put(behavior))
-        check(pair.toString()==emitter.assemble(wrapped).toString())
+        check(pair.toString()==assemble(wrapped).toString())
         rejected(JSONObject(plan.toString()).put("functions","return 42;"))
         rejected(JSONObject(wrapped.toString()).put("behaviors",wrapped.getJSONArray("behaviors").toString()))
         rejected(JSONObject(plan.toString()).put("unexpected",true))
@@ -67,12 +75,13 @@ fun main(args:Array<String>) {
             variant.getJSONArray("nodes").put(node)
             variant.getJSONArray("actions").put(JSONObject().put("id","AdditionalAllocate").put("fields",JSONArray()).put("steps",JSONArray()).put("updates",JSONArray().put(JSONObject().put("field","rows").put("node","additionalAllocation"))))
             val source=emitter.assemble(variant).getString("deal")
-            return Regex("function allocate[0-9]+\\(").findAll(source).count()
+            check(!Regex("function allocate[0-9]+\\(").containsMatchIn(source)) { "Search must not be generated in Kotlin" }
+            return Regex("allocation\\.allocate\\(").findAll(source).count()
         }
-        check(helpers { it.getJSONObject("params").getJSONArray("quotas").getJSONObject(0).put("minimum","zero") }==1) { "Runtime quota minima must not split identical typed helpers" }
-        check(helpers { it.getJSONObject("params").put("cost","diameterMm") }==2) { "Distinct cost fields must not share helpers" }
-        check(helpers { it.getJSONObject("params").getJSONArray("quotas").put(JSONObject().put("field","vegan").put("minimum","zero")) }==2) { "Different quota arities must not share helpers" }
-        check(pair.toString()==emitter.assemble(plan).toString()) { "Helper cache must reset between different plans" }
+        check(helpers { it.getJSONObject("params").getJSONArray("quotas").getJSONObject(0).put("minimum","zero") }>=2) { "Quota minima must remain call arguments" }
+        check(helpers { it.getJSONObject("params").put("cost","diameterMm") }>=2) { "Distinct cost projections must use the portable search" }
+        check(helpers { it.getJSONObject("params").getJSONArray("quotas").put(JSONObject().put("field","vegan").put("minimum","zero")) }>=2) { "Quota arity must remain data" }
+        check(pair.toString()==emitter.assemble(plan).toString()) { "Assembly must be deterministic between plans" }
     }
     if(input.nameWithoutExtension=="independent") {
         rejected(JSONObject(plan.toString()).apply {

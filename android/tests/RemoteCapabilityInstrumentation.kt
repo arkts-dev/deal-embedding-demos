@@ -9,7 +9,7 @@ import org.json.*
 /** Real Binder boundary, separate provider process, no inference. */
 class RemoteProbeService:CapabilityService(){
     override val capabilities=NativeCapabilities(CapabilityContract("host/remote-probe","Remote echo",listOf(
-        CapabilityFunction("echo","Echo integer",listOf(CapabilityParameter("value",CapabilityType.NumberType)),CapabilityType.NumberType)
+        CapabilityFunction("echo","Echo integer",listOf(Parameter("value",WireType.NumberType)),WireType.NumberType)
     )),mapOf("echo" to {args:JSONArray->args.getInt(0)}))
     override fun authorize(uid:Int)=uid==applicationInfo.uid
     override fun consent()=true
@@ -21,7 +21,7 @@ class RemoteCapabilityInstrumentation:Instrumentation(){
             val ctx=targetContext
             val registry=CapabilityRegistry(ctx,CapabilityDiscovery(ctx){it==ctx.applicationInfo.uid},emptyList())
             val model=object:ModelClient{override fun complete(input:String,previous:String,diagnostics:String,cancellation:GenerationCancellation,log:EmbeddingLog):String=error("Unexpected inference")}
-            ApplicationProtocol(ctx,Embedding(ctx,registry,model,EmbeddingConfig("experience",emptyList(),"remote-${java.util.UUID.randomUUID()}"))).use{api->
+            ApplicationProtocol(ctx,Embedding(ctx,registry,model,RuntimeConfig("experience",emptyList(),"remote-${java.util.UUID.randomUUID()}"))).use{api->
                 check(api.refresh().any{it.module=="host/remote-probe"});api.grant("host/remote-probe")
                 val session=registry.openSession(EmbeddingLog(ctx))
                 try{for(i in 1..1005){

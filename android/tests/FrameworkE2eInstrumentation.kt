@@ -197,7 +197,7 @@ class FrameworkE2eInstrumentation: Instrumentation() {
         // No inference in saved assessment, even if an accidental generation call is added.
         val noModel=object:ModelClient {override fun complete(input:String,previous:String,diagnostics:String,cancellation:GenerationCancellation,log:EmbeddingLog):String=error("Saved assessment must not invoke inference")}
         try {
-            ApplicationProtocol(ctx,Embedding(ctx,registry,noModel,EmbeddingConfig("experience",emptyList(),savedStorage,retainState=true))).use { api ->
+            ApplicationProtocol(ctx,Embedding(ctx,registry,noModel,RuntimeConfig("experience",emptyList(),savedStorage,retainState=true))).use { api ->
                 api.capture(true);Connections.apply(ctx,api)
                 val module=when(reassess){"departure"->"host/trip";"food"->"host/pizza";"equipment"->"host/rental";else->""}
                 if(module.isNotEmpty())api.grant(module)
@@ -237,12 +237,12 @@ class FrameworkE2eInstrumentation: Instrumentation() {
                 val activity=startActivitySync(Intent(ctx,OrganizerActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) as OrganizerActivity
                 val registry=CapabilityRegistry(ctx,CapabilityDiscovery(ctx){uid->Connections.trusted(ctx,uid)},emptyList())
                 // NO candidateTest: semantic failures cannot trigger generation/repair in this benchmark.
-                val config=EmbeddingConfig("experience",emptyList(),storage,retainState=true)
-                ApplicationProtocol(ctx,Embedding(ctx,registry,AssistanceBuild.gateway(),config)).use { api ->
+                val config=RuntimeConfig("experience",emptyList(),storage,retainState=true)
+                ApplicationProtocol(ctx,Embedding(ctx,registry,GatewayModelClient(AssistanceBuild.gateway()),config)).use { api ->
                     api.capture(true);Connections.apply(ctx,api)
                     val module=when(name){"food"->"host/pizza";"departure"->"host/trip";"equipment"->"host/rental";else->""}
                     if(module.isNotEmpty())api.grant(module)
-                    val facts=DiscoveryInput(listOf(DiscoveryFact("task",fact)))
+                    val facts=DiscoveryFacts(listOf(DiscoveryFact("task",fact)))
                     val discoveryStarted=SystemClock.elapsedRealtime()
                     val request=Discovery(ctx,api,AssistanceBuild.discoveryGateway()).use { finder ->
                         val tip=finder.discover(facts).get()

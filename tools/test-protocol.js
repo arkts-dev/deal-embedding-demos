@@ -17,12 +17,16 @@ async function call(name,args,handler){
   await new Promise(resolve=>setImmediate(resolve));
   const requests=JSON.parse(vm.runInContext('dealCapabilities.take()',context));
   for(const request of requests){assert(handler,'Unexpected native invocation: '+request.function);context.reply={id:request.id,ok:true,value:handler(request)};vm.runInContext('dealCapabilities.deliver([reply])',context);}
-  const result=JSON.parse(vm.runInContext('JSON.stringify(publicResults.get(key))',context));
+  const result=JSON.parse(vm.runInContext('JSON.stringify(protocolPlain(publicResults.get(key)))',context));
   if(result.done){if(result.error)throw result.error;return result.value;}
  }
  throw Error('Protocol did not settle');
 }
 (async()=>{
+ const scalar={kind:'number',fields:[],element:null,maximum:128,minimumNumber:-Number.MAX_VALUE,maximumNumber:Number.MAX_VALUE};
+ const contract={module:'host/probe',description:'Probe',version:1,functions:[{name:'read',description:'Read on demand',parameters:[],result:scalar}]};
+ const catalogue=await call('refresh',[],request=>{assert.equal(request.function,'refresh');return [contract];});
+ assert.deepEqual(catalogue,[contract]);
  const source={deal:'literal source',dealui:'literal view'};
  const experience=await call('load',['Fixture',source.deal,source.dealui],request=>{assert.equal(request.function,'load');assert.deepEqual(request.args,['Fixture',source]);return {experience:{id:'e',title:'Fixture',origin:'supplied',attempts:0},source};});
  assert.equal(experience.id,'e');

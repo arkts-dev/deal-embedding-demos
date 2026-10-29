@@ -21,11 +21,11 @@ class DiscoveryLiveInstrumentation : Instrumentation() {
             Thread.sleep(1500)
             var reads = 0
             val native = NativeCapabilities(CapabilityContract("host/calendar", "Selected Calendar event and native-reviewed departure proposal", listOf(
-                CapabilityFunction("start", "Read selected event start minute and capture its revision", emptyList(), CapabilityType("number", minimumNumber = 0.0, maximumNumber = 1439.0)),
-                CapabilityFunction("propose", "Stage a departure minute for native user confirmation; never writes", listOf(CapabilityParameter("minute", CapabilityType("number", minimumNumber = 0.0, maximumNumber = 1439.0))), CapabilityType.NullType)
+                CapabilityFunction("start", "Read selected event start minute and capture its revision", emptyList(), WireType("number", minimumNumber = 0.0, maximumNumber = 1439.0)),
+                CapabilityFunction("propose", "Stage a departure minute for native user confirmation; never writes", listOf(Parameter("minute", WireType("number", minimumNumber = 0.0, maximumNumber = 1439.0))), WireType.NullType)
             )), mapOf("start" to { _: JSONArray -> reads++; 900 }, "propose" to { _: JSONArray -> reads++; JSONObject.NULL }))
             val model = object : ModelClient { override fun complete(input: String, previous: String, diagnostics: String, cancellation: GenerationCancellation, log: EmbeddingLog): String = error("Unexpected heavy generation") }
-            ApplicationProtocol(targetContext, Embedding(targetContext, CapabilityRegistry(targetContext, CapabilityDiscovery(targetContext) { false }, listOf(native)), model, EmbeddingConfig("preparation", emptyList(), "discovery-live-test"))).use { api ->
+            ApplicationProtocol(targetContext, Embedding(targetContext, CapabilityRegistry(targetContext, CapabilityDiscovery(targetContext) { false }, listOf(native)), model, RuntimeConfig("preparation", emptyList(), "discovery-live-test"))).use { api ->
                 val cases = listOf(
                     Triple("budget", true, "Gig Demo supplier review tomorrow at 15:00. Notes: Before deciding, compare the approved 12000 EUR budget with the revised 13750 EUR quotation. The comparison is not done."),
                     Triple("unrelated", false, "Gig Demo dentist appointment tomorrow at 15:00. No notes, preparation requests or unresolved decisions."),
@@ -38,7 +38,7 @@ class DiscoveryLiveInstrumentation : Instrumentation() {
                         val start = android.os.SystemClock.elapsedRealtime()
                         val receipt = JSONObject().put("id", id).put("expectedSuggestion", expected)
                         try {
-                            val tip = discovery.discover(DiscoveryInput(listOf(DiscoveryFact("event", text)))).get(120, TimeUnit.SECONDS)
+                            val tip = discovery.discover(DiscoveryFacts(listOf(DiscoveryFact("event", text)))).get(120, TimeUnit.SECONDS)
                             receipt.put("suggested", tip != null).put("title", tip?.title).put("brief", tip?.brief).put("correctPresence", (tip != null) == expected)
                         } catch (error: Throwable) { receipt.put("error", error.toString()) }
                         receipt.put("elapsedMs", android.os.SystemClock.elapsedRealtime() - start); receipts.put(receipt)

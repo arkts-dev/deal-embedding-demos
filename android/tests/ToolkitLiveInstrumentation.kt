@@ -28,8 +28,8 @@ class ToolkitLiveInstrumentation : Instrumentation() {
                     val started=System.currentTimeMillis()
                     var cleanup:ApplicationProtocol?=null
                     try {
-                        val p=ApplicationProtocol(ctx,Embedding(ctx,CapabilityRegistry(ctx,CapabilityDiscovery(ctx){false},emptyList()),AssistanceBuild.gateway(),
-                            EmbeddingConfig("experience",emptyList(),"toolkit-live-${UUID.randomUUID()}",retainState=true)))
+                        val p=ApplicationProtocol(ctx,Embedding(ctx,CapabilityRegistry(ctx,CapabilityDiscovery(ctx){false},emptyList()),GatewayModelClient(AssistanceBuild.gateway()),
+                            RuntimeConfig("experience",emptyList(),"toolkit-live-${UUID.randomUUID()}",retainState=true)))
                         cleanup=p
                         val facts=JSONObject().put("approvedCents",approved).put("committedCents",committed).put("currency","EUR")
                         val schema=WireType("record",fields=listOf(WireField("approvedCents",WireType("number")),WireField("committedCents",WireType("number")),WireField("currency",WireType("string",maximum=3))))

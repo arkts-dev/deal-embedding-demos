@@ -27,7 +27,7 @@ export view Main(state:app.State):View {ui.Column(){ui.IntField(value:state.valu
 """ + "\n")
             ApplicationProtocol(targetContext, Embedding(targetContext,
                 CapabilityRegistry(targetContext, CapabilityDiscovery(targetContext) { false }, emptyList()),model,
-                EmbeddingConfig("experience",emptyList(),"cold-process-draft",retainState=true))).use { api ->
+                RuntimeConfig("experience",emptyList(),"cold-process-draft",retainState=true))).use { api ->
                 if (phase == "write") api.saved().forEach(api::forget)
                 val e = if (phase == "write") api.load("Process draft",source) else api.saved().single()
                 check(api.source(e) == source) { "Checked source bytes changed across process restart" }

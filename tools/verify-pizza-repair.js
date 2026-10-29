@@ -3,7 +3,7 @@
 const fs=require('fs'),path=require('path'),vm=require('vm'),assert=require('assert');
 const dir=path.resolve(process.argv[2]),bindings=path.resolve(process.argv[3]);
 for(const n of ['sandbox.js','dealui-session.js','ui-session.js'])vm.runInThisContext(fs.readFileSync(path.join(bindings,n),'utf8'));
-const type=kind=>({kind}),record=fields=>({kind:'record',fields:Object.fromEntries(Object.entries(fields).map(([k,v])=>[k,type(v)]))});
+const type=kind=>({kind}),record=fields=>({kind:'record',fields:Object.entries(fields).map(([name,kind])=>({name,type:type(kind),optional:false}))});
 configureDealCapabilities([{module:'host/pizza',functions:[{name:'menu',parameters:[],result:{kind:'array',element:record({id:'string',name:'string',size:'string',cents:'number',vegan:'boolean'})}},{name:'delivery',parameters:[{name:'arrival',type:{kind:'string'}}],result:{kind:'array',element:record({id:'string',from:'string',until:'string',meetsRequirement:'boolean',deliveryCents:'number'})}}]}]);
 const factories={};function walk(d){for(const n of fs.readdirSync(d)){const f=path.join(d,n);if(fs.statSync(f).isDirectory())walk(f);else if(n.endsWith('.js'))factories[path.relative(dir,f)]=new Function('require','module','exports','process','console',fs.readFileSync(f,'utf8'));}}walk(dir);
 const menu=[{id:'margherita',name:'Margherita',size:'30 cm',cents:1000,vegan:false},{id:'garden',name:'Garden Vegan',size:'30 cm',cents:1200,vegan:true},{id:'pepperoni',name:'Pepperoni',size:'30 cm',cents:1300,vegan:false}];

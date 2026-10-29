@@ -15,7 +15,7 @@ class InspectionInstrumentation : Instrumentation() {
         val ctx = targetContext
         val model = object : ModelClient { override fun complete(input:String, previous:String, diagnostics:String, cancellation:GenerationCancellation, log:EmbeddingLog):String = error("Unexpected inference") }
         try {
-            ApplicationProtocol(ctx, Embedding(ctx, CapabilityRegistry(ctx, CapabilityDiscovery(ctx){false}, emptyList()), model, EmbeddingConfig("experience", emptyList(), "inspection-${UUID.randomUUID()}"))).use { api ->
+            ApplicationProtocol(ctx, Embedding(ctx, CapabilityRegistry(ctx, CapabilityDiscovery(ctx){false}, emptyList()), model, RuntimeConfig("experience", emptyList(), "inspection-${UUID.randomUUID()}"))).use { api ->
                 run {
                     fun event(trace:String, experience:String="", stage:String="source", outcome:String="started", target:String="", time:Long=1) = JSONObject().put("trace",trace).put("experience",experience).put("stage",stage).put("outcome",outcome).put("target",target).put("time",time.toString())
                     // Reversed links require fixed-point expansion; similarly named targets do not link.
@@ -44,7 +44,7 @@ export view Main(state:app.State):View {ui.Column(){ui.IntText(value:state.value
                     try {
                         fun inspect(): ApplicationProtocol = ApplicationProtocol(ctx, Embedding(ctx,
                             CapabilityRegistry(ctx, CapabilityDiscovery(ctx){false}, emptyList()), model,
-                            EmbeddingConfig("experience", emptyList(), "inspect-reader-${UUID.randomUUID()}")))
+                            RuntimeConfig("experience", emptyList(), "inspect-reader-${UUID.randomUUID()}")))
                         inspect().use { reader ->
                             reader.capture(true)
                             check(api.capturesContent()) { "Inspect capture did not reach active protocol" }

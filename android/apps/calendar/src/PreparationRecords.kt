@@ -14,8 +14,8 @@ object PreparationRecords {
         events.put(JSONObject(value.toString()).put("stage", stage).put("at", System.currentTimeMillis()))
         check(p.edit().putString("events", events.toString()).commit())
     }
-    fun opportunityApi(context: Context, registry: dev.deal.embedding.capabilities.CapabilityRegistry? = null): ApplicationProtocol {
-        val capabilities = registry ?: dev.deal.embedding.capabilities.CapabilityRegistry(context, dev.deal.embedding.capabilities.CapabilityDiscovery(context) { false }, emptyList())
-        return ApplicationProtocol(context, Embedding(context, capabilities, GenerationBuild.gateway(), EmbeddingConfig("experience", emptyList(), "preparation-opportunity", retainState = true)))
+    fun opportunityApi(context: Context, capabilities: List<dev.deal.embedding.capabilities.NativeCapabilities> = emptyList()): ApplicationProtocol {
+        return Embedding.open(context, EmbeddingConfig("preparation-opportunity", GenerationBuild.gateway(), dev.deal.shell.AssistanceBuild.discoveryGateway(), retainState = true), capabilities,
+            trustProvider = { uid -> uid != context.applicationInfo.uid && dev.deal.shell.Connections.trusted(context,uid) })
     }
 }

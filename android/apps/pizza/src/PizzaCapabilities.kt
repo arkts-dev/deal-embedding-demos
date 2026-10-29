@@ -1,5 +1,7 @@
 package dev.deal.apps.pizza
 
+import dev.deal.embedding.*
+import dev.deal.embedding.WireField
 import android.content.Context
 import dev.deal.embedding.capabilities.*
 import org.json.*
@@ -9,22 +11,16 @@ fun pizzaCapabilities(context: Context): NativeCapabilities {
     val store = PizzaStore(context)
     val contract = CapabilityContract("host/pizza", "Menu, dietary information, delivery windows and orders", listOf(
         CapabilityFunction("menu", "List the menu with prices, ingredients and dietary data", emptyList(),
-            CapabilityType("array", maximum = 32, element = CapabilityType("record", fields = mapOf(
-                "id" to CapabilityType("string"), "name" to CapabilityType("string"), "size" to CapabilityType("string"),
-                "diameterMm" to CapabilityType("number", minimumNumber = 1.0),
-                "cents" to CapabilityType("number"), "vegan" to CapabilityType("boolean"), "vegetarian" to CapabilityType("boolean"),
-                "ingredients" to CapabilityType("string"), "allergens" to CapabilityType("string"))))),
+            WireType("array", maximum = 32, element = WireType("record", fields = listOf(WireField("id", WireType("string")), WireField("name", WireType("string")), WireField("size", WireType("string")), WireField("diameterMm", WireType("number", minimumNumber = 1.0)), WireField("cents", WireType("number")), WireField("vegan", WireType("boolean")), WireField("vegetarian", WireType("boolean")), WireField("ingredients", WireType("string")), WireField("allergens", WireType("string")))))),
         CapabilityFunction("delivery", "List delivery windows with whether each ends by requiredBy. requiredBy must be exactly HH:mm, 00:00..23:59, local Europe/Berlin time on the delivery day. Malformed times are rejected, never defaulted.", listOf(
-            CapabilityParameter("requiredBy", CapabilityType("string"))),
-            CapabilityType("array", maximum = 8, element = CapabilityType("record", fields = mapOf(
-                "id" to CapabilityType("string"), "from" to CapabilityType("string"), "until" to CapabilityType("string"),
-                "meetsRequirement" to CapabilityType("boolean"), "deliveryCents" to CapabilityType("number"))))),
+            Parameter("requiredBy", WireType("string"))),
+            WireType("array", maximum = 8, element = WireType("record", fields = listOf(WireField("id", WireType("string")), WireField("from", WireType("string")), WireField("until", WireType("string")), WireField("meetsRequirement", WireType("boolean")), WireField("deliveryCents", WireType("number")))))),
         CapabilityFunction("proposeOrder", "Stage an order for native review", listOf(
-            CapabilityParameter("items", CapabilityType("string")), CapabilityParameter("windowId", CapabilityType("string")),
-            CapabilityParameter("recipient", CapabilityType("string"))),
-            CapabilityType("record", fields = mapOf("proposalId" to CapabilityType("string"), "state" to CapabilityType("string")))),
-        CapabilityFunction("outcome", "Read an order proposal outcome", listOf(CapabilityParameter("proposalId", CapabilityType("string"))),
-            CapabilityType("record", fields = mapOf("state" to CapabilityType("string"), "orderId" to CapabilityType("string"), "detail" to CapabilityType("string")))),
+            Parameter("items", WireType("string")), Parameter("windowId", WireType("string")),
+            Parameter("recipient", WireType("string"))),
+            WireType("record", fields = listOf(WireField("proposalId", WireType("string")), WireField("state", WireType("string"))))),
+        CapabilityFunction("outcome", "Read an order proposal outcome", listOf(Parameter("proposalId", WireType("string"))),
+            WireType("record", fields = listOf(WireField("state", WireType("string")), WireField("orderId", WireType("string")), WireField("detail", WireType("string"))))),
     ))
     return NativeCapabilities(contract, mapOf(
         "menu" to { _ -> JSONArray(store.menu.map { item -> JSONObject().put("id", item.id).put("name", item.name).put("size", item.size)

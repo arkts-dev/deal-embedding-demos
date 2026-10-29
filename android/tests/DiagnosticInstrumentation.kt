@@ -16,7 +16,7 @@ class DiagnosticInstrumentation:Instrumentation(){
   try{
    val model=object:ModelClient{override fun complete(input:String,previous:String,diagnostics:String,cancellation:GenerationCancellation,log:EmbeddingLog):String=error("Unexpected inference")}
    val registry=CapabilityRegistry(ctx,CapabilityDiscovery(ctx){false},emptyList())
-   ApplicationProtocol(ctx,Embedding(ctx,registry,model,EmbeddingConfig("experience",emptyList(),"diagnostic-${UUID.randomUUID()}"))).use{api->
+   ApplicationProtocol(ctx,Embedding(ctx,registry,model,RuntimeConfig("experience",emptyList(),"diagnostic-${UUID.randomUUID()}"))).use{api->
     // Nonempty directory as temporary file makes write fail. As destination it makes rename fail.
     File(directory,"generation-status.json.tmp").mkdirs()
     DiagnosticFiles.write(directory,"generation-status.json","running")

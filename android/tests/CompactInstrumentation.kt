@@ -32,7 +32,7 @@ class CompactInstrumentation : Instrumentation() {
   val model=object:ModelClient{override fun complete(input:String,previous:String,diagnostics:String,cancellation:GenerationCancellation,log:EmbeddingLog):String{
    calls++;check(calls==1&&previous.isEmpty());return nativeCompactFixture(plan)
   }}
-  ApplicationProtocol(targetContext,Embedding(targetContext,CapabilityRegistry(targetContext,CapabilityDiscovery(targetContext){false},emptyList()),model,EmbeddingConfig("experience",emptyList(),"behavior-${UUID.randomUUID()}"))).use{api->
+  ApplicationProtocol(targetContext,Embedding(targetContext,CapabilityRegistry(targetContext,CapabilityDiscovery(targetContext){false},emptyList()),model,RuntimeConfig("experience",emptyList(),"behavior-${UUID.randomUUID()}"))).use{api->
    val e=api.generate(api.request("Counter","Editable counter",api.snapshot(WireType("record"),"{}")))
    check(api.source(e)==Source(pair.getString("deal"),pair.getString("dealui")))
    val s=api.run(e)
@@ -64,11 +64,11 @@ class CompactInstrumentation : Instrumentation() {
     else->error("Unexpected fixture call")
    }
   }})}
-  for(task in listOf("budget","departure","food","equipment","fragment-budget","fragment-departure","fragment-food","fragment-equipment","composed-budget","composed-departure","composed-food","composed-equipment")){
+  for(task in listOf("budget","departure","food","equipment","composed-budget","composed-departure","composed-food","composed-equipment")){
    val scenario=task.removePrefix("fragment-").removePrefix("composed-")
    val fixture=JSONObject(context.assets.open("behavior-fixtures/$task.json").bufferedReader().use{it.readText()})
    val emitted=BehaviorCandidate(contracts).assemble(fixture)
-   ApplicationProtocol(targetContext,Embedding(targetContext,CapabilityRegistry(targetContext,CapabilityDiscovery(targetContext){false},providers),object:ModelClient{override fun complete(input:String,previous:String,diagnostics:String,cancellation:GenerationCancellation,log:EmbeddingLog):String=error("No inference in maintained device fixture")},EmbeddingConfig("experience",emptyList(),"behavior-$task-${UUID.randomUUID()}"))).use{api->
+   ApplicationProtocol(targetContext,Embedding(targetContext,CapabilityRegistry(targetContext,CapabilityDiscovery(targetContext){false},providers),object:ModelClient{override fun complete(input:String,previous:String,diagnostics:String,cancellation:GenerationCancellation,log:EmbeddingLog):String=error("No inference in maintained device fixture")},RuntimeConfig("experience",emptyList(),"behavior-$task-${UUID.randomUUID()}"))).use{api->
     api.refresh();contracts.forEach{api.grant(it.module)}
     val readsBefore=providerReads;val exp=api.load(task,Source(emitted.getString("deal"),emitted.getString("dealui")));val session=api.run(exp)
     fun nodes(n:JSONObject):List<JSONObject> = listOf(n)+(0 until n.getJSONArray("children").length()).flatMap{nodes(n.getJSONArray("children").getJSONObject(it))}

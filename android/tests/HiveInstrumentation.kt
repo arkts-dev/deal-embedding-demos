@@ -19,7 +19,7 @@ open class HiveInstrumentation : Instrumentation() {
             val expected = setOf("host/agenda", "host/show", "host/rental", "host/pizza", "host/todo", "host/trip") - ownModule
             val registry = CapabilityRegistry(ctx, CapabilityDiscovery(ctx) { uid -> uid != ctx.applicationInfo.uid && Connections.trusted(ctx, uid) }, emptyList())
             val noInference = object : ModelClient { override fun complete(input: String, previous: String, diagnostics: String, cancellation: GenerationCancellation, log: EmbeddingLog): String = error("Unexpected inference") }
-            ApplicationProtocol(ctx, Embedding(ctx, registry, noInference, EmbeddingConfig("experience", emptyList(), "hive-test-${java.util.UUID.randomUUID()}"))).use { api ->
+            ApplicationProtocol(ctx, Embedding(ctx, registry, noInference, RuntimeConfig("experience", emptyList(), "hive-test-${java.util.UUID.randomUUID()}"))).use { api ->
                 val contracts = api.refresh()
                 check(contracts.map { it.module }.toSet() == expected) { "${ctx.packageName}: ${contracts.map { it.module }} != $expected" }
                 // Discovery's exact bounded full catalogue remains admissible, not a filtered shortlist.
@@ -49,7 +49,7 @@ open class HiveInstrumentation : Instrumentation() {
                     api.grant(contract.module)
                     val shared = probe(contract.module, name, args)
                     // Sharing is a user decision, never enabled by this test.
-                    if (shared.getBoolean("ok")) contract.native().functions.single { it.name == name }.result.validate(shared.get("value"))
+                    if (shared.getBoolean("ok")) contract.functions.single { it.name == name }.result.validate(shared.get("value"))
                     else check(shared.getJSONObject("error").getString("code") == "PROVIDER_DENIED") { shared.toString() }
                     api.revoke(contract.module)
                     check(!probe(contract.module, name, args).getBoolean("ok")) { "Revoked module executed" }

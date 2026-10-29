@@ -68,7 +68,7 @@ class OrganizerActivity : ComponentActivity() {
                             when {
                                 show == null -> EmptyPlan(onInitialize = { show = store.initialize() })
                                 selectedRequirement != null -> AssistedTask(listOf(DiscoveryFact("requirement", show!!.requirement(selectedRequirement!!)!!.let { r ->
-                                    "Synthetic demo show ${show!!.title}, ${show!!.date} at ${show!!.venue}, ${show!!.address}. ${r.act}: ${r.quantity} × ${r.name}. Specification ${r.specification}. Needed from ${java.time.Instant.ofEpochMilli(r.from)} until ${java.time.Instant.ofEpochMilli(r.until)} at ${r.location}. Status ${r.summary}. Notes ${r.notes}."
+                                    "Show ${show!!.title}, ${show!!.date} at ${show!!.venue}, ${show!!.address}. ${r.act}: ${r.quantity} × ${r.name}. Specification ${r.specification}. Needed from ${java.time.Instant.ofEpochMilli(r.from)} until ${java.time.Instant.ofEpochMilli(r.until)} at ${r.location}. Status ${r.summary}. Notes ${r.notes}."
                                 })), storageName = "organizer-protocol", title = show!!.requirement(selectedRequirement!!)!!.name, protocolFactory = { OrganizerHost(it).embedding },
                                     review = { experience -> PreparedSelectionReview(this@OrganizerActivity, experience.id) }) { RequirementDetail(
                                     show = show!!, requirementId = selectedRequirement!!,

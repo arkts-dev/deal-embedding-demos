@@ -22,10 +22,10 @@ class HardeningInstrumentation:Instrumentation(){
             check(UpdateCursor::class.java.declaredFields.none{Map::class.java.isAssignableFrom(it.type)})
             for(invalid in listOf("forged",cursors.issue(10001),ancient+"x",UpdateCursor().issue(0))){check(runCatching{cursors.revision(invalid,10000)}.exceptionOrNull().let{it is ProtocolFailure&&it.code=="INVALID_CURSOR"})}
             var calls=0
-            val probe=NativeCapabilities(CapabilityContract("host/probe","probe",listOf(CapabilityFunction("ping","ping",emptyList(),CapabilityType.NumberType))),mapOf("ping" to {_:JSONArray->++calls}))
+            val probe=NativeCapabilities(CapabilityContract("host/probe","probe",listOf(CapabilityFunction("ping","ping",emptyList(),WireType.NumberType))),mapOf("ping" to {_:JSONArray->++calls}))
             val registry=CapabilityRegistry(context,CapabilityDiscovery(context){false},listOf(probe))
             val model=object:ModelClient{override fun complete(input:String,previous:String,diagnostics:String,cancellation:GenerationCancellation,log:EmbeddingLog):String=throw ProtocolFailure("AUDIT_LIMIT","Fixture provider refusal")}
-            val config=EmbeddingConfig("experience",emptyList(),"hardening-${java.util.UUID.randomUUID()}")
+            val config=RuntimeConfig("experience",emptyList(),"hardening-${java.util.UUID.randomUUID()}")
             val mechanisms=Embedding(context,registry,model,config)
             protocol=ApplicationProtocol(context,mechanisms)
             val api=protocol
@@ -95,7 +95,7 @@ export view Main(state:app.State):View {ui.Column(){ui.IntText(value:state.value
             check(runCatching{api.source(rejected)}.isFailure)
             // Real checked candidate, forced catalogue revision mismatch at mount: cleanup survives failed activation.
             val failed=api.load("Failed mount",source)
-            val frozen=field(mechanisms,"config") as EmbeddingConfig
+            val frozen=field(mechanisms,"config") as RuntimeConfig
             val old=frozen.contracts;frozen.contracts=emptyList()
             val candidateSurface=ExperienceSurface(api,failed)
             check(runCatching{api.withPreparation(failed){candidateSurface.activate{error("Unexpected callback")}}}.isFailure)
@@ -127,20 +127,20 @@ export view Main(state:app.State):View {ui.Column(){ui.IntText(value:state.value
             val rejectedPair=nativeSourceFixture(source.deal+"\nlet broken: number = ;",source.dealui)
             var repeatCalls=0
             val repeatedModel=object:ModelClient{override fun complete(input:String,previous:String,diagnostics:String,cancellation:GenerationCancellation,log:EmbeddingLog):String { if(JSONObject(input.substringAfterLast("\nNATIVE TOOL TURN\n")).optBoolean("compact"))return nativeFallbackFixture();repeatCalls++;if(repeatCalls>5)throw ProtocolFailure("FIXTURE_DONE","fixture");return if(repeatCalls==1)rejectedPair else "invalid patch" }}
-            ApplicationProtocol(context,Embedding(context,CapabilityRegistry(context,CapabilityDiscovery(context){false},emptyList()),repeatedModel,EmbeddingConfig("experience",emptyList(),"repeated-${java.util.UUID.randomUUID()}"))).use{other->
+            ApplicationProtocol(context,Embedding(context,CapabilityRegistry(context,CapabilityDiscovery(context){false},emptyList()),repeatedModel,RuntimeConfig("experience",emptyList(),"repeated-${java.util.UUID.randomUUID()}"))).use{other->
                 val r=other.request("Repeated","Fixture request",other.snapshot(WireType("record"),"{}"))
                 check(runCatching{other.generate(r)}.exceptionOrNull().let{it is ProtocolFailure&&it.code=="FIXTURE_DONE"})
             }
             val distinct=java.util.concurrent.atomic.AtomicInteger()
             val exhaustedModel=object:ModelClient{override fun complete(input:String,previous:String,diagnostics:String,cancellation:GenerationCancellation,log:EmbeddingLog):String { val n=distinct.incrementAndGet();if(n>40)throw ProtocolFailure("FIXTURE_DONE","fixture");return if(n==1)rejectedPair else "invalid patch $n" }}
-            ApplicationProtocol(context,Embedding(context,CapabilityRegistry(context,CapabilityDiscovery(context){false},emptyList()),exhaustedModel,EmbeddingConfig("experience",emptyList(),"exhausted-${java.util.UUID.randomUUID()}"))).use{other->
+            ApplicationProtocol(context,Embedding(context,CapabilityRegistry(context,CapabilityDiscovery(context){false},emptyList()),exhaustedModel,RuntimeConfig("experience",emptyList(),"exhausted-${java.util.UUID.randomUUID()}"))).use{other->
                 val r=other.request("Exhausted","Fixture request",other.snapshot(WireType("record"),"{}"))
                 check(runCatching{other.generate(r)}.exceptionOrNull().let{it is ProtocolFailure&&it.code=="FIXTURE_DONE"});check(distinct.get()==41)
             }
             for((thrown,expected) in listOf(java.net.ConnectException("fixture") to "GATEWAY_UNREACHABLE",java.net.SocketTimeoutException("fixture") to "MODEL_TIMEOUT")){
                 var transportCalls=0
                 val failureModel=object:ModelClient{override fun complete(input:String,previous:String,diagnostics:String,cancellation:GenerationCancellation,log:EmbeddingLog):String {transportCalls++;if(transportCalls>2)throw ProtocolFailure("FIXTURE_DONE","fixture");throw thrown}}
-                ApplicationProtocol(context,Embedding(context,CapabilityRegistry(context,CapabilityDiscovery(context){false},emptyList()),failureModel,EmbeddingConfig("experience",emptyList(),"transport-${java.util.UUID.randomUUID()}"))).use{other->
+                ApplicationProtocol(context,Embedding(context,CapabilityRegistry(context,CapabilityDiscovery(context){false},emptyList()),failureModel,RuntimeConfig("experience",emptyList(),"transport-${java.util.UUID.randomUUID()}"))).use{other->
                     val r=other.request("Transport","Fixture request",other.snapshot(WireType("record"),"{}"))
                     check(runCatching{other.generate(r)}.exceptionOrNull().let{it is ProtocolFailure&&it.code==if(thrown is java.net.SocketTimeoutException || thrown is java.net.ConnectException)"FIXTURE_DONE" else expected})
                 }

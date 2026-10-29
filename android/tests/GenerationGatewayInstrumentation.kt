@@ -73,17 +73,17 @@ class GenerationGatewayInstrumentation : Instrumentation() {
             val unicodeDigest=java.security.MessageDigest.getInstance("SHA-256").digest("1:🌍1:界".toByteArray()).joinToString("") { "%02x".format(it) }
             check(GenerationTelemetry.revision(unicode)==unicodeDigest)
             // Canonical catalogues preserve field names/positional parameters while sorting inventories.
-            val intType=CapabilityType("number")
-            val fields=linkedMapOf("optionalFields" to intType,"alpha" to intType)
-            fun catalog(reverse:Boolean,parameters:List<CapabilityParameter>):String {
-                val keys=if(reverse)fields.entries.reversed().associate { it.toPair() } else fields
-                val type=CapabilityType("record",fields=keys,optionalFields=if(reverse)linkedSetOf("alpha","optionalFields") else linkedSetOf("optionalFields","alpha"))
+            val intType=WireType("number")
+            val fields = listOf(WireField("optionalFields", intType), WireField("alpha", intType))
+            fun catalog(reverse:Boolean,parameters:List<Parameter>):String {
+                val keys=if(reverse)fields.reversed() else fields
+                val type=WireType("record",fields=keys.map { it.copy(optional=true) })
                 val functions=listOf(CapabilityFunction("read","Read",parameters,type),CapabilityFunction("other","Other",emptyList(),intType))
                 val contracts=listOf(CapabilityContract("host/beta","Beta",if(reverse)functions.reversed() else functions),CapabilityContract("host/alpha","Alpha",listOf(functions.last())))
-                val config=EmbeddingConfig("experience",if(reverse)contracts.reversed() else contracts,"canonical-fixture")
-                return Class.forName("dev.deal.embedding.ExperienceGeneratorKt").getDeclaredMethod("canonicalCatalog",EmbeddingConfig::class.java).invoke(null,config) as String
+                val config=RuntimeConfig("experience",if(reverse)contracts.reversed() else contracts,"canonical-fixture")
+                return Class.forName("dev.deal.embedding.ExperienceGeneratorKt").getDeclaredMethod("canonicalCatalog",RuntimeConfig::class.java).invoke(null,config) as String
             }
-            val parameters=listOf(CapabilityParameter("first",intType),CapabilityParameter("second",intType))
+            val parameters=listOf(Parameter("first",intType),Parameter("second",intType))
             check(catalog(false,parameters)==catalog(true,parameters))
             check(catalog(false,parameters)!=catalog(true,parameters.reversed()))
             val registry = CapabilityRegistry(targetContext, CapabilityDiscovery(targetContext) { false }, emptyList())
@@ -97,8 +97,8 @@ class GenerationGatewayInstrumentation : Instrumentation() {
                 check(body.get("diagnostics") is String)
                 reply(client, envelope(pair), chunked = true)
             }.use { server ->
-                val config = EmbeddingConfig("experience", emptyList(), "gateway-fixture-${UUID.randomUUID()}")
-                ApplicationProtocol(targetContext, Embedding(targetContext, registry, GenerationGatewayConfig(server.endpoint, "fixture-backend"), config)).use { api ->
+                val config = RuntimeConfig("experience", emptyList(), "gateway-fixture-${UUID.randomUUID()}")
+                ApplicationProtocol(targetContext, Embedding(targetContext, registry, GatewayModelClient(GenerationGatewayConfig(server.endpoint, "fixture-backend")), config)).use { api ->
                     val request = api.request("Gateway fixture", "Gateway fixture: editable counter", api.snapshot(WireType("record"), "{}"))
                     val trace = api.requestTrace(request)
                     val experience = try { api.generate(request) } catch (error: Throwable) {
@@ -158,7 +158,7 @@ class GenerationGatewayInstrumentation : Instrumentation() {
                     return nativePatchFixture(digest,"next.m_value = v1 +;","next.m_value = v1;")
                 }
             }
-            ApplicationProtocol(targetContext,Embedding(targetContext,CapabilityRegistry(targetContext,CapabilityDiscovery(targetContext){false},emptyList()),patchModel,EmbeddingConfig("experience",emptyList(),"patch-${UUID.randomUUID()}"))).use { api ->
+            ApplicationProtocol(targetContext,Embedding(targetContext,CapabilityRegistry(targetContext,CapabilityDiscovery(targetContext){false},emptyList()),patchModel,RuntimeConfig("experience",emptyList(),"patch-${UUID.randomUUID()}"))).use { api ->
                 val request=api.request("Patch fixture","Editable counter",api.snapshot(WireType("record"),"{}"))
                 val e=api.generate(request);check(repairCalls==4 && api.source(e)==source)
                 val s=api.run(e);val tree=api.next(s,"").snapshot.tree
@@ -188,7 +188,7 @@ class GenerationGatewayInstrumentation : Instrumentation() {
                         if(cancelledCase)throw CancellationException("fixture") else throw ProtocolFailure("FIXTURE_OPERATIONAL","fixture")
                     }
                 }
-                ApplicationProtocol(targetContext,Embedding(targetContext,CapabilityRegistry(targetContext,CapabilityDiscovery(targetContext){false},emptyList()),failedModel,EmbeddingConfig("experience",emptyList(),"failure-${UUID.randomUUID()}"))).use { api ->
+                ApplicationProtocol(targetContext,Embedding(targetContext,CapabilityRegistry(targetContext,CapabilityDiscovery(targetContext){false},emptyList()),failedModel,RuntimeConfig("experience",emptyList(),"failure-${UUID.randomUUID()}"))).use { api ->
                     val request=api.request("Failure fixture","Counter",api.snapshot(WireType("record"),"{}"))
                     check(runCatching { api.generate(request) }.isFailure)
                     EmbeddingLog.flush(targetContext)
@@ -202,7 +202,7 @@ class GenerationGatewayInstrumentation : Instrumentation() {
             val invalidModel=object:ModelClient {
                 override fun complete(input:String,previous:String,diagnostics:String,cancellation:GenerationCancellation,log:EmbeddingLog):String { invalidCalls++;if(invalidCalls==1)return "{\"deal\":\"missing view\"}";check(previous.isEmpty() && input.contains("Invalid tool response"));return pair }
             }
-            ApplicationProtocol(targetContext,Embedding(targetContext,CapabilityRegistry(targetContext,CapabilityDiscovery(targetContext){false},emptyList()),invalidModel,EmbeddingConfig("experience",emptyList(),"invalid-${UUID.randomUUID()}"))).use { api ->
+            ApplicationProtocol(targetContext,Embedding(targetContext,CapabilityRegistry(targetContext,CapabilityDiscovery(targetContext){false},emptyList()),invalidModel,RuntimeConfig("experience",emptyList(),"invalid-${UUID.randomUUID()}"))).use { api ->
                 val request=api.request("Invalid fixture","Counter",api.snapshot(WireType("record"),"{}"))
                 val recovered=api.generate(request)
                 check(invalidCalls==2 && api.source(recovered)==source)
@@ -215,9 +215,9 @@ class GenerationGatewayInstrumentation : Instrumentation() {
             val noDiscoveryGeneration = object : ModelClient {
                 override fun complete(input: String, previous: String, diagnostics: String, cancellation: GenerationCancellation, log: EmbeddingLog): String = error("Discovery must not generate source")
             }
-            ApplicationProtocol(targetContext, Embedding(targetContext, discoveryRegistry, noDiscoveryGeneration, EmbeddingConfig("experience", emptyList(), "remote-discovery-${UUID.randomUUID()}"))).use { api ->
-                val facts = dev.deal.embedding.discovery.DiscoveryInput(listOf(dev.deal.embedding.discovery.DiscoveryFact("budget", "Compare unfinished budget 18000 and committed 19750 EUR cents.")))
-                val suggestion = """{"title":"Budget","brief":"Editable amounts 18000 and 19750 cents with recomputing difference.","factIds":["budget"],"capabilityIds":[]}"""
+            ApplicationProtocol(targetContext, Embedding(targetContext, discoveryRegistry, noDiscoveryGeneration, RuntimeConfig("experience", emptyList(), "remote-discovery-${UUID.randomUUID()}"))).use { api ->
+                val facts = dev.deal.embedding.discovery.DiscoveryFacts(listOf(dev.deal.embedding.discovery.DiscoveryFact("budget", "Compare unfinished budget 18000 and committed 19750 EUR cents.")))
+                val suggestion = """{"title":"Budget","brief":"Editable amounts 18000 and 19750 cents with recomputing difference.","supportingFactIds":["budget"],"capabilityIds":[]}"""
                 for (answer in listOf(suggestion, "null", "invalid")) {
                     Server { client, headers, body ->
                         check(headers.contains("X-Deal-Generation-Backend: deepseek-flash", true))
@@ -271,7 +271,7 @@ class GenerationGatewayInstrumentation : Instrumentation() {
             EmbeddingLog.flush(targetContext)
             // Read through the actual public observation adapter.
             val noModel = object : ModelClient { override fun complete(input: String, previous: String, diagnostics: String, cancellation: GenerationCancellation, log: EmbeddingLog): String = error("No inference") }
-            ApplicationProtocol(targetContext, Embedding(targetContext, CapabilityRegistry(targetContext, CapabilityDiscovery(targetContext) { false }, emptyList()), noModel, EmbeddingConfig("experience", emptyList(), "gateway-observe"))).use { api ->
+            ApplicationProtocol(targetContext, Embedding(targetContext, CapabilityRegistry(targetContext, CapabilityDiscovery(targetContext) { false }, emptyList()), noModel, RuntimeConfig("experience", emptyList(), "gateway-observe"))).use { api ->
                 val events = api.retainedEvents().events.filter { it.optString("trace") == uncaptured.run }
                 check(events.any { it.optString("stage") == "model-provider" && it.optString("outcome") == "completed" })
                 check(events.none { it.optString("artifact").isNotEmpty() })

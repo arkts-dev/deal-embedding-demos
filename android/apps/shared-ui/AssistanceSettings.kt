@@ -1,5 +1,6 @@
 package dev.deal.shell
 
+import dev.deal.embedding.*
 import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -18,7 +19,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
-import dev.deal.embedding.SharedCapabilityContract
+import dev.deal.embedding.CapabilityContract
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -46,7 +47,7 @@ class AssistanceSettingsActivity : ComponentActivity() {
             var discover by remember { mutableStateOf(settings.getBoolean(discoveryPreference(), AssistanceBuild.discoveryBackend == "nano")) }
             var generate by remember { mutableStateOf(settings.getBoolean("generation", false)) }
             var shared by remember { mutableStateOf(sharing.getBoolean("allowed", false)) }
-            var contracts by remember { mutableStateOf<List<SharedCapabilityContract>>(emptyList()) }
+            var contracts by remember { mutableStateOf<List<CapabilityContract>>(emptyList()) }
             var grants by remember { mutableStateOf(settings.all.filter { it.key.startsWith("grant.") }.mapValues { it.value == true }) }
             var problem by remember { mutableStateOf("") }
             var resetConfirm by remember { mutableStateOf(false) }

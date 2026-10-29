@@ -11,8 +11,8 @@ class ShowService : SharedAppService() {
     override val capabilities by lazy {
         val text = WireType("string", maximum = 1024)
         val fields = listOf("id", "show", "date", "venue", "act", "name", "specification", "from", "until", "location", "status").map { WireField(it, text) } + WireField("quantity", WireType("number"))
-        nativeCapabilities(SharedCapabilityContract("host/show", "Shared synthetic show requirements, exact quantities, specifications and deadlines", functions = listOf(
-            SharedCapabilityFunction("requirements", "Read the shared show plan, including unresolved equipment and catering needs", result = WireType("array", maximum = 32, element = WireType("record", fields = fields)))
+        nativeCapabilities(CapabilityContract("host/show", "Shared synthetic show requirements, exact quantities, specifications and deadlines", functions = listOf(
+            CapabilityFunction("requirements", "Read the shared show plan, including unresolved equipment and catering needs", result = WireType("array", maximum = 32, element = WireType("record", fields = fields)))
         )), mapOf("requirements" to { _ ->
             val show = ShowStore(this).load()
             JSONArray(show?.requirements?.take(32)?.map { requirement -> JSONObject()

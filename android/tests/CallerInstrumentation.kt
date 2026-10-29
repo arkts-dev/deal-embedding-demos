@@ -1,5 +1,7 @@
 package dev.deal.connectors.tests
 
+import dev.deal.embedding.*
+import dev.deal.embedding.WireField
 import android.app.Instrumentation
 import android.content.*
 import android.os.*
@@ -28,11 +30,11 @@ open class CallerInstrumentation : Instrumentation() {
             val service = if (provider == "todo") "TodoService" else "VehicleService"
             check(context.bindService(Intent().setComponent(ComponentName("dev.deal.apps.$provider", "dev.deal.apps.$provider.$service")), connection, Context.BIND_AUTO_CREATE))
             check(latch.await(10, TimeUnit.SECONDS) && denied) { "Provider accepted non-demo test UID" }
-            val type = CapabilityType("record", fields = mapOf("nested" to CapabilityType("array", element = CapabilityType.NumberType, maximum = 2)))
+            val type = WireType("record", fields = listOf(WireField("nested", WireType("array", element = WireType.NumberType, maximum = 2))))
             type.validate(JSONObject().put("nested", JSONArray(listOf(1, 2))))
             check(runCatching { type.validate(JSONObject().put("nested", JSONArray(listOf("bad")))) }.isFailure)
             check(runCatching { type.validate(JSONObject().put("nested", JSONArray()).put("extra", true)) }.isFailure)
-            check(runCatching { CapabilityType.parse(type.json().put("maximum", 999999)) }.isFailure)
+            check(runCatching { WireType.parse(type.json().put("maximum", 999999)) }.isFailure)
             result.putString("callerAuthentication", "$provider rejected provider UID; typed records validated")
             finish(0, result)
         } catch (error: Throwable) { result.putString("failure", error.toString()); finish(1, result) }

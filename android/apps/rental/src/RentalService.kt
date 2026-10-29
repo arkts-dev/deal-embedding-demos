@@ -4,5 +4,4 @@ import dev.deal.shell.SharedAppService
 
 class RentalService : SharedAppService() {
     override val capabilities by lazy { rentalCapabilities(this) }
-    override val delayMillis = 1200L
 }

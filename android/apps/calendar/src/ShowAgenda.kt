@@ -1,5 +1,6 @@
 package dev.deal.apps.calendar
 
+import dev.deal.embedding.*
 import android.content.ContentProviderOperation
 import android.content.ContentValues
 import android.content.Context

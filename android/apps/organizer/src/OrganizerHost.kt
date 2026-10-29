@@ -2,13 +2,13 @@ package dev.deal.apps.organizer
 
 import android.content.Context
 import dev.deal.embedding.*
-import dev.deal.embedding.capabilities.*
+import dev.deal.shell.Connections
+import dev.deal.shell.AssistanceBuild
 
-/** Native bootstrap and local authority only; orchestration runs through compiled DEAL. */
-class OrganizerHost(private val context: Context) : AutoCloseable {
-    private val discovery=CapabilityDiscovery(context){uid->uid != context.applicationInfo.uid && dev.deal.shell.Connections.trusted(context,uid)}
-    val registry:CapabilityRegistry by lazy {CapabilityRegistry(context,discovery,listOf(organizerCapabilities(context){registry.invokingExperience()}))}
-    private val mechanisms=Embedding(context,registry,GenerationBuild.gateway(),EmbeddingConfig("experience",emptyList(),"organizer-protocol",retainState=true,policyAssets="organizer-policy"))
-    val embedding=ApplicationProtocol(context,mechanisms)
-    override fun close(){embedding.close()}
+class OrganizerHost(context: Context) {
+    val embedding = Embedding.open(context,
+        EmbeddingConfig("organizer-protocol", GenerationBuild.gateway(), AssistanceBuild.discoveryGateway(),
+            retainState = true, policy = CataloguePolicy("organizer-policy")),
+        listOf(organizerCapabilities(context)),
+        trustProvider = { uid -> uid != context.applicationInfo.uid && Connections.trusted(context,uid) })
 }

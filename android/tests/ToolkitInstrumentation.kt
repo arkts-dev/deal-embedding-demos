@@ -21,7 +21,7 @@ class ToolkitInstrumentation : Instrumentation() {
             }
             val storage = "toolkit-${UUID.randomUUID()}"
             fun api() = ApplicationProtocol(ctx, Embedding(ctx, CapabilityRegistry(ctx, CapabilityDiscovery(ctx) { false }, emptyList()), model,
-                EmbeddingConfig("experience", emptyList(), storage, retainState = true)))
+                RuntimeConfig("experience", emptyList(), storage, retainState = true)))
             fun source(name:String) = Source(ctx.assets.open("ui/$name.deal").bufferedReader().use { it.readText() }, ctx.assets.open("ui/$name.dealui").bufferedReader().use { it.readText() })
             val comparison = source("comparison")
             var id = ""

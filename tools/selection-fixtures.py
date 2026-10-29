@@ -21,9 +21,10 @@ def laboratory():
 def contracts():
  # This isolated prototype has a different laboratory signature from composed fixtures.
  cs=[c for c in f.contracts() if c['module']!='host/laboratory']
- n=dict(kind='number',maximum=128,minimumNumber=-1e12,maximumNumber=1e12);s=dict(kind='string',maximum=128,minimumNumber=-1e12,maximumNumber=1e12);b=dict(kind='boolean',maximum=128,minimumNumber=-1e12,maximumNumber=1e12)
- def rec(**fields):return dict(kind='record',maximum=128,minimumNumber=-1e12,maximumNumber=1e12,fields=fields)
- def arr(t):return dict(kind='array',maximum=128,minimumNumber=-1e12,maximumNumber=1e12,element=t)
+ def ty(kind,**kw):return dict(kind=kind,fields=kw.pop('fields',[]),element=kw.pop('element',None),maximum=128,minimumNumber=-1e12,maximumNumber=1e12,**kw)
+ n=ty('number');s=ty('string');b=ty('boolean')
+ def rec(**fields):return ty('record',fields=[dict(name=name,type=value,optional=False) for name,value in fields.items()])
+ def arr(t):return ty('array',element=t)
  def fn(name,result,**params):return dict(name=name,description='External test boundary',parameters=[dict(name=k,type=v) for k,v in params.items()],result=result)
  cs.append(dict(version=1,module='host/laboratory',description='Unrelated provider test',functions=[fn('inventory',arr(rec(sku=s,caption=s,stock=n,spec=rec(role=s),contents=arr(rec(skuRef=s,units=n)))),zone=s,availableOnly=b),fn('assess',rec(charge=n,ok=b,validForMs=n),zone=s,items=arr(rec(sku=s,units=n)),revision=n)]))
  return cs

@@ -16,9 +16,9 @@ class GuidanceInstrumentation : Instrumentation() {
             val ctx = targetContext
             var calls = 0
             var fail = false
-            val sample = NativeCapabilities(CapabilityContract("host/sample", "Example-only read fixture", listOf(CapabilityFunction("value", "Read fixture value", emptyList(), CapabilityType.NumberType))), mapOf("value" to { _ -> calls++; if (fail) throw ProtocolFailure("UNAVAILABLE", "Fixture failure"); 42 }))
+            val sample = NativeCapabilities(CapabilityContract("host/sample", "Example-only read fixture", listOf(CapabilityFunction("value", "Read fixture value", emptyList(), WireType.NumberType))), mapOf("value" to { _ -> calls++; if (fail) throw ProtocolFailure("UNAVAILABLE", "Fixture failure"); 42 }))
             val model = object : ModelClient { override fun complete(input: String, previous: String, diagnostics: String, cancellation: GenerationCancellation, log: EmbeddingLog): String = error("Unexpected inference") }
-            ApplicationProtocol(ctx, Embedding(ctx, CapabilityRegistry(ctx, CapabilityDiscovery(ctx) { false }, listOf(sample)), model, EmbeddingConfig("experience", emptyList(), "guidance-${UUID.randomUUID()}", retainState = true))).use { api ->
+            ApplicationProtocol(ctx, Embedding(ctx, CapabilityRegistry(ctx, CapabilityDiscovery(ctx) { false }, listOf(sample)), model, RuntimeConfig("experience", emptyList(), "guidance-${UUID.randomUUID()}", retainState = true))).use { api ->
                 api.refresh(); api.grant("host/sample")
                 val source = Source(ctx.assets.open("ui/generation-example.deal").bufferedReader().use { it.readText() }, ctx.assets.open("ui/generation-example.dealui").bufferedReader().use { it.readText() })
                 api.withPreparation(api.load("Guidance example", source)) { experience ->
@@ -52,7 +52,7 @@ class GuidanceInstrumentation : Instrumentation() {
             }
             // Exact checked source + source-bound draft reopen, not a rendered-text rewrite.
             ApplicationProtocol(ctx, Embedding(ctx, CapabilityRegistry(ctx, CapabilityDiscovery(ctx) { false }, emptyList()), model,
-                EmbeddingConfig("experience", emptyList(), "currency-${UUID.randomUUID()}", retainState = true))).use { api ->
+                RuntimeConfig("experience", emptyList(), "currency-${UUID.randomUUID()}", retainState = true))).use { api ->
                 val source = Source("""export class State {amount:string;}
 export function initialState():State {return {amount: "€20.00"};}
 """, """import * as app from "./experience";
@@ -74,7 +74,7 @@ export view Main(state:app.State):View {ui.Column(){ui.Text(value:state.amount)}
             val retention = "cold-draft-${UUID.randomUUID()}"
             fun draftApi() = ApplicationProtocol(ctx, Embedding(ctx,
                 CapabilityRegistry(ctx, CapabilityDiscovery(ctx) { false }, emptyList()), model,
-                EmbeddingConfig("experience", emptyList(), retention, retainState = true)))
+                RuntimeConfig("experience", emptyList(), retention, retainState = true)))
             val draftSource = Source("""export class State { value:number; }
 export class Change { value:number; }
 export function initialState():State {return {value: 18000};}

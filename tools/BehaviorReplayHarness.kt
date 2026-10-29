@@ -1,6 +1,6 @@
 package dev.deal.embedding
 
-import dev.deal.embedding.capabilities.CapabilityContract
+import dev.deal.embedding.CapabilityContract
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File

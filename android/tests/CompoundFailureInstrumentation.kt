@@ -27,7 +27,7 @@ import * as ui from "./platform.dealui-pack";
 export view Main(state:app.State):View {ui.Text(value:"Compound failure proof")}
 """)
             fun registry()=CapabilityRegistry(context,CapabilityDiscovery(context){false},emptyList())
-            fun config()=EmbeddingConfig("experience",emptyList(),"compound-${UUID.randomUUID()}")
+            fun config()=RuntimeConfig("experience",emptyList(),"compound-${UUID.randomUUID()}")
             val model=object:ModelClient{
                 override fun complete(input:String,previous:String,diagnostics:String,cancellation:GenerationCancellation,log:EmbeddingLog):String=error("Unexpected inference")
             }

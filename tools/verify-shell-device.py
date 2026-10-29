@@ -31,7 +31,9 @@ for app, activity in [('calendar', 'AgendaActivity'), ('organizer', 'OrganizerAc
                       ('rental', 'RentalActivity'), ('pizza', 'PizzaActivity'), ('vehicle', 'VehicleActivity')]:
     d.shell('am', 'start', '-S', '-W', '--user', '0', '-n', f'dev.deal.apps.{app}/.{activity}')
     d.tap('Settings')
-    expect_labels('Settings', 'On-device suggestions', 'Tailored tools', 'Share with connected apps')
+    expect_labels('Settings', 'Suggestions', 'Tailored tools', 'Share with connected apps')
+    labels=d.labels(d.ui())
+    assert any(label == 'On-device suggestions' or label.startswith('Cloud suggestions · ') for label in labels), labels
     assert 'dev.deal.shell.AssistanceSettingsActivity' in d.shell('dumpsys', 'activity', 'activities')
     d.capture(f'shell-{app}-settings-final')
     d.tap('Inspect')

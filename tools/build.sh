@@ -96,7 +96,7 @@ done
 library_key=$(python3 tools/build-cache.py \
     tools/build.sh tools/build-cache.py \
     dependencies/deal-embedding/build.sh dependencies/deal-embedding/android \
-    dependencies/deal-embedding/tools dependencies/deal-embedding/core/generation.deal dependencies/deal-embedding/api \
+    dependencies/deal-embedding/tools dependencies/deal-embedding/core dependencies/deal-embedding/api \
     dependencies/deal-embedding/core/host dependencies/deal-embedding/core/source-literals.deal \
     dependencies/deal-embedding/core/candidate-check.deal dependencies/deal-embedding/core/source-agent.deal dependencies/deal-embedding/core/source-repair.deal dependencies/deal-embedding/core/logging.deal dependencies/deal-embedding/core/generation-guidance.deal \
     dependencies/deal-embedding/ui dependencies/deal-embedding/core/repair-guidance.deal \
@@ -117,8 +117,8 @@ if [[ ! -f build/capability-api.jar || ! -f build/embedding-consumer/classes.jar
     mkdir -p build/embedding-consumer build/capability-api
     unzip -q build/embedding-library/deal-embedding.aar -d build/embedding-consumer
     (cd build/capability-api && unzip -q ../embedding-consumer/classes.jar \
-        'dev/deal/embedding/capabilities/CapabilityType*' 'dev/deal/embedding/capabilities/CapabilityContract*' \
-        'dev/deal/embedding/capabilities/CapabilityFunction*' 'dev/deal/embedding/capabilities/CapabilityParameter*' \
+        'dev/deal/embedding/Wire*' 'dev/deal/embedding/CapabilityContract*' \
+        'dev/deal/embedding/CapabilityFunction*' 'dev/deal/embedding/Parameter*' \
         'dev/deal/embedding/capabilities/CapabilityService*' 'dev/deal/embedding/capabilities/NativeCapabilities*' \
         'dev/deal/embedding/capabilities/ICapability*')
     jar --create --file build/capability-api.jar -C build/capability-api .

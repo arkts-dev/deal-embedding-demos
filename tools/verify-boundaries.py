@@ -8,17 +8,17 @@ for obsolete in ['android/embedding', 'android/connectors', 'android/shell', 'ex
                  'android/apps/calendar/src/ConnectorBroker.kt', 'android/apps/calendar/src/ProviderAdapters.kt']:
     assert not (root / obsolete).exists(), obsolete
 library = root / 'dependencies/deal-embedding'
-expected = {'ExperienceRuntime.kt','Embedding.kt','Protocol.kt','Observation.kt','UpdateCursor.kt','Teardown.kt'}
+expected = {'ExperienceRuntime.kt','Embedding.kt','EmbeddingConfig.kt','Protocol.kt','Observation.kt','UpdateCursor.kt','Teardown.kt'}
 assert {p.name for p in (library/'android/src').glob('*.kt')} == expected
 assert {p.name for p in (library/'android/src/capabilities').glob('*.kt')} == {
-    'CapabilityContract.kt','CapabilityRegistry.kt','CapabilityDiscovery.kt','CapabilityService.kt','CapabilityBindings.kt'}
+    'CapabilityContract.kt','CapabilityCodec.kt','InvocationContext.kt','CapabilityRegistry.kt','CapabilityDiscovery.kt','CapabilityService.kt','CapabilityBindings.kt'}
 assert (library/'core/generation.deal').exists()
 assert not (library/'backends').exists()
 assert {p.name for p in (library/'core/host').glob('*.d.deal')} == {'composer.d.deal', 'checker.d.deal', 'discovery.d.deal', 'model.d.deal', 'chooser.d.deal', 'policy-data.d.deal', 'observer.d.deal', 'embedding.d.deal', 'catalogue-policy.d.deal', 'protocol.d.deal'}
 assert (library/'android/src/compiler/ExperienceCompiler.kt').exists()
 assert {p.name for p in (library/'android/src/bindings').glob('*.kt')} == {'DealSessionBindings.kt', 'ExperienceGenerator.kt', 'SandboxProgram.kt', 'EmbeddingLog.kt', 'ChoiceProtocol.kt', 'ApplicationProtocol.kt', 'ProtocolController.kt','ObservationPresentation.kt','DiagnosticFiles.kt','FailureEvidence.kt','TrustedProgram.kt','GenerationTelemetry.kt'}
 assert {p.name for p in (library/'android/src/inference').glob('*.kt')} == {'ModelClient.kt', 'GenerationGateway.kt'}
-assert {p.name for p in (library/'android/src/discovery').glob('*.kt')} == {'Discovery.kt', 'NanoDiscovery.kt', 'GatewayDiscovery.kt'}
+assert {p.name for p in (library/'android/src/discovery').glob('*.kt')} == {'Discovery.kt', 'DiscoveryPolicy.kt', 'AssistanceController.kt', 'AssistanceHooks.kt', 'NanoDiscovery.kt', 'GatewayDiscovery.kt'}
 assert not (root/'android/apps/development').exists()
 assert not (library/'android/src/bindings/PublicProtocolBinding.kt').exists()
 for app in ('organizer','calendar','todo','vehicle','rental','pizza','shared-ui'):
@@ -31,6 +31,12 @@ for app in ('organizer','calendar','todo','vehicle','rental','pizza','shared-ui'
         assert '.inSession(' not in text, path
         assert not any(call in text for call in ('.run(','.next(','.dispatch(','.published(','.observe(','DealRenderer(')), path
 assert (library/'android/src/rendering/ExperienceSurface.kt').exists()
+assert (library/'ui/assistance/suggestion.dealui').exists()
+assert (library/'core/assistance.deal').exists()
+for app in ('calendar','organizer','todo','vehicle','rental','pizza'):
+    text='\n'.join(p.read_text() for p in (root/f'android/apps/{app}/src').glob('*.kt'))
+    assert not any(name in text for name in ('CapabilityRegistry(', 'CapabilityDiscovery(', 'ApplicationProtocol(', 'DiscoveryFacts(')), app
+assert 'class TaskHelp' not in (root/'android/apps/shared-ui/Assistance.kt').read_text()
 inspect = (root/'android/apps/shared-ui/AssistanceInspectActivity.kt').read_text()
 assert '.inspection(' in inspect
 assert 'opportunity-handoff' not in inspect and 'val traces =' not in inspect
@@ -77,6 +83,8 @@ with zipfile.ZipFile(os.environ.get('EMBEDDING_AAR', root / 'build/embedding-lib
         for name in aar.namelist():
             if name.startswith('assets/') and not name.endswith('/'): assert app.read(name) == aar.read(name), name
         assert not any('connectors.js' in name for name in app.namelist())
+        assert 'assets/assistance/experience_entry.js' in app.namelist()
+        assert 'assets/discovery/discovery.js' in app.namelist()
         assert 'assets/generation/generation.js' in app.namelist()
         assert app.read('assets/generation/generation.js') == aar.read('assets/generation/generation.js')
         assert 'assets/embedding/bindings/generation-session.js' in app.namelist()

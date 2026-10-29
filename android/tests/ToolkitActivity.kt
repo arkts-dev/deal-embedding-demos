@@ -17,7 +17,7 @@ import java.util.concurrent.Executors
 
 /** Delayed external fixture keeps pending frames observable across the real Binder boundary. */
 class ToolkitReadingService:CapabilityService() {
-    override val capabilities=NativeCapabilities(CapabilityContract("host/sample","Reading",listOf(CapabilityFunction("value","Read",emptyList(),CapabilityType.NumberType))),mapOf("value" to { _ ->
+    override val capabilities=NativeCapabilities(CapabilityContract("host/sample","Reading",listOf(CapabilityFunction("value","Read",emptyList(),WireType.NumberType))),mapOf("value" to { _ ->
         Thread.sleep(2500)
         if(java.io.File(filesDir,"toolkit-reading-failure").readText()=="true") throw ProtocolFailure("UNAVAILABLE","Reading unavailable")
         42
@@ -74,7 +74,7 @@ class ToolkitActivity : ComponentActivity() {
                 if(example=="generation-example") java.io.File(filesDir,"toolkit-pending.json").delete()
                 val model=object:ModelClient {override fun complete(input:String,previous:String,diagnostics:String,cancellation:GenerationCancellation,log:EmbeddingLog):String=error("No inference")}
                 val p=ApplicationProtocol(this,Embedding(this,CapabilityRegistry(this,CapabilityDiscovery(this){it==applicationInfo.uid},emptyList()),model,
-                    EmbeddingConfig("experience",emptyList(),"toolkit-gallery-$example-${java.security.MessageDigest.getInstance("SHA-256").digest(readSource(example).toString().toByteArray()).take(6).joinToString("") { "%02x".format(it) }}",retainState=true)))
+                    RuntimeConfig("experience",emptyList(),"toolkit-gallery-$example-${java.security.MessageDigest.getInstance("SHA-256").digest(readSource(example).toString().toByteArray()).take(6).joinToString("") { "%02x".format(it) }}",retainState=true)))
                 api=p
                 if(example=="generation-example") { p.refresh();p.grant("host/sample") }
                 val e=if(retained) p.saved().firstOrNull() ?: p.load(example,readSource(example)) else p.load(example,readSource(example))

@@ -6,7 +6,8 @@ import android.content.ContextWrapper
 import android.os.Bundle
 import dev.deal.embedding.discovery.DiscoveryFact
 import dev.deal.shell.Connections
-import dev.deal.shell.TaskHelp
+import dev.deal.embedding.discovery.AssistanceController
+import dev.deal.shell.DemoAssistanceHooks
 import java.util.UUID
 import java.util.concurrent.atomic.AtomicInteger
 
@@ -20,7 +21,7 @@ class CleanlinessInstrumentation : Instrumentation() {
             override fun getPackageName() = "dev.deal.apps.calendar"
             override fun getSharedPreferences(name: String, mode: Int) = super.getSharedPreferences(prefix + name, mode)
         }
-        var help: TaskHelp? = null
+        var help: AssistanceController? = null
         try {
             val shared = Connections.settings(ctx)
             check(shared.edit().putBoolean("generation", false).putBoolean("discovery", false).commit())
@@ -28,9 +29,9 @@ class CleanlinessInstrumentation : Instrumentation() {
             check(!Connections.settings(ctx).getBoolean("discovery", true))
             val attempts = AtomicInteger()
             runOnMainSync {
-                help = TaskHelp(targetContext, { listOf(DiscoveryFact("fixture", "Synthetic policy fixture")) }, {
+                help = AssistanceController(targetContext, { listOf(DiscoveryFact("fixture", "Synthetic policy fixture")) }, {
                     attempts.incrementAndGet(); error("Injected bootstrap failure")
-                })
+                }, DemoAssistanceHooks(ctx))
                 help!!.resume()
             }
             fun awaitFailure() {

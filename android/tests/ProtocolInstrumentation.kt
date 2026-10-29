@@ -12,15 +12,15 @@ class ProtocolInstrumentation:Instrumentation(){
  try{
   val context=targetContext
   // DEAL has one numeric lane; integral constraints belong to native consumers.
-  CapabilityType.NumberType.validate(1.5)
+  WireType.NumberType.validate(1.5)
   WireType("number").validate(1.5)
   for (invalid in listOf(Double.NaN, Double.POSITIVE_INFINITY, Double.NEGATIVE_INFINITY, "1.5")) {
-   check(runCatching { CapabilityType.NumberType.validate(invalid) }.isFailure)
+   check(runCatching { WireType.NumberType.validate(invalid) }.isFailure)
    check(runCatching { WireType("number").validate(invalid) }.isFailure)
   }
-  check(runCatching { CapabilityType.parse(CapabilityType.NumberType.json().put("maximum", 1.5)) }.isFailure)
+  check(runCatching { WireType.parse(WireType.NumberType.json().put("maximum", 1.5)) }.isFailure)
   check(runCatching { WireType.parse(WireType("number").json().put("maximum", 1.5)) }.isFailure)
-  check(runCatching { CapabilityContract.parse(CapabilityContract("host/test","Numeric metadata",listOf(CapabilityFunction("read","Read",emptyList(),CapabilityType.NumberType))).json().put("version",1.5).toString()) }.isFailure)
+  check(runCatching { CapabilityContract.parse(CapabilityContract("host/test","Numeric metadata",listOf(CapabilityFunction("read","Read",emptyList(),WireType.NumberType))).json().put("version",1.5).toString()) }.isFailure)
   var proposedMinute = -1
   val calendar = dev.deal.apps.calendar.calendarCapabilities({ 960 }, { proposedMinute = it })
   calendar.invoke("propose", JSONArray().put(916.0));check(proposedMinute == 916)
@@ -33,10 +33,10 @@ class ProtocolInstrumentation:Instrumentation(){
   for (invalid in listOf(0.0, 12.5, 1001.0, Double.MAX_VALUE)) {
    check(runCatching { vehicle.invoke("estimate", JSONArray().put(invalid)) }.isFailure)
   }
-  val probe=NativeCapabilities(CapabilityContract("host/probe","Protocol binding probe",listOf(CapabilityFunction("ping","Explicit probe",emptyList(),CapabilityType.NumberType))),mapOf("ping" to {_:JSONArray->1}))
+  val probe=NativeCapabilities(CapabilityContract("host/probe","Protocol binding probe",listOf(CapabilityFunction("ping","Explicit probe",emptyList(),WireType.NumberType))),mapOf("ping" to {_:JSONArray->1}))
   val registry=CapabilityRegistry(context,CapabilityDiscovery(context){false},listOf(probe))
   val model=object:ModelClient{override fun complete(input:String,previous:String,diagnostics:String,cancellation:GenerationCancellation,log:EmbeddingLog):String=error("Unexpected inference")}
-  embedding=Embedding(context,registry,model,EmbeddingConfig("experience",emptyList(),"protocol-instrumentation"))
+  embedding=Embedding(context,registry,model,RuntimeConfig("experience",emptyList(),"protocol-instrumentation"))
   val host=embedding
   check(host.refresh().any{it.module=="host/probe"})
   val schema=WireType("record",fields=listOf(WireField("name",WireType("string",maximum=16)),WireField("count",WireType("number"),true)))
@@ -47,8 +47,8 @@ class ProtocolInstrumentation:Instrumentation(){
   check(runCatching{host.snapshot(WireType("record",fields=listOf(WireField("bad",WireType(""),true))),"{}")}.isFailure)
   check(runCatching{host.snapshot(schema,"{\"name\":\"Ada\"} trailing")}.isFailure)
   check(runCatching{host.snapshot(WireType("string",maximum=1),"\"😀\"")}.isFailure)
-  val optional=CapabilityType("record",fields=mapOf("value" to CapabilityType.NumberType),optionalFields=setOf("value"))
-  optional.validate(JSONObject());check(CapabilityType.parse(optional.json()).optionalFields==setOf("value"))
+  val optional=WireType("record",fields=listOf(WireField("value",WireType.NumberType,true)))
+  optional.validate(JSONObject());check(WireType.parse(optional.json()).optionalFields==setOf("value"))
   val deal="""import * as probe from "host/probe";
 export class State { value: number ; }
 export class Increment {}
@@ -73,12 +73,12 @@ export view Main(state: app.State): View { ui.Column() { ui.Text(value: "Protoco
   val page=host.events("","",20);check(page.events.size<=20)
   var fixtureCalls=0
   val fixtureModel=object:ModelClient{override fun complete(input:String,previous:String,diagnostics:String,cancellation:GenerationCancellation,log:EmbeddingLog):String{if(JSONObject(input.substringAfterLast("\nNATIVE TOOL TURN\n")).optBoolean("compact"))return nativeFallbackFixture();fixtureCalls++;return nativeSourceFixture(deal,view)}}
-  val fallback=Embedding(context,CapabilityRegistry(context,CapabilityDiscovery(context){false},listOf(probe)),fixtureModel,EmbeddingConfig("experience",emptyList(),"protocol-fallback"))
+  val fallback=Embedding(context,CapabilityRegistry(context,CapabilityDiscovery(context){false},listOf(probe)),fixtureModel,RuntimeConfig("experience",emptyList(),"protocol-fallback"))
   try{fallback.refresh();val facts=fallback.snapshot(WireType("record"),"{}");val prepared=fallback.generate(fallback.request("Fallback","An authored test workflow",facts));check(prepared.origin=="generated"&&fixtureCalls==1);fallback.release(prepared)}finally{fallback.shutdown()}
   // No network: source fixture validates absent-policy fallback through real core.
   var badCalls=0
   val badModel=object:ModelClient{override fun complete(input:String,previous:String,diagnostics:String,cancellation:GenerationCancellation,log:EmbeddingLog):String {if(JSONObject(input.substringAfterLast("\nNATIVE TOOL TURN\n")).optBoolean("compact"))return nativeFallbackFixture();badCalls++;return if(badCalls<4)"not source" else nativeSourceFixture(deal,view)}}
-  val repeated=Embedding(context,CapabilityRegistry(context,CapabilityDiscovery(context){false},listOf(probe)),badModel,EmbeddingConfig("experience",emptyList(),"protocol-repeated"))
+  val repeated=Embedding(context,CapabilityRegistry(context,CapabilityDiscovery(context){false},listOf(probe)),badModel,RuntimeConfig("experience",emptyList(),"protocol-repeated"))
   try{repeated.refresh();val c=repeated.snapshot(WireType("record"),"{}");val recovered=repeated.generate(repeated.request("Repeated","Fixture invalid response",c));check(recovered.attempts==5&&badCalls==4);repeated.release(recovered)}finally{repeated.shutdown()}
   // Invoke actual compiled DEAL declarations through the public native linkage.
   ProtocolController(context,host).use { controller ->
@@ -90,7 +90,7 @@ export view Main(state: app.State): View { ui.Column() { ui.Text(value: "Protoco
    check((controller.call("lifecycle",JSONArray().put(deal).put(view)) as String).contains("cold"))
    check((controller.call("observation") as String).contains("artifact"))
   }
-  val generatedHost=Embedding(context,CapabilityRegistry(context,CapabilityDiscovery(context){false},listOf(probe)),fixtureModel,EmbeddingConfig("experience",emptyList(),"protocol-controller-generated"))
+  val generatedHost=Embedding(context,CapabilityRegistry(context,CapabilityDiscovery(context){false},listOf(probe)),fixtureModel,RuntimeConfig("experience",emptyList(),"protocol-controller-generated"))
   ProtocolController(context,generatedHost).use { controller ->
    val generated=controller.call("generated") as JSONObject
    val s=controller.call("run",JSONArray().put(generated.getString("id"))) as JSONObject
@@ -98,7 +98,7 @@ export view Main(state: app.State): View { ui.Column() { ui.Text(value: "Protoco
    controller.call("close",JSONArray().put(s.getString("id")));controller.call("forget",JSONArray().put(generated.getString("id")))
    controller.call("shutdown")
   }
-  val restartConfig=EmbeddingConfig("experience",emptyList(),"protocol-controller-restart")
+  val restartConfig=RuntimeConfig("experience",emptyList(),"protocol-controller-restart")
   val restartHost=Embedding(context,CapabilityRegistry(context,CapabilityDiscovery(context){false},listOf(probe)),model,restartConfig)
   ProtocolController(context,restartHost).use{c->c.call("prepareCapabilities");val e=c.call("load",JSONArray().put("Across bootstrap").put(deal).put(view)) as JSONObject;val s=c.call("run",JSONArray().put(e.getString("id"))) as JSONObject;c.call("close",JSONArray().put(s.getString("id")))}
   val restarted=Embedding(context,CapabilityRegistry(context,CapabilityDiscovery(context){false},listOf(probe)),model,restartConfig)
@@ -107,13 +107,13 @@ export view Main(state: app.State): View { ui.Column() { ui.Text(value: "Protoco
   val longModel=object:ModelClient{override fun complete(input:String,previous:String,diagnostics:String,cancellation:GenerationCancellation,log:EmbeddingLog):String{
    if(JSONObject(input.substringAfterLast("\nNATIVE TOOL TURN\n")).optBoolean("compact"))return nativeFallbackFixture();Thread.sleep(121000);cancellation.check();return nativeSourceFixture(deal,view)
   }}
-  ApplicationProtocol(context,Embedding(context,CapabilityRegistry(context,CapabilityDiscovery(context){false},listOf(probe)),longModel,EmbeddingConfig("experience",emptyList(),"protocol-long-generation"))).use{api->
+  ApplicationProtocol(context,Embedding(context,CapabilityRegistry(context,CapabilityDiscovery(context){false},listOf(probe)),longModel,RuntimeConfig("experience",emptyList(),"protocol-long-generation"))).use{api->
    val request=api.request("Long generation","Authored source fixture",api.snapshot(WireType("record"),"{}"))
    val prepared=api.generate(request);check(prepared.origin=="generated");api.release(prepared);api.flushReclamation()
   }
   val entered=java.util.concurrent.CountDownLatch(1)
   val waitingModel=object:ModelClient {override fun complete(input:String,previous:String,diagnostics:String,cancellation:GenerationCancellation,log:EmbeddingLog):String {entered.countDown();while(true){cancellation.check();Thread.sleep(5)}}}
-  val waitingHost=Embedding(context,CapabilityRegistry(context,CapabilityDiscovery(context){false},emptyList()),waitingModel,EmbeddingConfig("experience",emptyList(),"protocol-controller-cancel"))
+  val waitingHost=Embedding(context,CapabilityRegistry(context,CapabilityDiscovery(context){false},emptyList()),waitingModel,RuntimeConfig("experience",emptyList(),"protocol-controller-cancel"))
   ProtocolController(context,waitingHost).use {controller ->
    val request=controller.call("waitingRequest") as String
    val operation=controller.start("generateWaiting",JSONArray().put(request))
@@ -125,7 +125,7 @@ export view Main(state: app.State): View { ui.Column() { ui.Text(value: "Protoco
   }
   val slowEntered=java.util.concurrent.CountDownLatch(1);val slowRelease=java.util.concurrent.CountDownLatch(1)
   val noncooperative=object:ModelClient{override fun complete(input:String,previous:String,diagnostics:String,cancellation:GenerationCancellation,log:EmbeddingLog):String{slowEntered.countDown();slowRelease.await(10,java.util.concurrent.TimeUnit.SECONDS);return nativeSourceFixture(deal,view,input)}}
-  val slowHost=Embedding(context,CapabilityRegistry(context,CapabilityDiscovery(context){false},listOf(probe)),noncooperative,EmbeddingConfig("experience",emptyList(),"protocol-controller-noncooperative"))
+  val slowHost=Embedding(context,CapabilityRegistry(context,CapabilityDiscovery(context){false},listOf(probe)),noncooperative,RuntimeConfig("experience",emptyList(),"protocol-controller-noncooperative"))
   ProtocolController(context,slowHost).use {c->
    try{val request=c.call("waitingRequest") as String;val operation=c.start("generateWaiting",JSONArray().put(request));val deadline=System.currentTimeMillis()+10000
     while(slowEntered.count>0){check(System.currentTimeMillis()<deadline);Thread.sleep(5)}
@@ -151,7 +151,7 @@ export view Main(state:app.State):View {ui.Column(){ui.IntText(value:state.value
 """
   var capabilityCalls=0
   val nativeProbe=NativeCapabilities(probe.contract,mapOf("ping" to {_:JSONArray->capabilityCalls++;1}))
-  val capabilityHost=Embedding(context,CapabilityRegistry(context,CapabilityDiscovery(context){false},listOf(nativeProbe)),model,EmbeddingConfig("experience",emptyList(),"protocol-controller-capability"))
+  val capabilityHost=Embedding(context,CapabilityRegistry(context,CapabilityDiscovery(context){false},listOf(nativeProbe)),model,RuntimeConfig("experience",emptyList(),"protocol-controller-capability"))
   ProtocolController(context,capabilityHost).use{c->
    c.call("prepareCapabilities");val e=c.call("load",JSONArray().put("Explicit capability").put(capabilityDeal).put(capabilityView)) as JSONObject;val s=c.call("run",JSONArray().put(e.getString("id"))) as JSONObject
    check(capabilityCalls==0)
@@ -180,7 +180,7 @@ export view Main(state:app.State):View {ui.Column(){ui.IntText(value:state.value
    c.call("shutdown");check(runCatching{c.await(shutdownWait,2)}.isFailure)
   }
   // Faulted native isolate invalidates handles; explicit run cold-rechecks durable source.
-  val faultHost=Embedding(context,CapabilityRegistry(context,CapabilityDiscovery(context){false},listOf(probe)),model,EmbeddingConfig("experience",emptyList(),"protocol-controller-fault"))
+  val faultHost=Embedding(context,CapabilityRegistry(context,CapabilityDiscovery(context){false},listOf(probe)),model,RuntimeConfig("experience",emptyList(),"protocol-controller-fault"))
   ProtocolController(context,faultHost).use{c->
    c.call("prepareCapabilities");val e=c.call("load",JSONArray().put("Fault recovery").put(deal).put(view)) as JSONObject;val s=c.call("run",JSONArray().put(e.getString("id"))) as JSONObject
    val runtimeField=Embedding::class.java.getDeclaredField("runtime").apply{isAccessible=true};val runtime=runtimeField.get(faultHost) as ExperienceRuntime
