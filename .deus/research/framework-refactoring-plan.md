@@ -2,7 +2,7 @@
 kind: research
 id: framework-refactoring-plan
 created_at: 2026-10-28T00:00:00Z
-updated_at: 2026-10-28T00:00:00Z
+updated_at: 2026-10-29T00:00:00Z
 status: implementation-in-progress
 references:
   - dependencies/deal-embedding/api/embedding.d.deal
@@ -22,7 +22,7 @@ gaps:
 
 # Framework refactoring plan
 
-Paths are relative to `dependencies/deal-embedding/`, except app paths. Implementation and verification remain incomplete.
+Paths are relative to `dependencies/deal-embedding/`, except app paths. Implementation and verification remain incomplete. Portable lowering/view binding and the corrected four-task measurement are recorded in [framework-corrected-four.md](framework-corrected-four.md); that evidence does not close ordinary-journey, visual or cross-platform acceptance.
 
 ## 1. One capability model
 

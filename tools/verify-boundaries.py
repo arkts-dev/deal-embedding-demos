@@ -15,7 +15,13 @@ assert {p.name for p in (library/'android/src/capabilities').glob('*.kt')} == {
 assert (library/'core/generation.deal').exists()
 assert not (library/'backends').exists()
 assert {p.name for p in (library/'core/host').glob('*.d.deal')} == {'composer.d.deal', 'checker.d.deal', 'discovery.d.deal', 'model.d.deal', 'chooser.d.deal', 'policy-data.d.deal', 'observer.d.deal', 'embedding.d.deal', 'catalogue-policy.d.deal', 'protocol.d.deal'}
-assert (library/'android/src/compiler/ExperienceCompiler.kt').exists()
+assert {p.name for p in (library/'android/src/compiler').glob('*.kt')} == {
+    'ExperienceCompiler.kt', 'BehaviorCandidate.kt', 'FragmentComposition.kt'}
+for adapter in ['BehaviorCandidate.kt', 'FragmentComposition.kt']:
+    text=(library/'android/src/compiler'/adapter).read_text()
+    assert 'StringBuilder' not in text and 'FragmentSyntax.' not in text and 'UiModel.' not in text, adapter
+assert 'CompositionBridge.lower(' in (library/'android/src/compiler/BehaviorCandidate.kt').read_text()
+assert 'CompositionBridge.expand(' in (library/'android/src/compiler/FragmentComposition.kt').read_text()
 assert {p.name for p in (library/'android/src/bindings').glob('*.kt')} == {'DealSessionBindings.kt', 'ExperienceGenerator.kt', 'SandboxProgram.kt', 'EmbeddingLog.kt', 'ChoiceProtocol.kt', 'ApplicationProtocol.kt', 'ProtocolController.kt','ObservationPresentation.kt','DiagnosticFiles.kt','FailureEvidence.kt','TrustedProgram.kt','GenerationTelemetry.kt'}
 assert {p.name for p in (library/'android/src/inference').glob('*.kt')} == {'ModelClient.kt', 'GenerationGateway.kt'}
 assert {p.name for p in (library/'android/src/discovery').glob('*.kt')} == {'Discovery.kt', 'DiscoveryPolicy.kt', 'AssistanceController.kt', 'AssistanceHooks.kt', 'NanoDiscovery.kt', 'GatewayDiscovery.kt'}
@@ -75,6 +81,10 @@ with zipfile.ZipFile(os.environ.get('EMBEDDING_AAR', root / 'build/embedding-lib
         assert 'dev/deal/embedding/capabilities/ICapabilityService.class' in names
         assert 'dev/deal/embedding/discovery/Discovery.class' in names
         assert 'deal/Main.class' in names and 'deal/ui/UiSourceGenerator.class' in names
+        for unit in ['execution/CompositionExecution', 'compose/CompositionCompose', 'fragments/CompositionFragments',
+                     'view_binding/CompositionView_binding', 'lowering/CompositionLowering']:
+            assert 'dev/deal/embedding/composition/'+unit+'.class' in names, unit
+        assert not any(name.startswith(('dev/deal/embedding/MaintainedFormula', 'dev/deal/embedding/SelectionComposition')) for name in names)
         assert not any(name.startswith('dev/deal/apps/') for name in names)
         assert 'dev/deal/embedding/GenerationGatewayConfig.class' in names
         assert 'dev/deal/embedding/GatewayModelClient.class' in names
