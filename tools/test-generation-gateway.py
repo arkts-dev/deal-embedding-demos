@@ -24,7 +24,7 @@ class GatewayTest(unittest.TestCase):
     def test_safe_failures_and_health(self):
         tree=ast.parse(pathlib.Path('tools/generation-gateway.py').read_text())
         definitions=[n for n in tree.body if isinstance(n,ast.ClassDef) and n.name in ('GatewayFailure','Handler')]
-        namespace={'json':json,'http':types.SimpleNamespace(server=http.server),'urllib':types.SimpleNamespace(error=urllib.error),
+        namespace={'json':json,'time':time,'http':types.SimpleNamespace(server=http.server),'urllib':types.SimpleNamespace(error=urllib.error),
                    'concurrent':types.SimpleNamespace(futures=concurrent.futures),'options':types.SimpleNamespace(audit=False,chooser='llm',backend='cortex'),'BACKENDS':{'cortex':{'key':'private-key','model':'cortex'}},'DISCOVERY':None}
         exec(compile(ast.Module(body=definitions,type_ignores=[]),'safe-handler','exec'),namespace)
         class Failed:
@@ -60,7 +60,7 @@ class GatewayTest(unittest.TestCase):
         tree=ast.parse(pathlib.Path('tools/generation-gateway.py').read_text())
         infer=next(n for n in tree.body if isinstance(n,ast.FunctionDef) and n.name=='infer')
         calls=[]
-        namespace={'options':types.SimpleNamespace(chooser='jev',jev_model='jev-test',backend='cortex'),'BACKENDS':{'cortex':{}},'JEV_KEY':'private-key',
+        namespace={'time':time,'options':types.SimpleNamespace(chooser='jev',jev_model='jev-test',backend='cortex'),'BACKENDS':{'cortex':{}},'JEV_KEY':'private-key',
                    'admit':lambda body:calls.append('admit'),'infer_jev':lambda *args:calls.append(args) or b'jev'}
         exec(compile(ast.Module(body=[infer],type_ignores=[]),'routing','exec'),namespace)
         body={'input':'state\n\nISSUED OPTIONS\n{}'}
@@ -136,6 +136,7 @@ class GatewayTest(unittest.TestCase):
         result=json.loads(namespace['infer'](body))
         self.assertEqual(json.loads(result['content'])['tool_calls'],[call])
         self.assertEqual(result['metadata']['reasoning'],70)
+        self.assertGreaterEqual(result['metadata']['receiptTiming']['responseCompleteMs'],result['metadata']['receiptTiming']['responseHeadersMs'])
         self.assertEqual(seen[-1]['tools'],SOURCE_TOOLS);self.assertEqual(seen[-1]['tool_choice'],'required')
         self.assertTrue(seen[-1]['parallel_tool_calls']);self.assertNotIn('max_tokens',seen[-1]);self.assertNotIn('response_format',seen[-1])
         self.assertNotIn('PRIVATE',json.dumps(result));self.assertNotIn('private-key',json.dumps(result))
@@ -157,6 +158,8 @@ class GatewayTest(unittest.TestCase):
         namespace['DISCOVERY']={'model':'deepseek-flash','endpoint':'unused','key':'private-key'}
         body.update(input='facts',backend='deepseek-flash',discovery=True)
         response['choices'][0]['message']['content']='null'
+        response['usage']={'prompt_tokens':10,'completion_tokens':2,'prompt_cache_hit_tokens':8,'prompt_cache_miss_tokens':2}
         result=json.loads(namespace['infer'](body));self.assertEqual(result['content'],'null');self.assertNotIn('tools',seen[-1]);self.assertNotIn('response_format',seen[-1])
+        self.assertEqual(result['metadata']['cached'],8);self.assertEqual(result['metadata']['uncached'],2)
 
 if __name__=='__main__':unittest.main()

@@ -78,6 +78,7 @@ def admit(body):
     temporary.write_text(json.dumps(counts)); temporary.replace(path)
 # Return provider request/response to the caller's unified private logger; no parallel logs.
 def infer(body):
+    entered=time.monotonic()
     backend = body.get('backend', options.backend)
     discovery = body.get('discovery', False)
     if discovery:
@@ -115,9 +116,14 @@ def infer(body):
     started=time.monotonic()
     phases=None
     with urllib.request.urlopen(request,timeout=None) as response:
+        headers_ms=(time.monotonic()-started)*1000
         if payload['stream']: data,phases=read_stream(response,started)
         else: data=json.loads(response.read())
     total_ms=(time.monotonic()-started)*1000
+    # Receipt offsets only: headers may precede a buffered response; neither is isolated RTT/compute.
+    receipt_timing={'responseHeadersMs':headers_ms,'responseCompleteMs':total_ms}
+    receipt_timing['requestPreparationMs']=(started-entered)*1000
+    if '_admittedAt' in body: receipt_timing['gatewayQueueMs']=(entered-body['_admittedAt'])*1000
     strip_reasoning(data)
     content=native_result(data['choices'][0]['message']) if source else data['choices'][0]['message']['content']
     if not isinstance(content,str): raise ValueError('No text result')
@@ -125,12 +131,13 @@ def infer(body):
     def count(value): return value if type(value) is int and 0<=value<=2147483647 else None
     finish=data['choices'][0].get('finish_reason')
     metadata={'in':count(usage.get('prompt_tokens')), 'out':count(usage.get('completion_tokens')),
-              'cached':count((usage.get('prompt_tokens_details') or {}).get('cached_tokens')),
+              'cached':count((usage.get('prompt_tokens_details') or {}).get('cached_tokens',usage.get('prompt_cache_hit_tokens'))),
               'finish':finish if finish in ('stop','length','content_filter','tool_calls') else 'unknown',
               'temperature':payload['temperature'], 'max_tokens':payload.get('max_tokens',-1),
               'reasoning':count((usage.get('completion_tokens_details') or {}).get('reasoning_tokens'))}
     if discovery: metadata['thinking'] = 'disabled'
-    metadata.update(operation=operation,totalMs=total_ms,prefixSha256=prefix_fingerprint(messages))
+    metadata.update(operation=operation,totalMs=total_ms,prefixSha256=prefix_fingerprint(messages),receiptTiming=receipt_timing)
+    metadata['uncached']=count(usage.get('prompt_cache_miss_tokens'))
     if phases is not None: metadata['phases']=phases
     if isinstance(data.get('time_info'),dict): metadata['providerTime']=data['time_info']
     if backend == 'cerebras': metadata['reasoning_effort'] = payload['reasoning_effort']
@@ -167,6 +174,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 body['discovery'] = True
             elif backend not in BACKENDS: raise GatewayFailure('BACKEND_UNAVAILABLE', 'Requested build-time backend is not enabled in this gateway')
             body['backend'] = backend
+            body['_admittedAt']=time.monotonic()
             output=POOL.submit(infer,body).result()
             self.send_response(200); self.send_header('Content-Type','application/json'); self.send_header('Content-Length',str(len(output))); self.end_headers(); self.wfile.write(output)
         except (BrokenPipeError,ConnectionResetError): pass
