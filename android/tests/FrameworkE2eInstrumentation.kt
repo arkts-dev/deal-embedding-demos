@@ -235,15 +235,22 @@ class FrameworkE2eInstrumentation: Instrumentation() {
                 val row=JSONObject().put("scenario",name);receipts.put(row);val started=SystemClock.elapsedRealtime()
                 val storage="framework-e2e-$name-${java.util.UUID.randomUUID()}"
                 val activity=startActivitySync(Intent(ctx,OrganizerActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) as OrganizerActivity
+                row.put("activityStartupMs",SystemClock.elapsedRealtime()-started)
+                val registryStarted=SystemClock.elapsedRealtime()
                 val registry=CapabilityRegistry(ctx,CapabilityDiscovery(ctx){uid->Connections.trusted(ctx,uid)},emptyList())
+                row.put("registryConstructionMs",SystemClock.elapsedRealtime()-registryStarted)
                 // NO candidateTest: semantic failures cannot trigger generation/repair in this benchmark.
                 val config=RuntimeConfig("experience",emptyList(),storage,retainState=true)
+                val protocolStarted=SystemClock.elapsedRealtime()
                 ApplicationProtocol(ctx,Embedding(ctx,registry,GatewayModelClient(AssistanceBuild.gateway()),config)).use { api ->
+                    row.put("protocolConstructionMs",SystemClock.elapsedRealtime()-protocolStarted)
+                    val authorityStarted=SystemClock.elapsedRealtime()
                     api.capture(true);Connections.apply(ctx,api)
                     val module=when(name){"food"->"host/pizza";"departure"->"host/trip";"equipment"->"host/rental";else->""}
                     if(module.isNotEmpty())api.grant(module)
                     val facts=DiscoveryFacts(listOf(DiscoveryFact("task",fact)))
                     val discoveryStarted=SystemClock.elapsedRealtime()
+                    row.put("authoritySetupMs",discoveryStarted-authorityStarted)
                     val request=Discovery(ctx,api,AssistanceBuild.discoveryGateway()).use { finder ->
                         val tip=finder.discover(facts).get()
                         row.put("discoveryOnlyMs",SystemClock.elapsedRealtime()-discoveryStarted)
@@ -253,6 +260,7 @@ class FrameworkE2eInstrumentation: Instrumentation() {
                     }
                     row.put("trace",api.requestTrace(request))
                     val generationStarted=SystemClock.elapsedRealtime()
+                    row.put("handoffMs",generationStarted-started-row.getLong("discoveryMs"))
                     val e=api.generate(request)
                     row.put("experience",e.id).put("attempts",e.attempts).put("checkedMs",SystemClock.elapsedRealtime()-started)
                     val surface=ExperienceSurface(api,e)
