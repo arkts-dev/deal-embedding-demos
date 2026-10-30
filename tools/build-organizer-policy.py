@@ -5,9 +5,10 @@ root=pathlib.Path.cwd();stage=root/'build/organizer-policy';src=stage/'src';shut
 for p in (root/'android/apps/organizer/policy').glob('*.deal'):shutil.copy(p,src/p.name)
 shutil.copytree(root/'dependencies/deal-ui/ui',src/'ui',dirs_exist_ok=True)
 shutil.copy(root/'dependencies/deal-embedding/core/source-literals.deal',src/'source-literals.deal')
+shutil.copy(root/'dependencies/deal-embedding/core/decoded.deal',src/'decoded.deal')
 for p in (root/'dependencies/deal-embedding/core/host').glob('*.d.deal'):shutil.copy(p,src/p.name)
 externals={'embedding':{'declaration':'src/embedding.d.deal'},'catalogue-policy':{'declaration':'src/catalogue-policy.d.deal'},'embedding/policy-data':{'declaration':'src/policy-data.d.deal'},'embedding/observer':{'declaration':'src/observer.d.deal'}}
-(stage/'deal.json').write_text(json.dumps({'languageVersion':'1.4','backend':'js','moduleRoots':['src'],'externals':externals}))
+(stage/'deal.json').write_text(json.dumps({'languageVersion':'1.5','backend':'js','moduleRoots':['src'],'externals':externals}))
 # Source-literals is ordinary DEAL; alias resolution remains project-owned.
 for name in ('equipment-source.deal','equipment-choice.deal'):
     p=src/name;p.write_text(p.read_text().replace('"embedding/source-literals"','"./source-literals"'))

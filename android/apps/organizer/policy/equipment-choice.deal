@@ -1,3 +1,4 @@
+import * as decoded from "./decoded";
 import * as literals from "embedding/source-literals";
 import * as math from "std/math";
 import * as json from "std/json";
@@ -7,86 +8,86 @@ import * as strings from "std/string";
 
 // Portable policy for the demonstrated catalogue workflow; hosts provide data mechanisms.
 function decimal(value: number): string { return literals.decimal(value); }
-function hasKind(fields: table, name: string, kind: string): boolean {
+function hasKind(fields: Record<string, unknown>, name: string, kind: string): boolean {
     try {
-        let field: table = {};
-        if (name === "id") { let v: table = fields.id; field = v; }
-        if (name === "name") { let v: table = fields.name; field = v; }
-        if (name === "specification") { let v: table = fields.specification; field = v; }
-        if (name === "cents") { let v: table = fields.cents; field = v; }
-        if (name === "available") { let v: table = fields.available; field = v; }
-        if (name === "staged") { let v: table = fields.staged; field = v; }
-        let actual: string = field.kind; return actual === kind;
+        let field: Record<string, unknown> = {};
+        if (name === "id") { let v: Record<string, unknown> = (fields.id as Record<string, unknown>); field = v; }
+        if (name === "name") { let v: Record<string, unknown> = (fields.name as Record<string, unknown>); field = v; }
+        if (name === "specification") { let v: Record<string, unknown> = (fields.specification as Record<string, unknown>); field = v; }
+        if (name === "cents") { let v: Record<string, unknown> = (fields.cents as Record<string, unknown>); field = v; }
+        if (name === "available") { let v: Record<string, unknown> = (fields.available as Record<string, unknown>); field = v; }
+        if (name === "staged") { let v: Record<string, unknown> = (fields.staged as Record<string, unknown>); field = v; }
+        let actual: string = (field.kind as string); return actual === kind;
     }
-    catch (error) { return false; }
+    catch (errorUnknown) { let error: Error = errorUnknown as Error; return false; }
 }
-function isPreparation(fn: table): boolean {
+function isPreparation(fn: Record<string, unknown>): boolean {
     try {
-        let params: table[] = fn.parameters;
+        let params: Record<string, unknown>[] = decoded.records(fn.parameters);
         let names: string[] = ["kind", "provider", "title", "detail", "price", "deadline"];
         if (params.length !== names.length) { return false; }
         { let i: number = 0; while (i < params.length) {
-            let p: table = params[i]; let name: string = p.name; let type: table = p.type; let kind: string = type.kind;
+            let p: Record<string, unknown> = params[i]; let name: string = (p.name as string); let type: Record<string, unknown> = (p.type as Record<string, unknown>); let kind: string = (type.kind as string);
             if (name !== names[i] || kind !== "string") { return false; }
          i = i + 1; } }
-        let result: table = fn.result; let kind: string = result.kind; let fields: table = result.fields;
+        let result: Record<string, unknown> = (fn.result as Record<string, unknown>); let kind: string = (result.kind as string); let fields: Record<string, unknown> = (result.fields as Record<string, unknown>);
         return kind === "record" && hasKind(fields, "staged", "boolean");
-    } catch (error) { return false; }
+    } catch (errorUnknown) { let error: Error = errorUnknown as Error; return false; }
 }
-function isCatalogue(fn: table): boolean {
+function isCatalogue(fn: Record<string, unknown>): boolean {
     try {
-        let result: table = fn.result; let kind: string = result.kind;
+        let result: Record<string, unknown> = (fn.result as Record<string, unknown>); let kind: string = (result.kind as string);
         if (kind !== "array") { return false; }
-        let element: table = result.element; let elementKind: string = element.kind;
+        let element: Record<string, unknown> = (result.element as Record<string, unknown>); let elementKind: string = (element.kind as string);
         if (elementKind !== "record") { return false; }
-        let fields: table = element.fields;
+        let fields: Record<string, unknown> = (element.fields as Record<string, unknown>);
         return hasKind(fields, "id", "string") && hasKind(fields, "name", "string") && hasKind(fields, "specification", "string") && hasKind(fields, "cents", "number") && hasKind(fields, "available", "number");
-    } catch (error) { return false; }
+    } catch (errorUnknown) { let error: Error = errorUnknown as Error; return false; }
 }
-function contextString(entries: table[], name: string): string {
-    for (let entry: table of entries) { let key: string = entry.key; if (key === name) { let value: string = entry.value; return value; } }
+function contextString(entries: Record<string, unknown>[], name: string): string {
+    for (let entry of entries) { let key: string = (entry.key as string); if (key === name) { let value: string = (entry.value as string); return value; } }
     throw { code: "CONTEXT_MISSING", message: "Missing context string" };
 }
-function supportedContext(context: table, entries: table[]): boolean {
+function supportedContext(context: Record<string, unknown>, entries: Record<string, unknown>[]): boolean {
     try {
-        let quantity: number = context.quantity;
+        let quantity: number = (context.quantity as number);
         if (math.floor(quantity) !== quantity || quantity < 1 || quantity > 128) { return false; }
-        let requirement: string = context.requirement; let specification: string = context.specification;
-        let start: string = contextString(entries, "from"); let until: string = context.until;
+        let requirement: string = (context.requirement as string); let specification: string = (context.specification as string);
+        let start: string = contextString(entries, "from"); let until: string = (context.until as string);
         if (strings.trim(requirement) === "" || strings.trim(specification) === "" || strings.trim(start) === "" || strings.trim(until) === "") { return false; }
-        let terms: string[] = context.searchTerms;
+        let terms: string[] = decoded.strings(context.searchTerms);
         if (terms.length < 1 || terms.length > 8) { return false; }
-        for (let term: string of terms) { if (strings.trim(term) === "") { return false; } }
+        for (let term of terms) { if (strings.trim(term) === "") { return false; } }
         return true;
-    } catch (error) { return false; }
+    } catch (errorUnknown) { let error: Error = errorUnknown as Error; return false; }
 }
-export async function inventory(catalogJson: string, disclosed: string, entriesJson: string): table {
-    let context: table = {};
-    try { context = await data.parse(disclosed); } catch (error) { if (error.code !== "INVALID_JSON") { throw error; } let empty: table = {}; context = empty; }
-    let entriesEnvelope: table = await data.parse(entriesJson); let entries: table[] = entriesEnvelope.entries;
-    let envelope: table = await data.parse("{\"contracts\":" + catalogJson + "}");
-    let contracts: table[] = envelope.contracts;
-    let reads: table[] = []; let preparations: table[] = [];
-    for (let contract: table of contracts) {
-        let module: string = contract.module; let functions: table[] = contract.functions;
-        for (let fn: table of functions) {
+export async function inventory(catalogJson: string, disclosed: string, entriesJson: string): Promise<Record<string, unknown>> {
+    let context: Record<string, unknown> = {};
+    try { context = await data.parse(disclosed); } catch (errorUnknown) { let error: Error = errorUnknown as Error; if (error.code !== "INVALID_JSON") { throw error; } let empty: Record<string, unknown> = {}; context = empty; }
+    let entriesEnvelope: Record<string, unknown> = await data.parse(entriesJson); let entries: Record<string, unknown>[] = decoded.records(entriesEnvelope.entries);
+    let envelope: Record<string, unknown> = await data.parse("{\"contracts\":" + catalogJson + "}");
+    let contracts: Record<string, unknown>[] = decoded.records(envelope.contracts);
+    let reads: Record<string, unknown>[] = []; let preparations: Record<string, unknown>[] = [];
+    for (let contract of contracts) {
+        let module: string = (contract.module as string); let functions: Record<string, unknown>[] = decoded.records(contract.functions);
+        for (let fn of functions) {
             if (isPreparation(fn)) { let args: string[] = []; preparations[preparations.length] = { alias: "prepare", module: module, contractFunction: fn, arguments: args }; }
             if (isCatalogue(fn)) {
-                let params: table[] = fn.parameters; let args: string[] = []; let valid: boolean = true;
-                for (let p: table of params) {
+                let params: Record<string, unknown>[] = decoded.records(fn.parameters); let args: string[] = []; let valid: boolean = true;
+                for (let p of params) {
                     let value: string = "";
                     let maximum: number = 0;
                     let readable: boolean = true;
                     try {
-                        let name: string = p.name; let type: table = p.type; let kind: string = type.kind; let bound: number = type.maximum; maximum = bound;
+                        let name: string = (p.name as string); let type: Record<string, unknown> = (p.type as Record<string, unknown>); let kind: string = (type.kind as string); let bound: number = (type.maximum as number); maximum = bound;
                         let found: boolean = false;
-                        for (let entry: table of entries) {
-                            let key: string = entry.key;
-                            if (key === name) { value = entry.value; found = true; }
+                        for (let entry of entries) {
+                            let key: string = (entry.key as string);
+                            if (key === name) { value = (entry.value as string); found = true; }
                         }
                         if (!found) { valid = false; }
                         if (kind !== "string") { valid = false; }
-                    } catch (error) { readable = false; valid = false; }
+                    } catch (errorUnknown) { let error: Error = errorUnknown as Error; readable = false; valid = false; }
                     // Host failure is not an unsupported catalogue. Await outside shape catches.
                     if (readable) {
                         let length: number = await data.utf16Length(value);
@@ -98,27 +99,27 @@ export async function inventory(catalogJson: string, disclosed: string, entriesJ
             }
         }
     }
-    let preparation: table = {};
+    let preparation: Record<string, unknown> = {};
     if (preparations.length === 1) { preparation = preparations[0]; }
     if (preparations.length !== 1 || !supportedContext(context, entries)) { reads = []; }
     return { reads: reads, preparation: preparation, context: context, contextEntries: entries };
 }
-export function issued(catalog: string, inventory: table): string {
-    let reads: table[] = inventory.reads;
+export function issued(catalog: string, inventory: Record<string, unknown>): string {
+    let reads: Record<string, unknown>[] = decoded.records(inventory.reads);
     let aliases: string[] = [];
-    for (let read: table of reads) { let alias: string = read.alias; aliases[aliases.length] = alias; }
+    for (let read of reads) { let alias: string = (read.alias as string); aliases[aliases.length] = alias; }
     aliases[aliases.length] = "unavailable";
     // Provider-neutral decision questions. The host maps these to its chooser API;
     // domain meanings remain here, not in a provider adapter.
-    let readCriteria: table = {};
-    for (let read: table of reads) {
-        let alias: string = read.alias; let module: string = read.module;
-        let fn: table = read.contractFunction; let name: string = fn.name;
+    let readCriteria: Record<string, unknown> = {};
+    for (let read of reads) {
+        let alias: string = (read.alias as string); let module: string = (read.module as string);
+        let fn: Record<string, unknown> = (read.contractFunction as Record<string, unknown>); let name: string = (fn.name as string);
         readCriteria[alias] = "Use " + module + "." + name + " for equipment options matching the disclosed requirement and period.";
     }
     readCriteria["unavailable"] = "No issued read provides suitable equipment options for this request.";
     let constraint: string = "Choose the catalogue relevant to the disclosed requirement, not an operations history. This fixed template has no editable quantity, total-budget or search form and does not enforce a spending ceiling; intents requiring these features must choose unavailable. Unsupported intents must choose unavailable. Source is always checked after lowering.";
-    let result: table = {
+    let result: Record<string, unknown> = {
         protocol: "embedding/dealui-choice-v2",
         constraint: constraint,
         decisionQuestions: {
@@ -141,35 +142,35 @@ export function issued(catalog: string, inventory: table): string {
         catalog: catalog, reads: reads,
         questions: { purpose: ["compare", "choose", "unavailable"], headline: ["hero", "text"], notice: ["warning", "none"], read: aliases }
     };
-    return json.stringify(result);
+    return (json.stringify(result) as string);
 }
-export async function validate(raw: string, inventory: table): table {
-    let parsed: table = {};
-    try { parsed = await data.parse(raw); } catch (error) { if (error.code !== "INVALID_JSON") { throw error; } return { accepted: false, diagnostics: "CHOICE_JSON: expected JSON object" }; }
+export async function validate(raw: string, inventory: Record<string, unknown>): Promise<Record<string, unknown>> {
+    let parsed: Record<string, unknown> = {};
+    try { parsed = await data.parse(raw); } catch (errorUnknown) { let error: Error = errorUnknown as Error; if (error.code !== "INVALID_JSON") { throw error; } return { accepted: false, diagnostics: "CHOICE_JSON: expected JSON object" }; }
     if (tables.keys(parsed).length !== 1) { return { accepted: false, diagnostics: "CHOICE_SHAPE: expected only answers" }; }
-    let answers: table = {};
-    try { let readAnswers: table = parsed.answers; answers = readAnswers; } catch (error) { return { accepted: false, diagnostics: "CHOICE_SHAPE: missing answers" }; }
+    let answers: Record<string, unknown> = {};
+    try { let readAnswers: Record<string, unknown> = (parsed.answers as Record<string, unknown>); answers = readAnswers; } catch (errorUnknown) { let error: Error = errorUnknown as Error; return { accepted: false, diagnostics: "CHOICE_SHAPE: missing answers" }; }
     if (tables.keys(answers).length !== 4) { return { accepted: false, diagnostics: "CHOICE_SHAPE: answer every issued question" }; }
-    let issuedEnvelope: table = await data.parse(issued("", inventory)); let questions: table = issuedEnvelope.questions;
+    let issuedEnvelope: Record<string, unknown> = await data.parse(issued("", inventory)); let questions: Record<string, unknown> = (issuedEnvelope.questions as Record<string, unknown>);
     let keys: string[] = ["purpose", "headline", "notice", "read"];
-    for (let key: string of keys) {
+    for (let key of keys) {
         let valid: boolean = false; let value: string = "";
         try {
             let options: string[] = [];
-            if (key === "purpose") { let v: string = answers.purpose; value = v; options = questions.purpose; }
-            if (key === "headline") { let v: string = answers.headline; value = v; options = questions.headline; }
-            if (key === "notice") { let v: string = answers.notice; value = v; options = questions.notice; }
-            if (key === "read") { let v: string = answers.read; value = v; options = questions.read; }
-            for (let option: string of options) { if (value === option) { valid = true; } }
-        } catch (error) { valid = false; }
+            if (key === "purpose") { let v: string = (answers.purpose as string); value = v; options = decoded.strings(questions.purpose); }
+            if (key === "headline") { let v: string = (answers.headline as string); value = v; options = decoded.strings(questions.headline); }
+            if (key === "notice") { let v: string = (answers.notice as string); value = v; options = decoded.strings(questions.notice); }
+            if (key === "read") { let v: string = (answers.read as string); value = v; options = decoded.strings(questions.read); }
+            for (let option of options) { if (value === option) { valid = true; } }
+        } catch (errorUnknown) { let error: Error = errorUnknown as Error; valid = false; }
         if (!valid) { return { accepted: false, diagnostics: "CHOICE_ALIAS: invalid " + key }; }
         if (value === "unavailable") { return { accepted: false, diagnostics: "CHOICE_UNSUPPORTED: " + key }; }
     }
-    let selected: string = answers.read; let reads: table[] = inventory.reads;
-    for (let read: table of reads) {
-        let alias: string = read.alias;
+    let selected: string = (answers.read as string); let reads: Record<string, unknown>[] = decoded.records(inventory.reads);
+    for (let read of reads) {
+        let alias: string = (read.alias as string);
         if (alias === selected) {
-            let preparation: table = inventory.preparation; let context: table = inventory.context; let entries: table[] = inventory.contextEntries;
+            let preparation: Record<string, unknown> = (inventory.preparation as Record<string, unknown>); let context: Record<string, unknown> = (inventory.context as Record<string, unknown>); let entries: Record<string, unknown>[] = decoded.records(inventory.contextEntries);
             return { accepted: true, diagnostics: "", selection: { answers: answers, read: read, preparation: preparation, context: context, contextEntries: entries } };
         }
     }

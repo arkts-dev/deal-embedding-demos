@@ -140,7 +140,7 @@ export function initialState():State {return {value: 0};}
 // @ui-update
 export function start(state:State,action:Start):State {return state;}
 // @ui-effect
-export async function execute(state:State,action:Start):Done {let value:number=await probe.ping();return {value:value};}
+export async function execute(state:State,action:Start):Promise<Done> {let value:number=await probe.ping();return {value:value};}
 // @ui-update
 export function done(state:State,action:Done):State {return {value:action.value};}
 """

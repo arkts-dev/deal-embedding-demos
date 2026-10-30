@@ -16,5 +16,5 @@ fun main(args:Array<String>) {
     File(out,"experience.deal").writeText(pair.getString("deal"));File(out,"experience.dealui").writeText(pair.getString("dealui"))
     val externals=JSONObject()
     cs.forEachIndexed{i,c->val f="host$i.d.deal";File(out,f).writeText(CapabilityBindings.declaration(c));externals.put(c.module,JSONObject().put("declaration",f))}
-    File(out,"deal.json").writeText(JSONObject().put("languageVersion","1.4").put("backend","js").put("moduleRoots",JSONArray().put("src")).put("externals",externals).toString())
+    File(out,"deal.json").writeText(JSONObject().put("languageVersion","1.5").put("backend","js").put("moduleRoots",JSONArray().put("src")).put("externals",externals).toString())
 }

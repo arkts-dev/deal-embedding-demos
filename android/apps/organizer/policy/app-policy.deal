@@ -1,3 +1,4 @@
+import * as decoded from "./decoded";
 import * as embedding from "embedding";
 import * as types from "catalogue-policy";
 import * as equipment from "./equipment-choice";
@@ -7,44 +8,44 @@ import * as json from "std/json";
 import * as tables from "std/table";
 
 // Trusted, build-linked Organizer domain policy. No provider calls during preparation.
-export async function offer(intent: string, context: embedding.GenerationContext, capabilities: embedding.CapabilityContract[]): types.CatalogueOffer {
+export async function offer(intent: string, context: embedding.GenerationContext, capabilities: embedding.CapabilityContract[]): Promise<types.CatalogueOffer> {
     let disclosed: string = embedding.contextJson(context);
     let catalog: string = await data.catalogJson(capabilities);
     let entries: string = await data.contextEntries(disclosed);
-    let inventory: table = await equipment.inventory(catalog, disclosed, entries);
-    let reads: table[] = inventory.reads;
+    let inventory: Record<string, unknown> = await equipment.inventory(catalog, disclosed, entries);
+    let reads: Record<string, unknown>[] = decoded.records(inventory.reads);
     if (reads.length === 0) { return { available: false, questions: [], stateJson: "" }; }
-    let issued: table = await data.parse(equipment.issued(catalog, inventory));
-    let decisions: table = issued.decisionQuestions;
+    let issued: Record<string, unknown> = await data.parse(equipment.issued(catalog, inventory));
+    let decisions: Record<string, unknown> = (issued.decisionQuestions as Record<string, unknown>);
     let keys: string[] = ["purpose", "headline", "notice", "read"];
     let questions: types.ChoiceQuestion[] = [];
-    for (let key: string of keys) {
-        let decision: table = await data.member(decisions, key);
-        let criteria: table = decision.criteria;
+    for (let key of keys) {
+        let decision: Record<string, unknown> = await data.member(decisions, key);
+        let criteria: Record<string, unknown> = (decision.criteria as Record<string, unknown>);
         let options: types.ChoiceOption[] = [];
-        for (let name: string of tables.keys(criteria)) {
+        for (let name of tables.keys(criteria)) {
             let description: string = await data.stringMember(criteria, name);
             let option: types.ChoiceOption = { name: name, description: description };
             options[options.length] = option;
         }
-        let instructions: string = decision.instructions;
+        let instructions: string = (decision.instructions as string);
         let question: types.ChoiceQuestion = { name: key, instructions: instructions, options: options };
         questions[questions.length] = question;
     }
-    return { available: true, questions: questions, stateJson: json.stringify(inventory) };
+    return { available: true, questions: questions, stateJson: (json.stringify(inventory) as string) };
 }
 
-export async function lower(stateJson: string, answers: types.ChoiceAnswer[]): types.CatalogueLowering {
-    let inventory: table = await data.parse(stateJson);
-    let chosen: table = {};
-    for (let answer: types.ChoiceAnswer of answers) { chosen[answer.question] = answer.choice; }
-    let decision: table = await equipment.validate(json.stringify({ answers: chosen }), inventory);
-    let accepted: boolean = decision.accepted;
-    if (!accepted) { let reason: string = decision.diagnostics; return { reason: reason, source: null }; }
-    let selection: table = decision.selection;
+export async function lower(stateJson: string, answers: types.ChoiceAnswer[]): Promise<types.CatalogueLowering> {
+    let inventory: Record<string, unknown> = await data.parse(stateJson);
+    let chosen: Record<string, unknown> = {};
+    for (let answer of answers) { chosen[answer.question] = answer.choice; }
+    let decision: Record<string, unknown> = await equipment.validate((json.stringify({ answers: chosen }) as string), inventory);
+    let accepted: boolean = (decision.accepted as boolean);
+    if (!accepted) { let reason: string = (decision.diagnostics as string); return { reason: reason, source: null }; }
+    let selection: Record<string, unknown> = (decision.selection as Record<string, unknown>);
     let envelope: string = await source.lower("experience", selection);
-    let pair: table = await data.parse(envelope);
-    let deal: string = pair.deal; let dealui: string = pair.dealui;
+    let pair: Record<string, unknown> = await data.parse(envelope);
+    let deal: string = (pair.deal as string); let dealui: string = (pair.dealui as string);
     let output: embedding.Source = { deal: deal, dealui: dealui };
     return { source: output, reason: "" };
 }

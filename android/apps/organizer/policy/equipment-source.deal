@@ -1,3 +1,4 @@
+import * as decoded from "./decoded";
 import * as data from "embedding/policy-data";
 import * as json from "std/json";
 import * as math from "std/math";
@@ -7,51 +8,51 @@ import * as observer from "embedding/observer";
 // The existing bounded catalogue template, not a generalized workflow engine.
 function quote(value: string): string { return literals.quote(value); }
 function decimal(value: number): string { return literals.decimal(value); }
-export async function lower(sourceName: string, selection: table): string {
+export async function lower(sourceName: string, selection: Record<string, unknown>): Promise<string> {
     await observer.record("lower", "started", "");
     try {
         let result: string = await synthesize(sourceName, selection);
         await observer.record("lower", "completed", "");
         return result;
-    } catch (error) {
+    } catch (errorUnknown) { let error: Error = errorUnknown as Error;
         await observer.record("lower", "failed", error.code);
         throw error;
     }
 }
-async function synthesize(sourceName: string, selection: table): string {
-    let chosen: table = selection.answers;
-    let read: table = selection.read;
-    let preparation: table = selection.preparation;
-    let context: table = selection.context;
-    let readModule: string = read.module;
-    let readContract: table = read.contractFunction;
-    let readFunction: string = readContract.name;
-    let arguments: string[] = read.arguments;
-    let prepareModule: string = preparation.module;
-    let prepareContract: table = preparation.contractFunction;
-    let prepareFunction: string = prepareContract.name;
-    let title: string = context.requirement;
-    let quantity: number = context.quantity;
-    let terms: string[] = context.searchTerms;
+async function synthesize(sourceName: string, selection: Record<string, unknown>): Promise<string> {
+    let chosen: Record<string, unknown> = (selection.answers as Record<string, unknown>);
+    let read: Record<string, unknown> = (selection.read as Record<string, unknown>);
+    let preparation: Record<string, unknown> = (selection.preparation as Record<string, unknown>);
+    let context: Record<string, unknown> = (selection.context as Record<string, unknown>);
+    let readModule: string = (read.module as string);
+    let readContract: Record<string, unknown> = (read.contractFunction as Record<string, unknown>);
+    let readFunction: string = (readContract.name as string);
+    let callArguments: string[] = decoded.strings(read.arguments);
+    let prepareModule: string = (preparation.module as string);
+    let prepareContract: Record<string, unknown> = (preparation.contractFunction as Record<string, unknown>);
+    let prepareFunction: string = (prepareContract.name as string);
+    let title: string = (context.requirement as string);
+    let quantity: number = (context.quantity as number);
+    let terms: string[] = decoded.strings(context.searchTerms);
     if (math.floor(quantity) !== quantity || quantity < 1 || quantity > 128 || terms.length < 1 || terms.length > 8) { throw { code: "CHOICE_CONTEXT", message: "Invalid catalogue context" }; }
-    let deadline: string = context.until;
-    let spec: string = context.specification;
+    let deadline: string = (context.until as string);
+    let spec: string = (context.specification as string);
     // Reserved wire field names are read through normalized string entries.
-    let entries: table[] = selection.contextEntries;
+    let entries: Record<string, unknown>[] = decoded.records(selection.contextEntries);
     let start: string = "";
-    for (let entry: table of entries) { let key: string = entry.key; if (key === "from") { start = entry.value; } }
+    for (let entry of entries) { let key: string = (entry.key as string); if (key === "from") { start = (entry.value as string); } }
     let condition: string = "";
-    for (let term: string of terms) {
+    for (let term of terms) {
         if (condition !== "") { condition = condition + " && "; }
         let normalized: string = await data.lowercase(term);
         condition = condition + "strings.contains(search, " + quote(normalized) + ")";
     }
     let argumentSource: string = "";
-    for (let argument: string of arguments) {
+    for (let argument of callArguments) {
         if (argumentSource !== "") { argumentSource = argumentSource + ", "; }
         argumentSource = argumentSource + quote(argument);
     }
-    let purposeAnswer: string = chosen.purpose; let headline: string = chosen.headline; let notice: string = chosen.notice;
+    let purposeAnswer: string = (chosen.purpose as string); let headline: string = (chosen.headline as string); let notice: string = (chosen.notice as string);
     let purpose: string = "Compare"; if (purposeAnswer === "choose") { purpose = "Choose"; }
     let header: string = "Text"; if (headline === "hero") { header = "Hero"; }
     let warning: string = "";
@@ -60,11 +61,11 @@ async function synthesize(sourceName: string, selection: table): string {
         quote(readModule) +
         ";\nimport * as review from " +
         quote(prepareModule) +
-        ";\nimport * as strings from \"std/string\";\nimport * as math from \"std/math\";\nimport * as values from \"ui/values\";\nexport class Row { id: string; title: string; detail: string; price: string; meta: string; available: boolean; selected: boolean; }\nexport class Load {}\nexport class Pick { value: string; }\nexport class Prepare {}\nexport class Loaded { rows: Row[] ; status: string; failed: boolean; }\nexport class Prepared { status: string; failed: boolean; }\nexport class Workspace { rows: Row[] ; status: string; selected: string; loading: boolean; failed: boolean; }\nfunction decimal(value: number): string { return values.decimal(value); }\nfunction money(cents: number): string { let whole: number = math.floor(cents / 100); let rest: number = cents - whole * 100; let pad: string = \"\"; if (rest < 10) { pad = \"0\"; } return \"€\" + decimal(whole) + \".\" + pad + decimal(rest); }\nfunction lowercase(text: string): string {\n    let out: string = \"\";\n    for (let ch: string of text) {\n        let found: boolean = false;\n        { let i: number = 0; while (i < 26) {  if (ch === strings.substring(\"ABCDEFGHIJKLMNOPQRSTUVWXYZ\", i, i + 1)) { out = out + strings.substring(\"abcdefghijklmnopqrstuvwxyz\", i, i + 1); found = true; }  i = i + 1; } }\n        if (!found) { out = out + ch; }\n    }\n    return out;\n}\nexport function initialState(): Workspace { return {rows: [], status: \"Find available equipment for your requirement.\", selected: \"\", loading: false, failed: false}; }\n// @ui-update\nexport function load(state: Workspace, action: Load): Workspace { return { rows: state.rows, status: \"Loading equipment…\", selected: \"\", loading: true ,failed: false}; }\n// @ui-effect\nexport async function fetch(state: Workspace, action: Load): Loaded {\n    try {\n        let records: table[] = await catalogue." +
+        ";\nimport * as strings from \"std/string\";\nimport * as math from \"std/math\";\nimport * as values from \"ui/values\";\nexport class Row { id: string; title: string; detail: string; price: string; meta: string; available: boolean; selected: boolean; }\nexport class Load {}\nexport class Pick { value: string; }\nexport class Prepare {}\nexport class Loaded { rows: Row[] ; status: string; failed: boolean; }\nexport class Prepared { status: string; failed: boolean; }\nexport class Workspace { rows: Row[] ; status: string; selected: string; loading: boolean; failed: boolean; }\nfunction decimal(value: number): string { return values.decimal(value); }\nfunction money(cents: number): string { let whole: number = math.floor(cents / 100); let rest: number = cents - whole * 100; let pad: string = \"\"; if (rest < 10) { pad = \"0\"; } return \"€\" + decimal(whole) + \".\" + pad + decimal(rest); }\nfunction lowercase(text: string): string {\n    let out: string = \"\";\n    for (let ch of text) {\n        let found: boolean = false;\n        { let i: number = 0; while (i < 26) {  if (ch === strings.substring(\"ABCDEFGHIJKLMNOPQRSTUVWXYZ\", i, i + 1)) { out = out + strings.substring(\"abcdefghijklmnopqrstuvwxyz\", i, i + 1); found = true; }  i = i + 1; } }\n        if (!found) { out = out + ch; }\n    }\n    return out;\n}\nexport function initialState(): Workspace { return {rows: [], status: \"Find available equipment for your requirement.\", selected: \"\", loading: false, failed: false}; }\n// @ui-update\nexport function load(state: Workspace, action: Load): Workspace { return { rows: state.rows, status: \"Loading equipment…\", selected: \"\", loading: true ,failed: false}; }\n// @ui-effect\nexport async function fetch(state: Workspace, action: Load): Promise<Loaded> {\n    try {\n        let records: Record<string, unknown>[] = await catalogue." +
         readFunction +
         "(" +
         argumentSource +
-        ");\n        let rows: Row[] = [];\n        for (let record: table of records) {\n            let id: string = record.id; let name: string = record.name; let specification: string = record.specification;\n            let cents: number = record.cents; let available: number = record.available;\n            let search: string = lowercase(name + \" \" + specification);\n            if (" +
+        ");\n        let rows: Row[] = [];\n        for (let record of records) {\n            let id: string = record.id; let name: string = record.name; let specification: string = record.specification;\n            let cents: number = record.cents; let available: number = record.available;\n            let search: string = lowercase(name + \" \" + specification);\n            if (" +
         condition +
         ") {\n                if (cents < 0 || cents > " +
         decimal(math.floor(2147483647 / quantity)) +
@@ -74,17 +75,17 @@ async function synthesize(sourceName: string, selection: table): string {
         decimal(quantity) +
         "\", available: available >= " +
         decimal(quantity) +
-        " ,selected: false};\n            }\n        }\n        let status: string = \"Select an option; specification still needs your review.\";\n        if (rows.length === 0) { status = \"No matching options. The requirement remains unresolved.\"; }\n        return { rows: rows, status: status ,failed: false};\n    } catch (error) { let message: string = \"Couldn’t load equipment. Please try again.\"; if (error.code === \"PROVIDER_DENIED\" || error.code === \"DENIED\") { message = \"Allow sharing in the Rental app, then try again.\"; } return { rows: state.rows, status: message, failed: true }; }\n}\n// @ui-update\nexport function loaded(state: Workspace, action: Loaded): Workspace { return { rows: action.rows, status: action.status, failed: action.failed ,selected: \"\", loading: false}; }\n// @ui-update\nexport function pick(state: Workspace, action: Pick): Workspace {\n    let rows: Row[] = []; let selected: string = \"\";\n    for (let row: Row of state.rows) {\n        let match: boolean = row.id === action.value && row.available;\n        if (match) { selected = row.id; }\n        rows[rows.length] = { id: row.id, title: row.title, detail: row.detail, price: row.price, meta: row.meta, available: row.available, selected: match };\n    }\n    return { rows: rows, selected: selected, status: \"Check the selected specification, then prepare your selection.\" ,loading: false, failed: false};\n}\n// @ui-update\nexport function prepare(state: Workspace, action: Prepare): Workspace { return { rows: state.rows, selected: state.selected, status: \"Preparing review…\", loading: true ,failed: false}; }\n// @ui-effect\nexport async function stage(state: Workspace, action: Prepare): Prepared {\n    try {\n        for (let row: Row of state.rows) {\n            if (row.id === state.selected && row.available) {\n                let detail: string = " +
+        " ,selected: false};\n            }\n        }\n        let status: string = \"Select an option; specification still needs your review.\";\n        if (rows.length === 0) { status = \"No matching options. The requirement remains unresolved.\"; }\n        return { rows: rows, status: status ,failed: false};\n    } catch (errorUnknown) { let error: Error = errorUnknown as Error; let message: string = \"Couldn’t load equipment. Please try again.\"; if (error.code === \"PROVIDER_DENIED\" || error.code === \"DENIED\") { message = \"Allow sharing in the Rental app, then try again.\"; } return { rows: state.rows, status: message, failed: true }; }\n}\n// @ui-update\nexport function loaded(state: Workspace, action: Loaded): Workspace { return { rows: action.rows, status: action.status, failed: action.failed ,selected: \"\", loading: false}; }\n// @ui-update\nexport function pick(state: Workspace, action: Pick): Workspace {\n    let rows: Row[] = []; let selected: string = \"\";\n    for (let row of state.rows) {\n        let match: boolean = row.id === action.value && row.available;\n        if (match) { selected = row.id; }\n        rows[rows.length] = { id: row.id, title: row.title, detail: row.detail, price: row.price, meta: row.meta, available: row.available, selected: match };\n    }\n    return { rows: rows, selected: selected, status: \"Check the selected specification, then prepare your selection.\" ,loading: false, failed: false};\n}\n// @ui-update\nexport function prepare(state: Workspace, action: Prepare): Workspace { return { rows: state.rows, selected: state.selected, status: \"Preparing review…\", loading: true ,failed: false}; }\n// @ui-effect\nexport async function stage(state: Workspace, action: Prepare): Promise<Prepared> {\n    try {\n        for (let row of state.rows) {\n            if (row.id === state.selected && row.available) {\n                let detail: string = " +
         quote("Required: " + spec + ". Period: " + start + " to " + deadline + ". ") +
         " + \"Item \" + row.id + \":" +
         decimal(quantity) +
-        " · \" + row.detail;\n                let staged: table = await review." +
+        " · \" + row.detail;\n                let staged: Record<string, unknown> = await review." +
         prepareFunction +
         "(\"catalogue-selection\", " +
         quote(readModule) +
         ", row.title, detail, row.price, " +
         quote(deadline) +
-        ");\n                let accepted: boolean = staged.staged;\n                if (!accepted) { throw { code: \"NOT_STAGED\", message: \"Native review rejected the descriptor\" }; }\n                return { status: \"Selection ready for review. Not booked.\" ,failed: false};\n            }\n        }\n        return { status: \"Choose an available option first.\", failed: true };\n    } catch (error) { return { status: \"Couldn’t prepare your selection. Please try again.\", failed: true }; }\n}\n// @ui-update\nexport function prepared(state: Workspace, action: Prepared): Workspace { return { rows: state.rows, selected: state.selected, status: action.status, failed: action.failed ,loading: false}; }\nexport function main(): null { return null; }";
+        ");\n                let accepted: boolean = staged.staged;\n                if (!accepted) { throw { code: \"NOT_STAGED\", message: \"Native review rejected the descriptor\" }; }\n                return { status: \"Selection ready for review. Not booked.\" ,failed: false};\n            }\n        }\n        return { status: \"Choose an available option first.\", failed: true };\n    } catch (errorUnknown) { let error: Error = errorUnknown as Error; return { status: \"Couldn’t prepare your selection. Please try again.\", failed: true }; }\n}\n// @ui-update\nexport function prepared(state: Workspace, action: Prepared): Workspace { return { rows: state.rows, selected: state.selected, status: action.status, failed: action.failed ,loading: false}; }\nexport function main(): null { return null; }";
     let ui: string = "import * as app from \"./" +
         sourceName +
         "\";\nimport * as ui from \"./platform.dealui-pack\";\n// @ui-root\nexport view WorkspaceView(state: app.Workspace): View {\n    ui.Column() {\n        ui." +
@@ -107,6 +108,6 @@ async function synthesize(sourceName: string, selection: table): string {
         "        }\n" +
         "    }\n" +
         "}";
-    return json.stringify({ deal: source, dealui: ui });
+    return (json.stringify({ deal: source, dealui: ui }) as string);
 }
 export function main(): null { return null; }

@@ -39,7 +39,7 @@ fun main(args:Array<String>) {
         File(output,"experience.deal").writeText(pair.getString("deal"));File(output,"experience.dealui").writeText(pair.getString("dealui"))
         val externals=JSONObject()
         contracts.forEachIndexed{i,c->val f="host$i.d.deal";File(output,f).writeText(CapabilityBindings.declaration(c));externals.put(c.module,JSONObject().put("declaration",f))}
-        File(output,"deal.json").writeText(JSONObject().put("languageVersion","1.4").put("backend","js").put("moduleRoots",JSONArray().put("src")).put("externals",externals).toString())
+        File(output,"deal.json").writeText(JSONObject().put("languageVersion","1.5").put("backend","js").put("moduleRoots",JSONArray().put("src")).put("externals",externals).toString())
         return
     }
     if(plan.has("kind")) {
@@ -64,7 +64,7 @@ fun main(args:Array<String>) {
         File(output,"experience.deal").writeText(pair.getString("deal"));File(output,"experience.dealui").writeText(pair.getString("dealui"))
         val externals=JSONObject()
         contracts.forEachIndexed{i,c->val f="host$i.d.deal";File(output,f).writeText(CapabilityBindings.declaration(c));externals.put(c.module,JSONObject().put("declaration",f))}
-        File(output,"deal.json").writeText(JSONObject().put("languageVersion","1.4").put("backend","js").put("moduleRoots",JSONArray().put("src")).put("externals",externals).toString())
+        File(output,"deal.json").writeText(JSONObject().put("languageVersion","1.5").put("backend","js").put("moduleRoots",JSONArray().put("src")).put("externals",externals).toString())
         return
     }
     if(input.nameWithoutExtension=="food") {
@@ -106,5 +106,5 @@ fun main(args:Array<String>) {
     File(output,"experience.deal").writeText(pair.getString("deal"));File(output,"experience.dealui").writeText(pair.getString("dealui"))
     val externals=JSONObject()
     contracts.forEachIndexed{i,c->val f="host$i.d.deal";File(output,f).writeText(CapabilityBindings.declaration(c));externals.put(c.module,JSONObject().put("declaration",f))}
-    File(output,"deal.json").writeText(JSONObject().put("languageVersion","1.4").put("backend","js").put("moduleRoots",JSONArray().put("src")).put("externals",externals).toString())
+    File(output,"deal.json").writeText(JSONObject().put("languageVersion","1.5").put("backend","js").put("moduleRoots",JSONArray().put("src")).put("externals",externals).toString())
 }
