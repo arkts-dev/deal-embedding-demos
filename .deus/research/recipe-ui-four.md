@@ -40,7 +40,7 @@ Before **each** cohort all six apps were stopped and archived, then generated wo
 
 Each cohort ran fresh discovery and UI generation for Budget, Departure, Food and Equipment. These are **not cold-cache experiments**. Generation explicitly used Cerebras `qwen-3.8-27b`, low reasoning; discovery independently used `deepseek-flash`, thinking disabled. No silent backend switch, answer injection, manual repair or timed rerun occurred. Stop: first runnable generated frame committed to the swap chain; semantics and screenshots follow untimed.
 
-Both coherent builds passed 13 host checks and seven deterministic device suites; all seven installed APK hashes matched built bytes. Receipts: `host-2/results.json`, `device-2/results.json`, `host-3/results.json`, `device-3/results.json` under `build/recipe-ui/`. Failed earlier runs remain alongside them. The first Deal UI suite invocation used the wrong working directory and failed to locate an example; it is not a semantic failure.
+Both coherent builds passed 13 host checks and seven deterministic device suites; all seven installed APK hashes matched built bytes. Receipts: `host-2/results.json`, `device-2/results.json`, `host-3/results.json`, `device-3/results.json` under `build/recipe-ui/`. Failed earlier runs remain alongside them. The first Deal UI suite invocation used the wrong working directory and failed to locate an example; it is not a semantic failure. The corrected post-rebase invocation passed 145 checks, 429 runtime invariants and workspace tests (`ui-test-rebased-2.exit`: 0).
 
 ## Fresh results
 
@@ -110,4 +110,4 @@ Thus the next measured targets are excessive generation reasoning and compositio
 
 ## Acceptance boundary
 
-Portable recipes, authoritative build projection, deterministic runtime and fresh benchmark collection are verified. All source, rejections, event/artifact history, original timings and screenshots remain under ignored `build/recipe-ui/`; collectors report no missing captured artifacts. Independent visual review is **pending** because screenshots could not be inspected with the current model. No claim of visual acceptance or successful four-scenario post-rebase delivery is made. No push was requested.
+Portable recipes, authoritative build projection, deterministic runtime and fresh benchmark collection are verified. All source, rejections, event/artifact history, original timings and screenshots remain under ignored `build/recipe-ui/`; collectors report no missing captured artifacts. Independent visual review is **pending** because screenshots could not be inspected with the current model. No claim of visual acceptance or successful four-scenario post-rebase delivery is made. Verified recipe work is committed in embedding as `e936172`; measurement tooling and this report are committed separately in the root repository. All repository worktrees are clean. Nothing was pushed.
