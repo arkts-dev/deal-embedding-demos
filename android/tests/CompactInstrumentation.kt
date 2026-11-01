@@ -67,7 +67,13 @@ class CompactInstrumentation : Instrumentation() {
   for(task in listOf("budget","departure","food","equipment","composed-budget","composed-departure","composed-food","composed-equipment")){
    val scenario=task.removePrefix("fragment-").removePrefix("composed-")
    val fixture=JSONObject(context.assets.open("behavior-fixtures/$task.json").bufferedReader().use{it.readText()})
-   val emitted=BehaviorCandidate(contracts).assemble(fixture)
+   val phases=JSONArray();var emitted=JSONObject()
+   repeat(3){iteration->val times=JSONObject().put("iteration",iteration);val started=System.nanoTime();val cpu=android.os.Debug.threadCpuTimeNanos()
+    val source=BehaviorCandidate(contracts,timing={phase,nanos->times.put(phase+"Ms",nanos/1e6)}).assemble(fixture)
+    if(iteration>0)check(source.toString()==emitted.toString()){"Replay changed canonical source"}
+    emitted=source;times.put("totalMs",(System.nanoTime()-started)/1e6).put("cpuMs",(android.os.Debug.threadCpuTimeNanos()-cpu)/1e6);phases.put(times)
+   }
+   sendStatus(2,Bundle().apply{putString("compositionReplay",JSONObject().put("fixture",task).put("phases",phases).put("sourceSha256",java.security.MessageDigest.getInstance("SHA-256").digest(emitted.toString().toByteArray()).joinToString(""){"%02x".format(it)}).toString())})
    ApplicationProtocol(targetContext,Embedding(targetContext,CapabilityRegistry(targetContext,CapabilityDiscovery(targetContext){false},providers),object:ModelClient{override fun complete(input:String,previous:String,diagnostics:String,cancellation:GenerationCancellation,log:EmbeddingLog):String=error("No inference in maintained device fixture")},RuntimeConfig("experience",emptyList(),"behavior-$task-${UUID.randomUUID()}"))).use{api->
     api.refresh();contracts.forEach{api.grant(it.module)}
     val readsBefore=providerReads;val exp=api.load(task,Source(emitted.getString("deal"),emitted.getString("dealui")));val session=api.run(exp)
@@ -86,6 +92,13 @@ class CompactInstrumentation : Instrumentation() {
    val text="x".repeat(700000)+"🌍\r\n\u0000"+"z".repeat(700000)
    p.evaluate("globalThis.transferCalls=0; globalThis.largeText=${JSONObject.quote(text)}; ''")
    val actual=p.evaluateString("(transferCalls++,largeText)");check(actual==text);check(p.evaluate("String(transferCalls)")=="1")
+   for(small in listOf("","🌍\\r\\n\\u0000", "x".repeat(16384), "y".repeat(16385))){
+    val calls=JSONObject(p.metrics().toString()).getLong("calls")
+    check(p.evaluateString("(transferCalls++,${JSONObject.quote(small)})")==small)
+    val after=JSONObject(p.metrics().toString()).getLong("calls")
+    if(small.length<=16384)check(after-calls==1L)
+   }
+   check(p.evaluate("String(transferCalls)")=="5")
   }}finally{SandboxEngine.release(engine)}
   receipt.putString("result","PASS maintained admission, deterministic emission, closed-shape/cycle rejection, real compiled update, lossless >512KiB single-evaluation bridge transfer")
   finish(android.app.Activity.RESULT_OK,receipt)

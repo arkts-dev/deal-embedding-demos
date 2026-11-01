@@ -243,7 +243,7 @@ class FrameworkE2eInstrumentation: Instrumentation() {
                 val config=RuntimeConfig("experience",emptyList(),storage,retainState=true)
                 val protocolStarted=SystemClock.elapsedRealtime()
                 ApplicationProtocol(ctx,Embedding(ctx,registry,GatewayModelClient(AssistanceBuild.gateway()),config)).use { api ->
-                    row.put("protocolConstructionMs",SystemClock.elapsedRealtime()-protocolStarted)
+                    row.put("protocolConstructionMs",SystemClock.elapsedRealtime()-protocolStarted).put("protocolPhases",api.startupTimings())
                     val authorityStarted=SystemClock.elapsedRealtime()
                     api.capture(true);Connections.apply(ctx,api)
                     val module=when(name){"food"->"host/pizza";"departure"->"host/trip";"equipment"->"host/rental";else->""}

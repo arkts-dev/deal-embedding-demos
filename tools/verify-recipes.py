@@ -38,6 +38,12 @@ export function main(): null {
     let left: Record<string, unknown> = first.plan(); let right: Record<string, unknown> = second.plan();
     let leftState: Record<string, unknown>[] = decoded.records(left.state); let rightState: Record<string, unknown>[] = decoded.records(right.state);
     if (leftState.length !== 1 || rightState.length !== 0 || (right.root as string) !== "root") { throw {code:"ISOLATION_TEST",message:"Builder stores escaped their request"}; }
+    first.putPort("example.value",{ref:"$state.answer",type:builder.wire("number"),present:"true"});
+    let steps: Record<string, unknown>[] = [{kind:"set",bind:"answer",node:"literal"}]; first.putSteps("example",steps);
+    let views: string[] = ["view1"]; first.putViews("example",views); first.addAuthored({id:"example"});
+    let storedSteps: Record<string, unknown>[] = first.getSteps("example"); let missingSteps: Record<string, unknown>[] = second.getSteps("example");
+    let storedViews: string[] = first.getViews("example"); let authored: Record<string, unknown>[] = second.authoredViews();
+    if (!first.hasPort("example.value") || second.hasPort("example.value") || storedSteps.length !== 1 || missingSteps.length !== 0 || storedViews[0] !== "view1" || authored.length !== 0) { throw {code:"ISOLATION_TEST",message:"Builder lookup stores escaped their request"}; }
     let raw: string = "a\\\\b\\\"c\\nd\\t€";
     if (model.quote(raw) !== "\\\"a\\\\\\\\b\\\\\\\"c\\\\nd\\\\t€\\\"") { throw {code:"QUOTE_TEST",message:"Literal escaping changed"}; }
     let slots: recipes.Slot[] = [{name:"hero",accepts:["result"],required:true,maximum:1}];
