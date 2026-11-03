@@ -13,6 +13,24 @@ import unittest
 COLLECTOR = pathlib.Path(__file__).with_name('collect-generation-cohort.py')
 
 class CollectorTest(unittest.TestCase):
+    def test_live_preference_race_is_recorded_but_final_corruption_fails(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root=pathlib.Path(directory);cohort=root/'cohort';cohort.mkdir()
+            def archive(name,entries):
+                with tarfile.open(cohort/name,'w') as tar:
+                    for key,value in entries.items():
+                        raw=value.encode();entry=tarfile.TarInfo(key);entry.size=len(raw);tar.addfile(entry,io.BytesIO(raw))
+            archive('capture-00000.tar',{'shared_prefs/fixture.xml':''})
+            archive('final.tar',{'shared_prefs/fixture.xml':'<map/>','files/framework-e2e-results.json':'[]'})
+            subprocess.run([sys.executable,str(COLLECTOR),str(root)],check=True,stdout=subprocess.DEVNULL)
+            issues=json.loads((root/'collection-capture-issues.json').read_text())
+            self.assertEqual(len(issues),1)
+            self.assertEqual(issues[0]['archive'],'capture-00000.tar')
+            archive('final.tar',{'shared_prefs/fixture.xml':''})
+            result=subprocess.run([sys.executable,str(COLLECTOR),str(root)],stdout=subprocess.DEVNULL,stderr=subprocess.PIPE)
+            self.assertNotEqual(result.returncode,0)
+            self.assertIn(b'ParseError',result.stderr)
+
     def test_checked_summary_retains_materialized_route_without_checked_event(self):
         with tempfile.TemporaryDirectory() as directory:
             root=pathlib.Path(directory);cohort=root/'cohort';cohort.mkdir()

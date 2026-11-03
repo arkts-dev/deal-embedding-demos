@@ -13,7 +13,7 @@ import tarfile
 import xml.etree.ElementTree as ET
 
 out = pathlib.Path(sys.argv[1]); cohort = out / 'cohort'
-events = {}; artifacts = {}; results = []; sources = {}; files = {}
+events = {}; artifacts = {}; results = []; sources = {}; files = {}; capture_issues = []
 archives = sorted((p for p in cohort.glob('*.tar') if not p.name.endswith(('pre-purge.tar', 'clean.tar', 'post.tar'))), key=lambda p: (p.stat().st_mtime_ns, p.name))
 for archive in archives:
     with tarfile.open(archive) as tar:
@@ -29,11 +29,19 @@ for archive in archives:
                     events[(e['sequence'], e.get('trace'), e['stage'], e['outcome'])] = e
             elif name.startswith('files/embedding-log/') and name.endswith('.json'): artifacts[pathlib.PurePosixPath(name).stem] = raw.decode()
             elif name.startswith('shared_prefs/'):
-                values = {n.get('name'): n.text for n in ET.fromstring(raw)}
+                try:
+                    values = {n.get('name'): n.text for n in ET.fromstring(raw)}
+                except ET.ParseError as error:
+                    # Live tar can race an atomic preference write. Preserve the
+                    # receipt and use later captures; never tolerate broken final data.
+                    if archive.name == 'final.tar': raise
+                    capture_issues.append({'archive': archive.name, 'member': name, 'error': str(error)})
+                    continue
                 for key, value in values.items():
                     if key.startswith('workspace.') and key.endswith(('.deal', '.dealui')):
                         sources[key] = base64.b64decode(value) if values.get(key.rsplit('.', 1)[0]+'.sourceEncoding') == 'base64' else value.encode()
             elif name.startswith('files/framework-e2e-'): files[pathlib.PurePosixPath(name).name] = raw
+(out / 'collection-capture-issues.json').write_text(json.dumps(capture_issues, indent=2)+'\n')
 traces = {r['trace'] for r in results if 'trace' in r}
 es = sorted((e for e in events.values() if e.get('trace') in traces), key=lambda e: e['sequence'])
 # Retain discovery failure events separately even when no generation trace was issued.
@@ -106,9 +114,15 @@ for r in results:
     for e in sub:
         if e['stage'] != 'source' or e['outcome'] != 'response': continue
         if e.get('artifact') not in artifacts: responses.append({'capture':'evicted_or_missing'}); continue
-        message = json.loads(artifacts[e['artifact']]); calls = []
+        try: message = json.loads(artifacts[e['artifact']])
+        except (ValueError,TypeError):
+            responses.append({'capture':'malformed_or_truncated','artifact':e['artifact']}); continue
+        calls = []
         for call in message.get('tool_calls', []):
-            f = call['function']; args = json.loads(f['arguments'])
+            f = call['function']
+            try: args = json.loads(f['arguments'])
+            except (ValueError,TypeError):
+                calls.append({'name':f.get('name'),'capture':'malformed_or_truncated_arguments'}); continue
             malformed=[]
             def records(key):
                 value=args.get(key,[])

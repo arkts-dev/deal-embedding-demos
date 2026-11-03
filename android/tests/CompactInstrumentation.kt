@@ -30,7 +30,7 @@ class CompactInstrumentation : Instrumentation() {
   rejected(JSONObject(plan.toString()).apply{getJSONArray("nodes").getJSONObject(1).put("args",JSONArray("[\"increment\",\"one\"]"))})
   var calls=0
   val model=object:ModelClient{override fun complete(input:String,previous:String,diagnostics:String,cancellation:GenerationCancellation,log:EmbeddingLog):String{
-   calls++;check(calls==1&&previous.isEmpty());return nativeCompactFixture(plan)
+   nativeGenerationPrelude(input)?.let{return it};calls++;check(calls==1&&previous.isEmpty());return nativeSourceFixture(pair.getString("deal"),pair.getString("dealui"))
   }}
   ApplicationProtocol(targetContext,Embedding(targetContext,CapabilityRegistry(targetContext,CapabilityDiscovery(targetContext){false},emptyList()),model,RuntimeConfig("experience",emptyList(),"behavior-${UUID.randomUUID()}"))).use{api->
    val e=api.generate(api.request("Counter","Editable counter",api.snapshot(WireType("record"),"{}")))

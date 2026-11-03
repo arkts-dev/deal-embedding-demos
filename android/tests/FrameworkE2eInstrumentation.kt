@@ -1,6 +1,9 @@
 package dev.deal.connectors.tests
 
 import android.app.Instrumentation
+import android.app.Activity
+import android.app.Application
+import java.util.concurrent.TimeUnit
 import android.os.Bundle
 import android.os.SystemClock
 import android.content.Intent
@@ -27,6 +30,30 @@ import java.io.File
  * Semantic assessment happens AFTER the immutable stop timestamp, with no model feedback.
  */
 class FrameworkE2eInstrumentation: Instrumentation() {
+    private val currentActivity=AtomicReference<OrganizerActivity?>()
+    private val lifecycle=object:Application.ActivityLifecycleCallbacks {
+        override fun onActivityCreated(activity:Activity,state:Bundle?){if(activity is OrganizerActivity)currentActivity.set(activity)}
+        override fun onActivityResumed(activity:Activity){if(activity is OrganizerActivity)currentActivity.set(activity)}
+        override fun onActivityDestroyed(activity:Activity){if(activity is OrganizerActivity)currentActivity.compareAndSet(activity,null)}
+        override fun onActivityStarted(activity:Activity){}
+        override fun onActivityPaused(activity:Activity){}
+        override fun onActivityStopped(activity:Activity){}
+        override fun onActivitySaveInstanceState(activity:Activity,state:Bundle){}
+    }
+    private fun host():OrganizerActivity=checkNotNull(currentActivity.get()){"No live organizer activity"}
+    private fun verifyRecreatedHost(){
+        val initial=startActivitySync(Intent(targetContext,OrganizerActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) as OrganizerActivity
+        runOnMainSync {initial.recreate()}
+        val deadline=SystemClock.elapsedRealtime()+10000
+        while((currentActivity.get()==null||currentActivity.get()===initial)&&SystemClock.elapsedRealtime()<deadline)Thread.sleep(10)
+        val frame=CountDownLatch(1)
+        runOnMainSync {
+            val live=host();check(live!==initial){"Recreated activity identity not observed"}
+            live.setContent {Text("Deterministic frame-host check");SideEffect{live.window.decorView.viewTreeObserver.registerFrameCommitCallback{frame.countDown()};live.window.decorView.invalidate()}}
+        }
+        check(frame.await(10,TimeUnit.SECONDS)){"Recreated host did not commit a frame"}
+        runOnMainSync {host().finish()}
+    }
     private var enabled=false
     private var selftest=false
     private var reassess=""
@@ -49,7 +76,12 @@ class FrameworkE2eInstrumentation: Instrumentation() {
             check(dispatchedVersion==null){"Previous assessment action has not settled"}
             val value=checkNotNull(surface.snapshot)
             dispatchedVersion=value.version
-            surface.event(value,slot,payload)
+            val accepted=surface.eventReceipt(value,slot,payload) ?: throw AssessmentIncomplete("Rendered assessment action lost its live ownership")
+            // Clock ticks can publish before this queued action runs. Bind the wait
+            // to a snapshot taken AFTER actual dispatch, not an unrelated advance.
+            val applied=try { accepted.get(60,TimeUnit.SECONDS) } catch(error:java.util.concurrent.TimeoutException) { throw AssessmentIncomplete("Assessment dispatch was not acknowledged") }
+            if(applied==null)throw AssessmentIncomplete("Assessment action owner was replaced")
+            dispatchedVersion=applied-1
         }
         fun pause() { Thread.sleep(10) }
     }
@@ -80,6 +112,10 @@ class FrameworkE2eInstrumentation: Instrumentation() {
         var time=0L
         settledSnapshot(1,{when{time<350->frame(1,false);time<1750->frame(2,true);else->frame(3,false)}},{time+=10},{time})
         check(time>=1950){"Evaluator accepted old or pending frame"}
+        time=0
+        // Receipt-bound version 3 must not accept an unrelated quiet clock frame 2.
+        settledSnapshot(2,{when{time<350->frame(2,false);time<1750->frame(3,true);else->frame(4,false)}},{time+=10},{time})
+        check(time>=1950)
         time=0
         // A fast action can skip its loading frame; the newer completed frame is enough.
         settledSnapshot(1,{if(time<350)frame(1,false) else frame(3,false)},{time+=10},{time})
@@ -205,20 +241,22 @@ class FrameworkE2eInstrumentation: Instrumentation() {
                 ExperienceSurface(api,experience).use { surface ->
                     val failure=AtomicReference<Throwable?>()
                     surface.activate {failure.set(it)}
-                    runOnMainSync {activity.setContent {AppTheme(Accent.Organizer){ExperienceSurface(surface)}}}
+                    runOnMainSync {host().setContent {AppTheme(Accent.Organizer){ExperienceSurface(surface)}}}
                     while(surface.snapshot==null){failure.get()?.let{throw it};Thread.sleep(10)}
                     val feedback=if(additionalOnly)evaluateAdditional(reassess,RenderedSession(surface)) else evaluate(reassess,RenderedSession(surface))
                     File(ctx.filesDir,"framework-e2e-$reassess-reassessed-tree.json").writeText(checkNotNull(surface.snapshot).json().toString(2))
-                    runOnMainSync {activity.setContent {Text("Assessment complete")}}
+                    runOnMainSync {host().setContent {Text("Assessment complete")}}
                     return feedback
                 }
             }
-        }finally{runOnMainSync{activity.finish()}}
+        }finally{runOnMainSync{currentActivity.get()?.finish()}}
     }
     override fun onStart(){val result=Bundle();val receipts=JSONArray();val ctx=targetContext
+        val application=ctx.applicationContext as Application
+        application.registerActivityLifecycleCallbacks(lifecycle)
         try {
             verifyAssessmentWaiting()
-            if(selftest){result.putString("assessmentWaiting","PASS delayed dispatch > old stability window, delayed provider, skipped loading frame, no-ack watchdog");finish(0,result);return}
+            if(selftest){verifyRecreatedHost();result.putString("frameHost","PASS recreated activity commits deterministic frame");result.putString("assessmentWaiting","PASS delayed dispatch > old stability window, delayed provider, skipped loading frame, no-ack watchdog");finish(0,result);return}
             if(reassess.isNotEmpty()){
                 val feedback=assessSaved()
                 result.putString("reassessment",JSONObject().put("scenario",reassess).put("experience",savedExperience).put("semantic",if(feedback.isEmpty())"passed_supplied_assertions" else if(feedback.startsWith("INCONCLUSIVE:"))"inconclusive" else "failed_supplied_assertions").put("semanticFailure",feedback).toString())
@@ -233,6 +271,8 @@ class FrameworkE2eInstrumentation: Instrumentation() {
             )
             for((name,fact) in cases.sortedBy { listOf("budget","departure","food","equipment").indexOf(it.first) }){
                 val row=JSONObject().put("scenario",name);receipts.put(row);val started=SystemClock.elapsedRealtime()
+                var activeStage="startup";var stageStarted=started
+                try {
                 val storage="framework-e2e-$name-${java.util.UUID.randomUUID()}"
                 val activity=startActivitySync(Intent(ctx,OrganizerActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) as OrganizerActivity
                 row.put("activityStartupMs",SystemClock.elapsedRealtime()-started)
@@ -251,6 +291,7 @@ class FrameworkE2eInstrumentation: Instrumentation() {
                     val facts=DiscoveryFacts(listOf(DiscoveryFact("task",fact)))
                     val discoveryStarted=SystemClock.elapsedRealtime()
                     row.put("authoritySetupMs",discoveryStarted-authorityStarted)
+                    activeStage="discovery";stageStarted=discoveryStarted
                     val request=Discovery(ctx,api,AssistanceBuild.discoveryGateway()).use { finder ->
                         val tip=finder.discover(facts).get()
                         row.put("discoveryOnlyMs",SystemClock.elapsedRealtime()-discoveryStarted)
@@ -261,24 +302,28 @@ class FrameworkE2eInstrumentation: Instrumentation() {
                     row.put("trace",api.requestTrace(request))
                     val generationStarted=SystemClock.elapsedRealtime()
                     row.put("handoffMs",generationStarted-started-row.getLong("discoveryMs"))
+                    activeStage="generation-and-checking";stageStarted=generationStarted
                     val e=api.generate(request)
                     row.put("experience",e.id).put("attempts",e.attempts).put("checkedMs",SystemClock.elapsedRealtime()-started)
+                    activeStage="mount-and-first-frame";stageStarted=SystemClock.elapsedRealtime()
                     val surface=ExperienceSurface(api,e)
                     try {
                         val frame=CountDownLatch(1);val renderedAt=AtomicLong(0);val renderError=AtomicReference<Throwable?>()
                         surface.activate { error -> renderError.set(error);frame.countDown() }
                         runOnMainSync {
-                            activity.setContent {
+                            val renderer=host()
+                            row.put("renderActivityRecreated",renderer!==activity)
+                            renderer.setContent {
                                 AppTheme(Accent.Organizer) {
                                     Surface(Modifier.fillMaxSize()) {
                                         Column(Modifier.statusBarsPadding().navigationBarsPadding().padding(16.dp).verticalScroll(rememberScrollState())) {
                                             ExperienceSurface(surface,onSnapshot={snapshot ->
                                                 if(renderedAt.get()==0L) {
                                                     if(snapshot.fault.isNotEmpty()){renderError.set(IllegalStateException(snapshot.fault));frame.countDown()}
-                                                    else activity.window.decorView.viewTreeObserver.registerFrameCommitCallback {
+                                                    else renderer.window.decorView.viewTreeObserver.registerFrameCommitCallback {
                                                         renderedAt.compareAndSet(0,SystemClock.elapsedRealtime());frame.countDown()
                                                     }
-                                                    activity.window.decorView.invalidate()
+                                                    renderer.window.decorView.invalidate()
                                                 }
                                             })
                                         }
@@ -286,7 +331,7 @@ class FrameworkE2eInstrumentation: Instrumentation() {
                                 }
                             }
                         }
-                        frame.await();renderError.get()?.let{throw it}
+                        check(frame.await(60,TimeUnit.SECONDS)){"INCONCLUSIVE: no committed frame from live activity after mount"};renderError.get()?.let{throw it}
                         val stop=renderedAt.get();check(stop>0)
                         row.put("status","rendered").put("runMs",stop-started).put("generationToRenderMs",stop-generationStarted)
                         row.put("stopDefinition","first generated UI frame committed to swap chain; not physical pixel scanout")
@@ -294,6 +339,7 @@ class FrameworkE2eInstrumentation: Instrumentation() {
                         File(ctx.filesDir,"framework-e2e-results.json").writeText(receipts.toString(2))
                         sendStatus(2,Bundle().apply{putString("timed",row.toString())})
                         uiAutomation.takeScreenshot()?.let { bitmap -> File(ctx.filesDir,"framework-e2e-$name.png").outputStream().use { bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG,100,it) };bitmap.recycle() }
+                        activeStage="untimed-semantic-assessment";stageStarted=SystemClock.elapsedRealtime()
                         val feedback=evaluate(name,RenderedSession(surface))
                         row.put("semantic",if(feedback.isEmpty())"passed_supplied_assertions" else if(feedback.startsWith("INCONCLUSIVE:"))"inconclusive" else "failed_supplied_assertions").put("semanticFailure",feedback)
                         File(ctx.filesDir,"framework-e2e-$name-final-tree.json").writeText(checkNotNull(surface.snapshot).json().toString(2))
@@ -303,14 +349,22 @@ class FrameworkE2eInstrumentation: Instrumentation() {
                             File(ctx.filesDir,"framework-e2e-$name-additional-tree.json").writeText(checkNotNull(surface.snapshot).json().toString(2))
                         }
                     } finally {
-                        runOnMainSync { activity.setContent { Text("Assessment complete") } }
+                        runOnMainSync { currentActivity.get()?.setContent { Text("Assessment complete") } }
                         surface.close()
                     }
                 }
-                runOnMainSync { activity.finish() }
+                } catch(error:Exception) {
+                    row.put("status",if(row.optString("status")=="rendered")"rendered" else "failed")
+                    row.put("failureElapsedMs",SystemClock.elapsedRealtime()-started)
+                    row.put("failureStage",activeStage).put("failedStageMs",SystemClock.elapsedRealtime()-stageStarted)
+                    row.put("failureCode",if(error is ProtocolFailure)error.code else error.javaClass.simpleName)
+                    row.put("failure",android.util.Log.getStackTraceString(error))
+                    if(row.optString("status")=="rendered" && !row.has("semantic"))row.put("semantic","inconclusive")
+                } finally {runOnMainSync { currentActivity.get()?.finish() }}
                 File(ctx.filesDir,"framework-e2e-results.json").writeText(receipts.toString(2));sendStatus(2,Bundle().apply{putString("scenario",row.toString())})
             }
             result.putString("e2e",receipts.toString());finish(0,result)
         }catch(e:Throwable){result.putString("failure",android.util.Log.getStackTraceString(e));result.putString("receipts",receipts.toString());File(ctx.filesDir,"framework-e2e-results.json").writeText(receipts.toString(2));finish(1,result)}
+        finally {application.unregisterActivityLifecycleCallbacks(lifecycle)}
     }
 }

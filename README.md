@@ -43,7 +43,7 @@ Hosts provide endpoint/backend values to embedding's gateway client, never HTTP 
 
 ## Generation and repair
 
-Initial strict tools are submit_compact, submit_custom and source_fallback. Maintained fragments receive nested semantic configs/formulas, command targets and disclosed bindings; portable composition derives state/actions/views/dependencies. No extra selector/verifier call. Custom sections measure uncovered behavior/reason/volume; fallback explicitly enables full-source writes. Charge all planning/rejection/fallback work.
+Generation extracts evidenced typed needs, enumerates checked portable candidates, asks Jev to select issued alternatives, and deterministically assembles maintained fragments. Custom tools fill issued typed, namespaced section/pure interfaces while preserving selected parts. Three charged local calls precede honest partial notices; only actual checked absence of runnable task subsets enables source_fallback writes. Compiler checks and exact-source repairs remain downstream. Charge all extraction/selection/rejection/custom/fallback work.
 
 Materialize once atomically. Malformed plans leave staging unchanged; compile rejection returns exact expanded bytes. Thereafter only read_file/edit_sources/check_sources operate on canonical source. Host-bound revisions require unique disjoint exact edits; no rewrites, JSON correction, hidden regeneration or strategy fallback. Failed patches preserve the valid base. Paired independent initial writes may share a response only while both files are absent. read_file uses inclusive numbered lines, both bounds null for full reads.
 

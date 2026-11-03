@@ -13,13 +13,13 @@ import java.util.concurrent.*
 /** Local HTTP fixtures only: exercises library connection handling, not live inference. */
 class GenerationGatewayInstrumentation : Instrumentation() {
     override fun onCreate(arguments: Bundle?) { super.onCreate(arguments); start() }
-    private class Server(private val respond: (Socket, String, JSONObject) -> Unit) : AutoCloseable {
+    private class Server(private val requests: Int = 1, private val respond: (Socket, String, JSONObject) -> Unit) : AutoCloseable {
         val socket = ServerSocket(0, 1, java.net.InetAddress.getByName("127.0.0.1"))
         val done = CompletableFuture<Unit>()
         private var accepted: Socket? = null
         private val thread = Thread {
             try {
-                socket.accept().use { client ->
+                repeat(requests) { socket.accept().use { client ->
                     accepted = client; client.soTimeout = 10_000
                     val stream = client.getInputStream()
                     fun line(): String {
@@ -32,7 +32,7 @@ class GenerationGatewayInstrumentation : Instrumentation() {
                     val bytes = ByteArray(length); var offset = 0
                     while (offset < length) { val n = stream.read(bytes, offset, length - offset); check(n > 0); offset += n }
                     respond(client, headers.joinToString("\n"), JSONObject(bytes.toString(Charsets.UTF_8)))
-                }
+                } }
                 done.complete(Unit)
             } catch (error: Throwable) { done.completeExceptionally(error) }
         }.apply { start() }
@@ -87,15 +87,15 @@ class GenerationGatewayInstrumentation : Instrumentation() {
             check(catalog(false,parameters)==catalog(true,parameters))
             check(catalog(false,parameters)!=catalog(true,parameters.reversed()))
             val registry = CapabilityRegistry(targetContext, CapabilityDiscovery(targetContext) { false }, emptyList())
-            val pair = nativeCompactFixture(compact())
+            val pair = nativeSourceFixture(source.deal,source.dealui)
             EmbeddingLog.capture(targetContext, true)
-            Server { client, headers, body ->
+            Server(3) { client, headers, body ->
                 check(headers.startsWith("POST /configured-generation HTTP/1.1"))
                 check(headers.contains("X-Deal-Generation-Backend: fixture-backend", true))
                 check(body.getBoolean("capture") && body.getString("input").contains("Gateway fixture"))
                 check(body.getString("previous").isEmpty())
                 check(body.get("diagnostics") is String)
-                reply(client, envelope(pair), chunked = true)
+                reply(client, envelope(nativeGenerationPrelude(body.getString("input")) ?: pair), chunked = true)
             }.use { server ->
                 val config = RuntimeConfig("experience", emptyList(), "gateway-fixture-${UUID.randomUUID()}")
                 ApplicationProtocol(targetContext, Embedding(targetContext, registry, GatewayModelClient(GenerationGatewayConfig(server.endpoint, "fixture-backend")), config)).use { api ->
@@ -105,7 +105,7 @@ class GenerationGatewayInstrumentation : Instrumentation() {
                         runCatching { server.done.get(2, TimeUnit.SECONDS) }.onFailure(error::addSuppressed)
                         throw error
                     }
-                    check(api.source(experience) == source && experience.origin == "generated" && experience.attempts == 1)
+                    check(api.source(experience) == source && experience.origin == "generated" && experience.attempts == 3)
                     val session = api.run(experience)
                     val initial = api.next(session, "")
                     fun action(node: JSONObject): Int? {
@@ -124,7 +124,7 @@ class GenerationGatewayInstrumentation : Instrumentation() {
                     check(inspected.events.any { it.optString("stage") == "model-provider" && it.optString("outcome") == "completed" })
                     check(inspected.events.any { it.optString("stage") == "snapshot" && it.optString("artifact").isNotEmpty() })
                     val summaries=inspected.events.filter { it.optString("stage")=="request-summary" }.map { JSONObject(it.getString("target")) }
-                    check(summaries.any { it.getString("outcome")=="source_checked" && it.getInt("initialCalls")==1 && it.getInt("repairCalls")==0 })
+                    check(summaries.any { it.getString("outcome")=="source_checked" && it.getInt("initialCalls")==3 && it.getInt("repairCalls")==0 })
                     check(summaries.any { it.getString("outcome")=="runtime_mounted" && it.getBoolean("sourceChecked") && !it.getBoolean("snapshotPublished") && it.getString("testedBehavior")=="not_tested" })
                     check(summaries.all { it.getJSONObject("tokens").getJSONObject("initial").isNull("reasoning") && !it.getBoolean("telemetryComplete") })
                     api.close(session)
@@ -144,13 +144,13 @@ class GenerationGatewayInstrumentation : Instrumentation() {
             var repairCalls=0
             val patchModel=object:ModelClient {
                 override fun complete(input:String,previous:String,diagnostics:String,cancellation:GenerationCancellation,log:EmbeddingLog):String {
+                    nativeGenerationPrelude(input)?.let{return it}
                     repairCalls++
-                    if(repairCalls==1) { check(input.contains("SOURCE OPERATION\ninitial"));return nativeFallbackFixture() }
-                    if(repairCalls==2)return nativeSourceFixture(broken.deal,broken.dealui)
-                    check(repairCalls in 3..4 && input.contains("SOURCE OPERATION\nrepair")) { "Patch operation marker/call bound" }
+                    if(repairCalls==1) { check(input.contains("SOURCE OPERATION\ninitial"));return nativeSourceFixture(broken.deal,broken.dealui) }
+                    check(repairCalls in 2..3 && input.contains("SOURCE OPERATION\nrepair")) { "Patch operation marker/call bound" }
                     check(input.contains("smallest rejected source region") && input.contains("Clustered source; patch file:")) { "Patch diagnostic window missing at call $repairCalls" }
                     check(JSONObject(previous).getString("deal")==broken.deal) { "Rejected patch changed base" }
-                    if(repairCalls==3)return nativePatchFixture("wrong-revision","next.m_value = v1 +;","next.m_value = v1;")
+                    if(repairCalls==2)return nativePatchFixture("wrong-revision","next.m_value = v1 +;","next.m_value = v1;")
                     check(input.contains("PATCH_NO_MATCH") && diagnostics.isNotBlank()) { "Patch failure or original diagnostics missing" }
                     check(!input.contains("return both complete source strings"))
                     val digestText="${broken.deal.length}:${broken.deal}${broken.dealui.length}:${broken.dealui}"
@@ -160,7 +160,7 @@ class GenerationGatewayInstrumentation : Instrumentation() {
             }
             ApplicationProtocol(targetContext,Embedding(targetContext,CapabilityRegistry(targetContext,CapabilityDiscovery(targetContext){false},emptyList()),patchModel,RuntimeConfig("experience",emptyList(),"patch-${UUID.randomUUID()}"))).use { api ->
                 val request=api.request("Patch fixture","Editable counter",api.snapshot(WireType("record"),"{}"))
-                val e=api.generate(request);check(repairCalls==4 && api.source(e)==source)
+                val e=api.generate(request);check(repairCalls==3 && api.source(e)==source)
                 val s=api.run(e);val tree=api.next(s,"").snapshot.tree
                 fun actionSlot(node:JSONObject):Int? {
                     val props=node.getJSONArray("props")
@@ -200,7 +200,7 @@ class GenerationGatewayInstrumentation : Instrumentation() {
             // Invalid initial envelopes recover inside the same request without a user retry.
             var invalidCalls=0
             val invalidModel=object:ModelClient {
-                override fun complete(input:String,previous:String,diagnostics:String,cancellation:GenerationCancellation,log:EmbeddingLog):String { invalidCalls++;if(invalidCalls==1)return "{\"deal\":\"missing view\"}";check(previous.isEmpty() && input.contains("Invalid tool response"));return pair }
+                override fun complete(input:String,previous:String,diagnostics:String,cancellation:GenerationCancellation,log:EmbeddingLog):String { nativeGenerationPrelude(input)?.let{return it};invalidCalls++;if(invalidCalls==1)return "{\"deal\":\"missing view\"}";check(previous.isEmpty() && input.contains("Invalid tool response"));return pair }
             }
             ApplicationProtocol(targetContext,Embedding(targetContext,CapabilityRegistry(targetContext,CapabilityDiscovery(targetContext){false},emptyList()),invalidModel,RuntimeConfig("experience",emptyList(),"invalid-${UUID.randomUUID()}"))).use { api ->
                 val request=api.request("Invalid fixture","Counter",api.snapshot(WireType("record"),"{}"))

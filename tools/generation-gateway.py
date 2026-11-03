@@ -18,7 +18,7 @@ parser.add_argument('--counts', type=pathlib.Path, help='Persist admission count
 parser.add_argument('--audit', action='store_true', help='Explicit bounded autonomous-test mode, NOT a demo launcher')
 parser.add_argument('--source-limit', type=int)
 parser.add_argument('--choice-limit', type=int)
-parser.add_argument('--chooser', choices=('llm', 'jev'), default='llm', help='Choice transport; source generation remains on the configured generative model')
+parser.add_argument('--chooser', choices=('llm', 'jev'), default='jev', help='Choice transport; source generation remains on the configured generative model')
 parser.add_argument('--jev-key-file', type=pathlib.Path, default=pathlib.Path.home()/'jev.key', help='Read the Jev credential in memory; never packaged or logged')
 parser.add_argument('--jev-model', default='jev-latest')
 parser.add_argument('--backend', choices=('cortex', 'cerebras'), default='cortex', help='Default backend for tooling without an app build-selection header')
@@ -28,6 +28,8 @@ parser.add_argument('--discovery-backend', choices=('disabled', 'deepseek-flash'
 parser.add_argument('--cerebras-key-file', type=pathlib.Path, default=pathlib.Path.home()/'cerebras.key')
 parser.add_argument('--initial-reasoning', choices=('low','medium','high'), default='low')
 parser.add_argument('--repair-reasoning', choices=('low','medium','high'), default='low')
+parser.add_argument('--needs-backend', choices=('deepseek-flash',), default='deepseek-flash', help='Explicit nonthinking requirements extraction')
+parser.add_argument('--needs-thinking-backend', choices=('deepseek-flash','cerebras'), default='deepseek-flash', help='Core-requested thinking escalation backend')
 parser.add_argument('--initial-max-tokens', type=int, default=-1)
 parser.add_argument('--repair-max-tokens', type=int, default=-1)
 parser.add_argument('--stream-source', action=argparse.BooleanOptionalAction, default=True, help='Measure Cerebras stream phases; partial output never leaves gateway')
@@ -44,7 +46,7 @@ if options.backend == 'cerebras' or options.enable_cerebras:
     if not key or any(c.isspace() for c in key): parser.error('Cerebras credential must be a nonempty single token')
     BACKENDS['cerebras'] = {'key': key, 'model': 'qwen-3.8-27b', 'endpoint': 'https://api.cerebras.ai/v1/chat/completions'}
 DISCOVERY = None
-if options.discovery_backend == 'deepseek-flash':
+if options.discovery_backend == 'deepseek-flash' or options.needs_backend == 'deepseek-flash':
     key = os.environ.get('DEXTER_DEEPSEEK_API_KEY', '')
     if not key or any(c.isspace() for c in key): parser.error('DEXTER_DEEPSEEK_API_KEY must be a nonempty single token')
     DISCOVERY = {'key':key, 'model':'deepseek-flash', 'endpoint':'https://api.deepseek.com/chat/completions'}
@@ -89,16 +91,39 @@ def infer(body):
     admit(body)
     if not discovery and options.chooser == 'jev' and '\n\nISSUED OPTIONS\n' in body['input']:
         return infer_jev(body, JEV_KEY, options.jev_model)
-    source = not discovery and '\n\nISSUED OPTIONS\n' not in body['input']
+    needs = None
+    if '\nGENERATION OPERATION\n' in body['input']:
+        text, marker, operation_text = body['input'].rpartition('\nGENERATION OPERATION\n')
+        needs = json.loads(operation_text)
+        if set(needs) != {'operation','thinking'} or needs['operation'] != 'needs' or type(needs['thinking']) is not bool:
+            raise ValueError('Invalid generation operation')
+        body = dict(body, input=text)
+        backend = options.needs_thinking_backend if needs['thinking'] else options.needs_backend
+        if backend == 'deepseek-flash' and DISCOVERY is None or backend == 'cerebras' and backend not in BACKENDS:
+            raise GatewayFailure('BACKEND_UNAVAILABLE','Explicit needs backend is not enabled')
+    source = not discovery and needs is None and '\n\nISSUED OPTIONS\n' not in body['input']
+    hole = None
+    if source:
+        _, marker, state = body['input'].rpartition('\nNATIVE TOOL TURN\n')
+        if marker:
+            turn = json.loads(state)
+            if turn.get('holes') is True:
+                if type(turn.get('thinking')) is not bool: raise ValueError('Missing core hole thinking policy')
+                hole = turn['thinking']
     messages=source_messages(body) if source else stable_messages(body)
+    if needs and body.get('diagnostics'):
+        messages.append({'role':'user','content':'The previous needs document was rejected. Correct the document without dropping requirements. Diagnostic: '+body['diagnostics']})
+    if hole is not None and body.get('diagnostics'):
+        messages.append({'role':'user','content':'The previous hole attempt was rejected. Preserve selected components. Diagnostic: '+body['diagnostics']})
     repairing=bool(body.get('previous')) or '\nSOURCE OPERATION\nrepair\n' in body['input']
-    operation='discovery' if discovery else 'repair' if repairing else 'initial'
-    provider = DISCOVERY if discovery else BACKENDS[backend]
+    operation='needs-thinking' if needs and needs['thinking'] else 'needs' if needs else 'discovery' if discovery else 'repair' if repairing else 'initial'
+    provider = DISCOVERY if discovery or backend == 'deepseek-flash' else BACKENDS[backend]
     payload={'model':provider['model'],'messages':messages,'max_tokens':8192,'temperature':0.2,'stream':False}
     if backend == 'cerebras':
         effort=getattr(options,'repair_reasoning','low') if repairing else getattr(options,'initial_reasoning','low')
         limit=getattr(options,'repair_max_tokens',-1) if repairing else getattr(options,'initial_max_tokens',-1)
         if effort not in ('low','medium','high'): raise ValueError('Source reasoning must be enabled')
+        if hole is not None: effort = 'high' if hole else 'low'
         payload.update(max_tokens=limit, temperature=1, top_p=0.95, reasoning_effort=effort, clear_thinking=True)
         # Source operations use the provider-native tool channel; choices remain independent.
         if '\n\nISSUED OPTIONS\n' in body['input']:
@@ -111,6 +136,11 @@ def infer(body):
     if discovery:
         # Discovery can return literal null; JSON-object mode would change the existing contract.
         payload.update(max_tokens=4096, temperature=0, thinking={'type':'disabled'})
+    if needs:
+        payload['response_format'] = {'type':'json_object'}
+        if backend == 'deepseek-flash':
+            payload.update(temperature=0, thinking={'type':'enabled' if needs['thinking'] else 'disabled'})
+            payload.pop('max_tokens',None)
     # Cerebras rejects urllib's default User-Agent; explicit identity is required.
     request=urllib.request.Request(provider['endpoint'],data=json.dumps(payload).encode(),headers={'Content-Type':'application/json','Authorization':'Bearer '+provider['key'],'User-Agent':'deal-embed-development/1.0'})
     started=time.monotonic()
@@ -135,7 +165,11 @@ def infer(body):
               'finish':finish if finish in ('stop','length','content_filter','tool_calls') else 'unknown',
               'temperature':payload['temperature'], 'max_tokens':payload.get('max_tokens',-1),
               'reasoning':count((usage.get('completion_tokens_details') or {}).get('reasoning_tokens'))}
+    if hole is not None:
+        metadata.update(operation='hole-thinking' if hole else 'hole', thinkingRequested=hole)
+        operation = 'hole-thinking' if hole else 'hole'
     if discovery: metadata['thinking'] = 'disabled'
+    if needs: metadata['thinking'] = 'enabled' if needs['thinking'] else 'disabled'
     metadata.update(operation=operation,totalMs=total_ms,prefixSha256=prefix_fingerprint(messages),receiptTiming=receipt_timing)
     metadata['uncached']=count(usage.get('prompt_cache_miss_tokens'))
     if phases is not None: metadata['phases']=phases
@@ -157,7 +191,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
     def do_GET(self):
         if self.path != '/health': self.send_error(404); return
         # Readiness of this transport/configuration only, NOT a provider success claim.
-        health = {'mode':'audit' if options.audit else 'demo', 'configured':all(bool(p['key']) for p in BACKENDS.values()) and (options.chooser != 'jev' or bool(JEV_KEY)), 'automaticRetries':False, 'chooser':options.chooser, 'defaultBackend':options.backend, 'sourceModels':{name:p['model'] for name,p in BACKENDS.items()}}
+        health = {'mode':'audit' if options.audit else 'demo', 'configured':all(bool(p['key']) for p in BACKENDS.values()) and (options.chooser != 'jev' or bool(JEV_KEY)), 'automaticRetries':False, 'chooser':options.chooser, 'defaultBackend':options.backend, 'needsBackend':options.needs_backend, 'needsThinkingBackend':options.needs_thinking_backend, 'sourceModels':{name:p['model'] for name,p in BACKENDS.items()}}
         if DISCOVERY is not None: health['discoveryModel'] = DISCOVERY['model']
         self.reply(200, health)
     def do_POST(self):

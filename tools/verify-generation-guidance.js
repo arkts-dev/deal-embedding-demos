@@ -25,8 +25,9 @@ async function instruction(previous,diagnostics,operational=false){
  const text=vm.runInContext('guidance.guidance.$f()',ctx);
  assert(text.includes('maintained fragment owns state'));assert(text.includes('Do not author a state/action/node graph'));
  assert(text.includes('comparison'));assert(text.includes('read'));assert(text.includes('allocation'));assert(text.includes('alternatives'));assert(text.includes('quotes'));assert(text.includes('fragments,commands,display'));
- assert(text.includes('submit_compact'));assert(text.includes('submit_custom'));assert(text.includes('source_fallback'));assert(text.includes('Do not reassemble or overwrite'));assert(text.includes('Whole-basket provider prices/deposits are authoritative'));
+ assert(text.includes('not a model submission tool'));assert(text.includes('submit_custom'));assert(text.includes('source_fallback'));assert(text.includes('Do not reassemble or overwrite'));assert(text.includes('Whole-basket provider prices/deposits are authoritative'));
  const workflow=vm.runInContext('guidance.workflow.$f()',ctx);assert(workflow.includes('never emulate a provider formula'));assert(workflow.includes('unless manual selection was explicitly requested'));assert(workflow.includes('Use typed maintained operations'));
+ assert(text.includes('not value/result/status'));assert(text.includes('row.cost/row.deposit'));assert(text.includes('never sum competing quote'));assert(text.includes('reply.field only'));
  assert(text.includes('SessionClock'));assert(text.includes('own conservative receipt expiry'));assert(!text.includes('custom DEAL helper functions only'));
  assert(!text.includes('ui.Column('));assert(!text.includes('action app.Action'));assert(!text.includes('COMPONENTS ('));
  const sourceText=vm.runInContext('guidance.sourceGuidance.$f()',ctx);assert(sourceText.includes('DEAL 1.5 SOURCE RULES'));assert(sourceText.includes('Unicode'));

@@ -78,6 +78,20 @@ export view Main(state:app.State):View {ui.Column(){ui.IntText(value:state.value
             val beforeRapid=api.next(api.run(experience),"").snapshot.version
             typing.event(rendered,slot,null)
             until{api.next(api.run(experience),"").snapshot.version>beforeRapid}
+            // A clock/unrelated publication cannot acknowledge a queued action.
+            val queue=field(typing,"actions") as ExecutorService
+            val entered=CountDownLatch(1);val release=CountDownLatch(1)
+            queue.submit{entered.countDown();check(release.await(10,TimeUnit.SECONDS))}
+            check(entered.await(10,TimeUnit.SECONDS))
+            val visible=checkNotNull(typing.snapshot)
+            val dispatched=checkNotNull(typing.eventReceipt(visible,slot,null))
+            api.dispatch(api.run(experience),slot,null)
+            val unrelated=api.next(api.run(experience),"").snapshot.version
+            typing.activate{throw AssertionError("Surface failed",it)}
+            until{checkNotNull(typing.snapshot).version>=unrelated}
+            check(!dispatched.isDone){"Unrelated snapshot acknowledged queued surface action"}
+            release.countDown()
+            check(checkNotNull(dispatched.get(10,TimeUnit.SECONDS))>unrelated)
             typing.close()
             var staleAccepted=false
             typing.event(rendered,slot,null){staleAccepted=true}
@@ -126,7 +140,7 @@ export view Main(state:app.State):View {ui.Column(){ui.IntText(value:state.value
             check(runCatching{api.generate(request)}.exceptionOrNull().let{it is ProtocolFailure&&it.code=="AUDIT_LIMIT"})
             val rejectedPair=nativeSourceFixture(source.deal+"\nlet broken: number = ;",source.dealui)
             var repeatCalls=0
-            val repeatedModel=object:ModelClient{override fun complete(input:String,previous:String,diagnostics:String,cancellation:GenerationCancellation,log:EmbeddingLog):String { if(JSONObject(input.substringAfterLast("\nNATIVE TOOL TURN\n")).optBoolean("compact"))return nativeFallbackFixture();repeatCalls++;if(repeatCalls>5)throw ProtocolFailure("FIXTURE_DONE","fixture");return if(repeatCalls==1)rejectedPair else "invalid patch" }}
+            val repeatedModel=object:ModelClient{override fun complete(input:String,previous:String,diagnostics:String,cancellation:GenerationCancellation,log:EmbeddingLog):String { nativeGenerationPrelude(input)?.let{return it};repeatCalls++;if(repeatCalls>5)throw ProtocolFailure("FIXTURE_DONE","fixture");return if(repeatCalls==1)rejectedPair else "invalid patch" }}
             ApplicationProtocol(context,Embedding(context,CapabilityRegistry(context,CapabilityDiscovery(context){false},emptyList()),repeatedModel,RuntimeConfig("experience",emptyList(),"repeated-${java.util.UUID.randomUUID()}"))).use{other->
                 val r=other.request("Repeated","Fixture request",other.snapshot(WireType("record"),"{}"))
                 check(runCatching{other.generate(r)}.exceptionOrNull().let{it is ProtocolFailure&&it.code=="FIXTURE_DONE"})
@@ -137,12 +151,14 @@ export view Main(state:app.State):View {ui.Column(){ui.IntText(value:state.value
                 val r=other.request("Exhausted","Fixture request",other.snapshot(WireType("record"),"{}"))
                 check(runCatching{other.generate(r)}.exceptionOrNull().let{it is ProtocolFailure&&it.code=="FIXTURE_DONE"});check(distinct.get()==41)
             }
-            for((thrown,expected) in listOf(java.net.ConnectException("fixture") to "GATEWAY_UNREACHABLE",java.net.SocketTimeoutException("fixture") to "MODEL_TIMEOUT")){
+            for((thrown,expected) in listOf(java.net.ConnectException("fixture") to "MODEL_RECOVERABLE",java.net.SocketTimeoutException("fixture") to "MODEL_RECOVERABLE")){
                 var transportCalls=0
                 val failureModel=object:ModelClient{override fun complete(input:String,previous:String,diagnostics:String,cancellation:GenerationCancellation,log:EmbeddingLog):String {transportCalls++;if(transportCalls>2)throw ProtocolFailure("FIXTURE_DONE","fixture");throw thrown}}
                 ApplicationProtocol(context,Embedding(context,CapabilityRegistry(context,CapabilityDiscovery(context){false},emptyList()),failureModel,RuntimeConfig("experience",emptyList(),"transport-${java.util.UUID.randomUUID()}"))).use{other->
                     val r=other.request("Transport","Fixture request",other.snapshot(WireType("record"),"{}"))
-                    check(runCatching{other.generate(r)}.exceptionOrNull().let{it is ProtocolFailure&&it.code==if(thrown is java.net.SocketTimeoutException || thrown is java.net.ConnectException)"FIXTURE_DONE" else expected})
+                    val failure=runCatching{other.generate(r)}.exceptionOrNull()
+                    check(failure is ProtocolFailure&&failure.code==expected){"Expected classified transport $expected without retry; got $failure"}
+                    check(transportCalls==1){"Transport failure retried during needs extraction"}
                 }
             }
             check(dev.deal.embedding.activitySummary(JSONObject().put("stage","source").put("outcome","started"))=="source · started ")

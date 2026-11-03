@@ -17,28 +17,31 @@ def obj(properties):
 def arr(items): return {'type':'array','items':items}
 TEXT={'type':'string'}
 FIELD=obj({'name':TEXT,'type':TEXT})
-# Portable behavioral contract is packaged by the embedding owner, not duplicated here.
-from pathlib import Path
-BEHAVIOR_SCHEMA=json.loads((Path(__file__).resolve().parents[1]/'dependencies/deal-embedding/ui/behavior-contract.json').read_text())
-CUSTOM_SCHEMA=json.loads(json.dumps(BEHAVIOR_SCHEMA))
-CUSTOM_SCHEMA['properties'].update({'reason':TEXT,'custom':arr(obj({'id':TEXT,'parameters':arr(FIELD),'result':TEXT,'body':TEXT}))})
-CUSTOM_SCHEMA['required']=list(CUSTOM_SCHEMA['properties'])
-CUSTOM_SCHEMA['properties']['nodes']['items']['anyOf'].append(obj({'id':TEXT,'op':{'type':'string','enum':['custom']},'args':arr(TEXT),'params':obj({'section':TEXT})}))
 def schema_tool(name,description,schema):
     return {'type':'function','function':{'name':name,'description':description,'strict':True,'parameters':schema}}
-MAINTAINED_SCHEMA=json.loads((Path(__file__).resolve().parents[1]/'dependencies/deal-embedding/ui/fragment-contract.json').read_text())
-# One native request selects any number of bundled fragment instances and connects semantic
-# ports. Every nested config/role/quota/argument is schema-constrained data, never encoded JSON.
-MAINTAINED_TOOLS=[schema_tool('submit_compact','Compose maintained fragment instances using semantic configuration, pure formulas and disclosed provider bindings. Commands name targets; the embedding derives dependencies, execution, state, handlers and views. Materialize once, then exact-source repair only.',MAINTAINED_SCHEMA)]
-COMPACT_TOOLS=MAINTAINED_TOOLS+[
- schema_tool('submit_custom','Explicit slow path for genuinely uncovered behavior: typed maintained graph plus named custom DEAL function bodies. State why maintained operations cannot implement it. Raw bodies are measured custom coverage, never fast-path coverage.',CUSTOM_SCHEMA),
- tool('source_fallback','Last resort: explicitly select full-source generation only for behavior not representable by maintained operations or typed custom sections. All preceding work remains charged.',{'reason':TEXT},['reason'])]
+# Reuse the authoritative section subtree contract; provider schemas carry no admission policy.
+from pathlib import Path
+_SECTION_SCHEMA=json.loads((Path(__file__).resolve().parents[1]/'dependencies/deal-embedding/ui/fragment-contract.json').read_text())
+def _resolve_section(value):
+    if isinstance(value,list):return [_resolve_section(x) for x in value]
+    if not isinstance(value,dict):return value
+    if '$ref' in value:
+        target=_SECTION_SCHEMA
+        for part in value['$ref'].split('/')[1:]:target=target[part]
+        return _resolve_section(target)
+    return {k:_resolve_section(v) for k,v in value.items()}
+_SECTION_CONFIG=next(x for x in _SECTION_SCHEMA['properties']['fragments']['items']['anyOf'] if x.get('properties',{}).get('kind',{}).get('enum')==['section'])['properties']['config']
+HOLE_TOOLS=[
+ schema_tool('submit_section','Fill only issued typed UI-section interfaces using an owned maintained subtree; never replace neighbors.',obj({'reason':TEXT,'sections':arr(obj({'id':TEXT,**_resolve_section(_SECTION_CONFIG)['properties']}))})),
+ schema_tool('submit_custom','Fill only the exact issued pure function interfaces; preserve selected maintained parts.',obj({'reason':TEXT,'sections':arr(obj({'id':TEXT,'parameters':arr(FIELD),'result':TEXT,'body':TEXT,'arguments':arr(TEXT)}))})),
+ tool('source_fallback','Request whole-source generation only when no retained task composition exists. Local failure or budget exhaustion never authorizes it; core enforces admission.',{'reason':TEXT},['reason'])]
 
 def tools_for(body):
     _,sep,state=body['input'].rpartition(TURN_BOUNDARY)
     if not sep: raise ValueError('Missing native tool turn')
     state=json.loads(state)
-    if state.get('compact') is True:return COMPACT_TOOLS
+    if state.get('holes') is True:return HOLE_TOOLS
+    if state.get('compact') is True:raise ValueError('Author-first compact model operations have been removed')
     if state.get('initialWrites') is True:return SOURCE_TOOLS
     return [t for t in SOURCE_TOOLS if t['function']['name']!='write_file']
 
@@ -58,7 +61,7 @@ def initial_write_batch(body):
     _,sep,state=body['input'].rpartition(TURN_BOUNDARY)
     if not sep:raise ValueError('Missing native tool turn')
     value=json.loads(state)
-    return value.get('initialWrites') is True and value.get('compact') is not True
+    return value.get('initialWrites') is True and value.get('compact') is not True and value.get('holes') is not True
 
 def native_result(message):
     # Serialize only native message fields; hidden reasoning is never forwarded or retained.

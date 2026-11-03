@@ -2,7 +2,7 @@
 """No credentials loaded, no network: exact provider exchange envelope contract."""
 import ast, json, pathlib, types, unittest, tempfile, http.server, urllib.request, urllib.error, concurrent.futures, threading, time
 from gateway_transport import stable_messages, read_stream, prefix_fingerprint
-from native_source_tools import SOURCE_TOOLS, COMPACT_TOOLS, tools_for, source_messages, initial_write_batch, native_result, strip_reasoning
+from native_source_tools import SOURCE_TOOLS, HOLE_TOOLS, tools_for, source_messages, initial_write_batch, native_result, strip_reasoning
 
 class GatewayTest(unittest.TestCase):
     def test_budget(self):
@@ -25,7 +25,7 @@ class GatewayTest(unittest.TestCase):
         tree=ast.parse(pathlib.Path('tools/generation-gateway.py').read_text())
         definitions=[n for n in tree.body if isinstance(n,ast.ClassDef) and n.name in ('GatewayFailure','Handler')]
         namespace={'json':json,'time':time,'http':types.SimpleNamespace(server=http.server),'urllib':types.SimpleNamespace(error=urllib.error),
-                   'concurrent':types.SimpleNamespace(futures=concurrent.futures),'options':types.SimpleNamespace(audit=False,chooser='llm',backend='cortex'),'BACKENDS':{'cortex':{'key':'private-key','model':'cortex'}},'DISCOVERY':None}
+                   'concurrent':types.SimpleNamespace(futures=concurrent.futures),'options':types.SimpleNamespace(audit=False,chooser='llm',backend='cortex',needs_backend='deepseek-flash',needs_thinking_backend='deepseek-flash'),'BACKENDS':{'cortex':{'key':'private-key','model':'cortex'}},'DISCOVERY':None}
         exec(compile(ast.Module(body=definitions,type_ignores=[]),'safe-handler','exec'),namespace)
         class Failed:
             def result(self,**kwargs):raise namespace['GatewayFailure']('AUDIT_LIMIT','Explicit audit ceiling exhausted')
@@ -35,7 +35,7 @@ class GatewayTest(unittest.TestCase):
         try:
             base='http://127.0.0.1:'+str(server.server_port)
             with urllib.request.urlopen(base+'/health') as response:
-                health=json.load(response);self.assertEqual(health,{'mode':'demo','configured':True,'automaticRetries':False,'chooser':'llm','defaultBackend':'cortex','sourceModels':{'cortex':'cortex'}});self.assertNotIn('private-key',json.dumps(health))
+                health=json.load(response);self.assertEqual(health,{'mode':'demo','configured':True,'automaticRetries':False,'chooser':'llm','defaultBackend':'cortex','needsBackend':'deepseek-flash','needsThinkingBackend':'deepseek-flash','sourceModels':{'cortex':'cortex'}});self.assertNotIn('private-key',json.dumps(health))
             request=urllib.request.Request(base+'/generate',data=json.dumps({'input':'x','previous':'','diagnostics':'','capture':False}).encode())
             with self.assertRaises(urllib.error.HTTPError) as caught:urllib.request.urlopen(request)
             self.assertEqual(caught.exception.code,503);self.assertEqual(json.load(caught.exception)['error']['code'],'AUDIT_LIMIT')
@@ -69,48 +69,15 @@ class GatewayTest(unittest.TestCase):
         namespace['infer_jev']=lambda *args:(_ for _ in ()).throw(urllib.error.URLError('unreachable'))
         with self.assertRaises(urllib.error.URLError):namespace['infer'](body)
 
-    def test_compact_tool_phase(self):
-        body={'input':'rules\nNATIVE TOOL TURN\n'+json.dumps({'messages':[],'initialWrites':True,'compact':True})}
-        self.assertEqual(tools_for(body),COMPACT_TOOLS)
-        self.assertFalse(initial_write_batch(body))
-        body['input']='rules\nNATIVE TOOL TURN\n'+json.dumps({'messages':[],'initialWrites':False,'compact':False})
+    def test_constrained_tool_phase(self):
+        body={'input':'rules\nNATIVE TOOL TURN\n'+json.dumps({'messages':[],'initialWrites':True,'holes':True})}
+        self.assertEqual(tools_for(body),HOLE_TOOLS)
+        self.assertEqual({t['function']['name'] for t in tools_for(body)},{'submit_custom','submit_section','source_fallback'})
+        body['input']='rules\nNATIVE TOOL TURN\n'+json.dumps({'messages':[],'initialWrites':False})
         self.assertNotIn('write_file',[t['function']['name'] for t in tools_for(body)])
         self.assertNotIn('submit_compact',[t['function']['name'] for t in tools_for(body)])
-
-    def test_behavior_contract_is_closed_and_no_raw_maintained_source(self):
-        maintained=next(t['function']['parameters'] for t in COMPACT_TOOLS if t['function']['name']=='submit_compact')
-        self.assertFalse(maintained['additionalProperties'])
-        self.assertNotIn('functions',maintained['properties'])
-        self.assertNotIn('view',maintained['properties'])
-        self.assertEqual(set(maintained['properties']),{'title','fragments','commands','display'})
-        variants=maintained['properties']['fragments']['items']['anyOf']
-        self.assertEqual({v['properties']['kind']['enum'][0] for v in variants},{'input','read','choice','allocation','alternatives','quotes','comparison','result'})
-        for v in variants:self.assertFalse({'state','nodes','actions','views'} & set(v['properties']['config']['properties']))
-        self.assertFalse(any(t['function']['name'].startswith('submit_compact_') for t in COMPACT_TOOLS))
-        import jsonschema
-        import importlib.util
-        spec=importlib.util.spec_from_file_location('fixtures','tools/behavior-fixtures.py');fixtures=importlib.util.module_from_spec(spec);spec.loader.exec_module(fixtures)
-        for plan in fixtures.composed().values():jsonschema.validate(plan,maintained)
-        malformed=fixtures.composed()['composed-food'];malformed['fragments'][-1]['config']['quotas']=json.dumps(malformed['fragments'][-1]['config']['quotas'])
-        with self.assertRaises(jsonschema.ValidationError):jsonschema.validate(malformed,maintained)
-        def no_type_unions(value):
-            if isinstance(value,dict):
-                self.assertNotIsInstance(value.get('type'),list,'Maintain native grammar without ambiguous scalar unions')
-                for v in value.values():no_type_unions(v)
-            elif isinstance(value,list):
-                for v in value:no_type_unions(v)
-        no_type_unions(maintained)
-        self.assertEqual(set(maintained['required']),set(maintained['properties']))
-        def check(schema):
-            if isinstance(schema,dict):
-                if schema.get('type')=='object':
-                    self.assertFalse(schema['additionalProperties'])
-                    self.assertEqual(set(schema['required']),set(schema['properties']))
-                for value in schema.values():check(value)
-            elif isinstance(schema,list):
-                for value in schema:check(value)
-        for tool in COMPACT_TOOLS:check(tool['function']['parameters'])
-        self.assertIn('submit_custom',[t['function']['name'] for t in COMPACT_TOOLS])
+        body['input']='rules\nNATIVE TOOL TURN\n'+json.dumps({'compact':True})
+        with self.assertRaises(ValueError):tools_for(body)
 
     def test_read_schema(self):
         schema=next(t['function']['parameters'] for t in SOURCE_TOOLS if t['function']['name']=='read_file')
@@ -152,6 +119,11 @@ class GatewayTest(unittest.TestCase):
         namespace['options'].repair_reasoning='none'
         with self.assertRaisesRegex(ValueError,'enabled'):namespace['infer'](body)
         namespace['options'].repair_reasoning='low'
+        body.update(input='rules\nNATIVE TOOL TURN\n'+json.dumps({'messages':[],'initialWrites':True,'holes':True,'thinking':False}),previous='',diagnostics='Custom interface changed')
+        result=json.loads(namespace['infer'](body));self.assertEqual(seen[-1]['reasoning_effort'],'low');self.assertEqual(result['metadata']['operation'],'hole');self.assertFalse(seen[-1]['parallel_tool_calls'])
+        self.assertTrue(any('Custom interface changed' in m.get('content','') for m in seen[-1]['messages']))
+        body['input']='rules\nNATIVE TOOL TURN\n'+json.dumps({'messages':[],'initialWrites':True,'holes':True,'thinking':True})
+        result=json.loads(namespace['infer'](body));self.assertEqual(seen[-1]['reasoning_effort'],'high');self.assertEqual(result['metadata']['operation'],'hole-thinking')
         response['choices'][0]={'message':{'content':'{}'},'finish_reason':'stop'}
         body.update(input='rules\n\nISSUED OPTIONS\n{}',previous='')
         namespace['infer'](body);self.assertEqual(seen[-1]['response_format'],{'type':'json_object'});self.assertNotIn('tools',seen[-1])
@@ -161,5 +133,11 @@ class GatewayTest(unittest.TestCase):
         response['usage']={'prompt_tokens':10,'completion_tokens':2,'prompt_cache_hit_tokens':8,'prompt_cache_miss_tokens':2}
         result=json.loads(namespace['infer'](body));self.assertEqual(result['content'],'null');self.assertNotIn('tools',seen[-1]);self.assertNotIn('response_format',seen[-1])
         self.assertEqual(result['metadata']['cached'],8);self.assertEqual(result['metadata']['uncached'],2)
+        namespace['options'].needs_backend='deepseek-flash';namespace['options'].needs_thinking_backend='deepseek-flash'
+        body.update(input='facts\nGENERATION OPERATION\n'+json.dumps({'operation':'needs','thinking':False}),backend='cerebras',discovery=False,diagnostics='exact diagnostic')
+        response['choices'][0]['message']['content']='{}'
+        result=json.loads(namespace['infer'](body));self.assertEqual(result['metadata']['operation'],'needs');self.assertEqual(seen[-1]['thinking'],{'type':'disabled'});self.assertNotIn('tools',seen[-1]);self.assertIn('exact diagnostic',seen[-1]['messages'][-1]['content'])
+        body.update(input='facts\nGENERATION OPERATION\n'+json.dumps({'operation':'needs','thinking':True}))
+        result=json.loads(namespace['infer'](body));self.assertEqual(result['metadata']['operation'],'needs-thinking');self.assertEqual(seen[-1]['thinking'],{'type':'enabled'})
 
 if __name__=='__main__':unittest.main()
