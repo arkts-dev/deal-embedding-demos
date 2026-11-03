@@ -1,0 +1,81 @@
+import * as choice from "./needs-choice";
+import * as needs from "./needs-plan";
+import * as sketch from "./sketch";
+import * as decode from "./plan-decoding";
+import * as json from "std/json";
+import * as strings from "std/string";
+import * as tables from "std/table";
+
+function criteria(value: unknown): choice.Criterion[] {
+    let result: choice.Criterion[] = [];
+    for (let item of decode.arrayOrEmpty(value)) {
+        let raw: Record<string, unknown> = item as Record<string, unknown>;
+        let criterion: choice.Criterion = {key: raw.key as string, description: raw.description as string};
+        result[result.length] = criterion;
+    }
+    return result;
+}
+
+function catalogue(raw: Record<string, unknown>): choice.Catalogue {
+    return {sections: criteria(raw.sections), realDataInstructions: raw.realDataInstructions as string,
+        realDataCriteria: criteria(raw.realDataCriteria)};
+}
+
+export function inspect(input: string): string {
+    let raw: Record<string, unknown> = json.parse(input);
+    if (decode.stringField(raw, "operation", "") === "read") {
+        return json.stringify({answers: choice.readChoices(raw.body as string)}) as string;
+    }
+    let plan: needs.NeedsPlan = needs.parseNeedsPlan(raw.plan as string) as needs.NeedsPlan;
+    let value: sketch.Sketch = needs.sketchFrom(plan) as sketch.Sketch;
+    let texts: unknown[] = decode.arrayOrEmpty(raw.numberTexts);
+    let numberText: (value: number) => string = function(number: number): string {
+        for (let item of texts) {
+            let sample: Record<string, unknown> = item as Record<string, unknown>;
+            if (sample.value as number === number) { return sample.text as string; }
+        }
+        throw {code: "PARITY_PRIMITIVE", message: "Missing number formatting sample"};
+    };
+    let data: choice.Catalogue = catalogue(raw.catalogue as Record<string, unknown>);
+    let request: choice.ChooseRequest = choice.buildChooseRequest(raw.prompt as string, plan, value, data, numberText);
+    let body: unknown = null;
+    let questionKeys: string[] = [];
+    let criteriaKeys: Record<string, unknown> = {};
+    if (strings.length(request.body) > 0) {
+        let parsed: Record<string, unknown> = json.parse(request.body);
+        body = parsed;
+        let questions: Record<string, unknown> = parsed.questions as Record<string, unknown>;
+        questionKeys = tables.keys(questions);
+        for (let key of questionKeys) {
+            let question: Record<string, unknown> = questions[key] as Record<string, unknown>;
+            criteriaKeys[key] = tables.keys(question.criteria as Record<string, unknown>);
+        }
+    }
+    return json.stringify({body: body, questionKeys: questionKeys, criteriaKeys: criteriaKeys,
+        settled: request.settled, timer: choice.timerMayTakeCountdown(plan),
+        lists: choice.listSectionsFor(plan), description: choice.describeSketch(value, numberText),
+        listNeeds: choice.listNeeds(value), clocks: choice.clockOptions(value, data), listsOptions: choice.listOptions(value, data)}) as string;
+}
+
+export async function inspectFlow(input: string): Promise<string> {
+    let raw: Record<string, unknown> = json.parse(input);
+    let trace: string[] = [];
+    let replies: unknown[] = decode.arrayOrEmpty(raw.replies);
+    let cursor: number = 0;
+    let settled: string[] = [];
+    for (let item of decode.arrayOrEmpty(raw.settled)) { settled[settled.length] = item as string; }
+    let request: choice.ChooseRequest = {body: raw.body as string, settled: settled};
+    try {
+        let result: choice.ChoiceAnswers = await choice.choose(request, async function(body: string): Promise<string> {
+            trace[trace.length] = body;
+            let reply: Record<string, unknown> = replies[cursor] as Record<string, unknown>;
+            cursor = cursor + 1;
+            if (Object.hasOwn(reply, "error")) { throw {code: reply.error as string, message: "operational"}; }
+            return reply.text as string;
+        });
+        return json.stringify({trace: trace, answers: result.answers, settled: result.settled}) as string;
+    } catch (error) {
+        let failure: Error = error as Error;
+        return json.stringify({trace: trace, error: failure.code}) as string;
+    }
+}
