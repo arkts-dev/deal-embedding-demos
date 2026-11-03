@@ -1,0 +1,116 @@
+import * as drawing from "./needs-drawing";
+import * as filtering from "./needs-filtering";
+import * as needs from "./needs-plan";
+import * as sketch from "./sketch";
+import * as decode from "./plan-decoding";
+import * as json from "std/json";
+import * as start from "./needs-start";
+
+function textTools(raw: Record<string, unknown>): filtering.TextTools {
+    let normalized: Record<string, unknown> = raw.normalized as Record<string, unknown>;
+    let characters: Record<string, unknown> = raw.characters as Record<string, unknown>;
+    let matches: Record<string, unknown> = raw.matches as Record<string, unknown>;
+    return {
+        normalize: function(text: string): string { return normalized[text] as string; },
+        units: function(text: string): number[] {
+            let result: number[] = [];
+            for (let character of text) {
+                for (let unit of decode.arrayOrEmpty(characters[character])) { result[result.length] = unit as number; }
+            }
+            return result;
+        },
+        matches: function(pattern: string, text: string): boolean { return matches[pattern + "\n" + text] as boolean; }
+    };
+}
+
+export function inspectFilter(input: string): string {
+    let raw: Record<string, unknown> = json.parse(input);
+    let tools: filtering.TextTools = textTools(raw.tools as Record<string, unknown>);
+    let operation: string = raw.operation as string;
+    if (operation === "asks") {
+        return json.stringify({answer: filtering.asksFor(raw.request as string, raw.quote as string, tools)}) as string;
+    }
+    let plan: needs.NeedsPlan = needs.parseNeedsPlan(raw.reply as string) as needs.NeedsPlan;
+    if (operation === "filter") {
+        let original: sketch.Sketch = needs.sketchFrom(plan) as sketch.Sketch;
+        original.questions = [];
+        let result: filtering.FilteredPlan = filtering.filterPlan(plan, original, raw.request as string,
+            raw.sceneAllowed as boolean, raw.widget as boolean, tools);
+        let ids: string[] = [];
+        for (let question of result.sketch.questions) { ids[ids.length] = question.id; }
+        return json.stringify({unscened: result.unscened, unasked: result.unasked, cut: result.cut,
+            document: needs.sketchDocument(plan), questions: ids}) as string;
+    }
+    let dropped: string[] = [];
+    if (operation === "drop") { dropped = filtering.dropUnasked(plan, raw.request as string, tools); }
+    else { dropped = filtering.capForWidget(plan, raw.room as number, tools); }
+    let kept: string[] = [];
+    for (let need of plan.needs) { kept[kept.length] = need.words; }
+    return json.stringify({dropped: dropped, kept: kept, document: needs.sketchDocument(plan)}) as string;
+}
+
+export async function inspectDrawing(input: string): Promise<string> {
+    let raw: Record<string, unknown> = json.parse(input);
+    let replies: unknown[] = decode.arrayOrEmpty(raw.replies);
+    let trace: Record<string, unknown>[] = [];
+    let cursor: number = 0;
+    let tools: drawing.DrawingTools = {
+        ask: async function(system: string, user: string, partial: (text: string) => void, thinking: boolean): Promise<string | null> {
+            trace[trace.length] = {event: "ask", system: system, user: user, thinking: thinking};
+            let reply: Record<string, unknown> = replies[cursor] as Record<string, unknown>;
+            cursor = cursor + 1;
+            for (let chunk of decode.arrayOrEmpty(reply.chunks)) { partial(chunk as string); }
+            if (Object.hasOwn(reply, "error")) { throw {code: reply.error as string, message: "operational"}; }
+            return reply.text as string | null;
+        },
+        preview: function(value: sketch.Sketch): void {
+            trace[trace.length] = {event: "preview", signature: drawing.sketchSignature(value)};
+        },
+        review: async function(value: sketch.Sketch): Promise<string> {
+            let ids: string[] = [];
+            for (let question of value.questions) { ids[ids.length] = question.id; }
+            trace[trace.length] = {event: "review", questions: ids};
+            if (Object.hasOwn(raw, "reviewError")) { throw {code: raw.reviewError as string, message: "review interrupted"}; }
+            return decode.stringField(raw, "review", "");
+        },
+        head: function(text: string, count: number): string {
+            let heads: Record<string, unknown> = raw.heads as Record<string, unknown>;
+            return heads[text] as string;
+        }
+    };
+    let result: drawing.ReviewedDrawing | null = null;
+    try {
+        result = await drawing.drawReviewed(raw.system as string, raw.prompt as string,
+            raw.widget as boolean, raw.scene as string, tools);
+    } catch (error) {
+        let failure: Error = error as Error;
+        return json.stringify({trace: trace, error: failure.code}) as string;
+    }
+    let finished: drawing.ReviewedDrawing = result as drawing.ReviewedDrawing;
+    let drawn: drawing.Drawing = finished.drawing;
+    let signature: string | null = null;
+    let questions: string[] = [];
+    let parsed: sketch.Sketch | null = drawn.sketch;
+    if (parsed !== null) {
+        signature = drawing.sketchSignature(parsed);
+        for (let question of parsed.questions) { questions[questions.length] = question.id; }
+    }
+    return json.stringify({trace: trace, text: drawn.text, prompt: finished.prompt, replanned: finished.replanned,
+        tries: finished.tries, note: finished.note, signature: signature, questions: questions}) as string;
+}
+
+export function inspectStart(input: string): string {
+    let raw: Record<string, unknown> = json.parse(input);
+    let value: sketch.Sketch = sketch.parseSketch(raw.sketch as string) as sketch.Sketch;
+    let texts: Record<string, unknown> = raw.numberTexts as Record<string, unknown>;
+    let note: string = start.startOnRequested(value, raw.prompt as string, function(number: number): string {
+        return texts[decode.integerText(number)] as string;
+    });
+    let values: number[] = [];
+    for (let item of value.inputs) { values[values.length] = item.value; }
+    return json.stringify({seconds: start.requestedSeconds(raw.prompt as string), values: values, note: note}) as string;
+}
+
+export function inspectPartial(text: string): string {
+    return json.stringify({closed: drawing.closePartialJson(text)}) as string;
+}
