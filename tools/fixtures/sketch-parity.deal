@@ -1,0 +1,86 @@
+import * as sketch from "./sketch";
+import * as needs from "./needs-plan";
+import * as json from "std/json";
+
+// JSON alone erases NaN, infinities and negative zero. Keep them observable
+// in differential output, rather than allowing serialization to hide mistakes.
+function numeric(value: number): unknown {
+    if (value !== value) { return "#NaN"; }
+    if (value === 0 && 1 / value < 0) { return "#-0"; }
+    if (value - value !== 0) {
+        if (value < 0) { return "#-Infinity"; }
+        return "#Infinity";
+    }
+    return value;
+}
+
+// Test-only projection of nominal models. Never used as production decoding.
+function document(value: sketch.Sketch): Record<string, unknown> {
+    let inputs: Record<string, unknown>[] = [];
+    for (let input of value.inputs) {
+        let options: Record<string, unknown>[] = [];
+        for (let option of input.options) { options[options.length] = {label: option.label, value: numeric(option.value)}; }
+        inputs[inputs.length] = {id: input.id, label: input.label, kind: input.kind, min: numeric(input.min), max: numeric(input.max),
+            value: numeric(input.value), unit: input.unit, measure: input.measure, options: options};
+    }
+    let constants: Record<string, unknown>[] = [];
+    for (let constant of value.constants) {
+        constants[constants.length] = {id: constant.id, label: constant.label, value: numeric(constant.value), measure: constant.measure};
+    }
+    let values: Record<string, unknown>[] = [];
+    for (let figure of value.values) {
+        // Preserve Map insertion order as entry pairs, not an unordered object.
+        let given: unknown[] = [];
+        for (let sample of figure.given) {
+            let pair: unknown[] = [sample.name, numeric(sample.value)];
+            given[given.length] = pair;
+        }
+        values[values.length] = {id: figure.id, label: figure.label, means: figure.means, format: figure.format,
+            unit: figure.unit, decimals: numeric(figure.decimals), formula: figure.formula, given: given,
+            result: numeric(figure.result), hidden: figure.hidden};
+    }
+    let list: Record<string, unknown> | null = null;
+    let supplied: sketch.SketchList | null = value.list;
+    if (supplied !== null) {
+        let fields: Record<string, unknown>[] = [];
+        for (let field of supplied.fields) {
+            fields[fields.length] = {id: field.id, label: field.label, kind: field.kind, measure: field.measure,
+                unit: field.unit, decimals: numeric(field.decimals), value: numeric(field.value)};
+        }
+        list = {label: supplied.label, fields: fields};
+    }
+    let events: Record<string, unknown>[] = [];
+    for (let event of value.events) {
+        events[events.length] = {id: event.id, when: event.when, what: event.what, asked: event.asked};
+    }
+    let questions: Record<string, unknown>[] = [];
+    for (let question of value.questions) {
+        questions[questions.length] = {id: question.id, ask: question.ask, options: question.options, fallback: numeric(question.fallback)};
+    }
+    return {title: value.title, eyebrow: value.eyebrow, subtitle: value.subtitle, inputs: inputs,
+        constants: constants, values: values, countdown: value.countdown, hasCountdown: value.hasCountdown,
+        countdownLength: value.countdownLength, stopwatch: value.stopwatch, hasStopwatch: value.hasStopwatch,
+        list: list, events: events, ready: value.ready, questions: questions, other: value.other};
+}
+
+export function inspect(reply: string): string {
+    let parsed: sketch.Sketch | null = null;
+    try {
+        parsed = sketch.parseSketch(reply);
+    } catch (error) {
+        let failure: Error = error as Error;
+        if (failure.code !== "SKETCH_SHAPE") { throw failure; }
+        return "{\"shapeRejected\":true}";
+    }
+    if (parsed !== null) { return json.stringify(document(parsed)) as string; }
+    return "null";
+}
+
+export function fromNeeds(reply: string): string {
+    let plan: needs.NeedsPlan | null = needs.parseNeedsPlan(reply);
+    if (plan !== null) {
+        let parsed: sketch.Sketch | null = needs.sketchFrom(plan);
+        if (parsed !== null) { return json.stringify(document(parsed)) as string; }
+    }
+    return "null";
+}

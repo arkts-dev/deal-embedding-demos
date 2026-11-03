@@ -41,12 +41,15 @@ def main():
     source = out / 'src'
     source.mkdir(parents=True)
     lib = ROOT / 'dependencies/deal-embedding'
-    shutil.copy(lib / 'core/needs-plan.deal', source)
+    for name in ['needs-plan', 'plan-decoding', 'sketch']:
+        shutil.copy(lib / f'core/{name}.deal', source)
+    shutil.copy(ROOT / 'tools/fixtures/sketch-parity.deal', source / 'sketch-parity.deal')
     (out / 'deal.json').write_text(json.dumps({
         'languageVersion': '1.5', 'backend': 'js', 'moduleRoots': ['src']}))
     # Projection is explicit: nominal classes are not generic JSON Records.
     (source / 'parity.deal').write_text('''import * as needs from "./needs-plan";
 import * as json from "std/json";
+import * as sketchParity from "./sketch-parity";
 
 export function inspect(reply: string): string {
     let parsed: needs.NeedsPlan | null = needs.parseNeedsPlan(reply);
@@ -73,6 +76,8 @@ export function inspect(reply: string): string {
     return json.stringify({base: plan.base, needs: items, document: document,
         firstCountdown: firstWords, plainScenes: changed, plainDocument: plain}) as string;
 }
+export function inspectSketch(reply: string): string { return sketchParity.inspect(reply); }
+export function sketchFromNeeds(reply: string): string { return sketchParity.fromNeeds(reply); }
 export function main(): null { return null; }
 ''')
     compiler = ['java', '-Ddeal.home=' + str(ROOT / 'dependencies/deal'),
@@ -91,6 +96,7 @@ export function main(): null { return null; }
     import os
     env = dict(os.environ, VERA_TYPESCRIPT_PATH=str(args.typescript.resolve()))
     print(run(['node', ROOT / 'tools/test-needs-plan-parity.js', reference, out], 'parity-js', env=env).strip())
+    print(run(['node', ROOT / 'tools/test-sketch-parity.js', reference, out], 'sketch-parity-js', env=env).strip())
     (out / 'NeedsParityHost.java').write_text('''import deal.codegen.jvm.JvmRuntime;
 import java.util.Base64;
 import java.nio.charset.StandardCharsets;
@@ -99,7 +105,7 @@ import java.io.InputStreamReader;
 public class NeedsParityHost {
     public static void main(String[] args) throws Exception {
         Parity.dealMain();
-        var inspect = (JvmRuntime.FunctionValue) JvmRuntime.exportSurface("parity").read("inspect");
+        var inspect = (JvmRuntime.FunctionValue) JvmRuntime.exportSurface("parity").read(args[0]);
         var reader = new BufferedReader(new InputStreamReader(System.in, StandardCharsets.UTF_8));
         for (String line; (line = reader.readLine()) != null;) {
             String reply = new String(Base64.getDecoder().decode(line), StandardCharsets.UTF_8);
@@ -113,24 +119,35 @@ public class NeedsParityHost {
     run(['javac', '--release', '21', '-cp', classpath, '-d', out / 'classes',
          out / 'jvm/Parity.java', out / 'NeedsParityHost.java'], 'javac')
     import base64
-    cases = json.loads((out / 'cases.json').read_text())
-    requests = '\n'.join(base64.b64encode(case['reply'].encode()).decode() for case in cases) + '\n'
-    replies = run(['java', '-cp', str(out / 'classes') + os.pathsep + str(classpath),
-                   'NeedsParityHost'], 'parity-jvm', input=requests).splitlines()
-    if len(replies) != len(cases):
-        raise AssertionError('JVM response count differs from fixture count')
-    for case, reply in zip(cases, replies):
-        if json.loads(base64.b64decode(reply)) != case['expected']:
-            raise AssertionError('JVM differential mismatch: ' + case['name'])
-    differential_count = sum(not case.get('intentionalBoundaryDifference') for case in cases)
-    print(f'PASS {differential_count} JVM reference differential cases; 2 strict-JSON boundary cases')
+    counts = {}
+    for filename, export in [('cases', 'inspect'), ('sketch-cases', 'inspectSketch'), ('sketch-needs-cases', 'sketchFromNeeds')]:
+        cases = json.loads((out / (filename + '.json')).read_text())
+        requests = '\n'.join(base64.b64encode(case['reply'].encode()).decode() for case in cases) + '\n'
+        replies = run(['java', '-cp', str(out / 'classes') + os.pathsep + str(classpath),
+                       'NeedsParityHost', export], filename + '-jvm', input=requests).splitlines()
+        if len(replies) != len(cases):
+            raise AssertionError('JVM response count differs from fixture count')
+        # Both language runtimes use binary64. Python's arbitrary-precision
+        # JSON integers must not make equivalent decimal spellings disagree.
+        expected_cases = json.loads((out / (filename + '.json')).read_text(), parse_int=float)
+        for case, reply in zip(expected_cases, replies):
+            if json.loads(base64.b64decode(reply), parse_int=float) != case['expected']:
+                raise AssertionError('JVM differential mismatch: ' + case['name'])
+        counts[filename] = len(cases)
+        print(f'PASS {len(cases)} JVM cases ({filename})')
+    differential_count = counts['cases'] - 2
     receipt = {'referenceRevision': PIN, 'passed': True, 'differentialCasesPerBackend': differential_count,
                'backends': ['js', 'jvm'],
-               'scope': 'NeedsPlan parsing, pre-parseSketch conversion, needOf and plainScenes; not production integration or full needs/composition parity',
-               'remaining': ['parseSketch normalization', 'dropUnasked/asksFor', 'capForWidget',
+               'scope': 'NeedsPlan parsing/conversion and parseSketch normalization; not production integration or full composition parity',
+               'caseCountsPerBackend': counts,
+               'remaining': ['dropUnasked/asksFor', 'capForWidget',
                              'NeedsChoose retry/review/choice orchestration', 'production replacement'],
                'intentionalBoundaryDifferences': ['duplicate JSON keys reject', 'unpaired Unicode surrogates reject'],
-               'portSha256': hashlib.sha256((source / 'needs-plan.deal').read_bytes()).hexdigest(),
+               'portHashes': {name: hashlib.sha256((source / f'{name}.deal').read_bytes()).hexdigest()
+                              for name in ['needs-plan', 'plan-decoding', 'sketch']},
+               'testHashes': {str(p.relative_to(ROOT)): hashlib.sha256(p.read_bytes()).hexdigest() for p in
+                              [pathlib.Path(__file__), ROOT / 'tools/test-sketch-parity.js',
+                               ROOT / 'tools/test-needs-plan-parity.js', ROOT / 'tools/fixtures/sketch-parity.deal']},
                'hashes': {name: hashlib.sha256((reference / name).read_bytes()).hexdigest() for name in reference_files}}
     (out / 'receipt.json').write_text(json.dumps(receipt, indent=2) + '\n')
     print('Evidence:', out.relative_to(ROOT))
