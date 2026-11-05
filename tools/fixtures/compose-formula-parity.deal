@@ -1,0 +1,102 @@
+import * as formula from "./compose-formula";
+import * as decode from "./plan-decoding";
+import * as json from "std/json";
+import * as expressions from "./compose-expressions";
+import * as sketch from "./sketch";
+
+function project(node: formula.ExprNode): Record<string, unknown> {
+    let args: Record<string, unknown>[] = [];
+    for (let child of node.args) { args[args.length] = project(child); }
+    return {kind: node.kind, value: node.value, name: node.name, op: node.op, args: args};
+}
+
+export function inspectWritten(input: string): string {
+    let raw: Record<string, unknown> = json.parse(input);
+    let value: sketch.Sketch = sketch.parseSketch(raw.sketch as string) as sketch.Sketch;
+    let figure: sketch.SketchValue = value.values[0];
+    let samples: unknown[] = decode.arrayOrEmpty(raw.numbers);
+    let numberText: (number: number) => string = function(number: number): string {
+        for (let sample of samples) {
+            let item: Record<string, unknown> = sample as Record<string, unknown>;
+            if (item.value as number === number) { return item.text as string; }
+        }
+        throw {code: "PARITY_PRIMITIVE", message: "Missing written numeric text"};
+    };
+    let env: Record<string, unknown> = raw.env as Record<string, unknown>;
+    let lengths: Record<string, unknown> = raw.lengths as Record<string, unknown>;
+    let log: string[] = [];
+    let result: formula.WrittenResult = formula.validateWritten(figure, expressions.operandList(value, 0, numberText),
+        function(name: string): number {
+            let found: unknown = env[name];
+            if (typeof found === "number") { return found; }
+            return 0 / 0;
+        }, raw.answers as Record<string, unknown>, log,
+        function(text: string): number { return lengths[text] as number; }, numberText,
+        function(number: number): string { return raw.fixed as string; },
+        function(a: number, b: number): number { throw {code: "PARITY_PRIMITIVE", message: "Unexpected pow"}; },
+        function(a: number, b: number): number { throw {code: "PARITY_PRIMITIVE", message: "Unexpected remainder"}; });
+    let binding: unknown = null;
+    let selected: formula.WrittenBinding | null = result.binding;
+    if (selected !== null) { binding = {formula: "written", expr: selected.expr, reads: selected.reads, scale: selected.scale}; }
+    return json.stringify({fault: result.fault, binding: binding, log: log}) as string;
+}
+
+export function inspect(input: string): string {
+    let raw: Record<string, unknown> = json.parse(input);
+    let known: string[] = [];
+    for (let item of decode.arrayOrEmpty(raw.known)) { known[known.length] = item as string; }
+    let lengths: Record<string, unknown> = raw.lengths as Record<string, unknown>;
+    let parsed: formula.ParsedExpr = formula.parseFormula(raw.text as string, known,
+        function(text: string): number { return lengths[text] as number; });
+    let node: formula.ExprNode | null = parsed.node;
+    let tree: unknown = null;
+    if (node !== null) { tree = project(node); }
+    if (!Object.hasOwn(raw, "env") || node === null) {
+        return json.stringify({node: tree, error: parsed.error, reads: parsed.reads}) as string;
+    }
+    let root: formula.ExprNode = node as formula.ExprNode;
+    let env: Record<string, unknown> = raw.env as Record<string, unknown>;
+    let powers: unknown[] = decode.arrayOrEmpty(raw.powers);
+    let got: number = formula.evaluate(root, function(name: string): number {
+        if (!Object.hasOwn(env, name)) { return 0 / 0; }
+        let value: unknown = env[name];
+        if (typeof value === "string") {
+            if (value === "#-0") { return -0; }
+        }
+        return value as number;
+    }, function(a: number, b: number): number {
+        for (let sample of powers) {
+            let item: Record<string, unknown> = sample as Record<string, unknown>;
+            if (item.a as number === a && item.b as number === b) { return item.value as number; }
+        }
+        throw {code: "PARITY_PRIMITIVE", message: "Missing power sample"};
+    }, function(a: number, b: number): number {
+        let item: Record<string, unknown> = raw.remainder as Record<string, unknown>;
+        let result: unknown = item.value;
+        if (typeof result === "string") {
+            if (result === "#-0") { return -0; }
+            if (result === "#NaN") { return 0 / 0; }
+        }
+        return result as number;
+    });
+    let observed: unknown = got;
+    if (got !== got) { observed = "#NaN"; }
+    else if (got === 1 / 0) { observed = "#Infinity"; }
+    else if (got === -1 / 0) { observed = "#-Infinity"; }
+    else if (got === 0 && 1 / got < 0) { observed = "#-0"; }
+    let operands: expressions.Operand[] = [];
+    for (let sample of decode.arrayOrEmpty(raw.operands)) {
+        let item: Record<string, unknown> = sample as Record<string, unknown>;
+        let operand: expressions.Operand = {id: item.id as string, label: "", measure: item.measure as string};
+        operands[operands.length] = operand;
+    }
+    let text: string = formula.formulaVera(root, function(number: number): string {
+        for (let sample of decode.arrayOrEmpty(raw.numbers)) {
+            let item: Record<string, unknown> = sample as Record<string, unknown>;
+            if (item.value as number === number) { return item.text as string; }
+        }
+        throw {code: "PARITY_PRIMITIVE", message: "Missing number sample"};
+    });
+    return json.stringify({node: tree, error: parsed.error, reads: parsed.reads, evaluated: observed,
+        measure: formula.writtenMeasure(root, operands), emitted: text}) as string;
+}
