@@ -1,0 +1,72 @@
+import * as expressions from "./compose-expressions";
+import * as answers from "./compose-answers";
+import * as sketch from "./sketch";
+import * as decode from "./plan-decoding";
+import * as json from "std/json";
+import * as tables from "std/table";
+
+function special(value: unknown): unknown {
+    if (typeof value === "string") {
+        if (value === "#NaN") { return 0 / 0; }
+        if (value === "#Infinity") { return 1 / 0; }
+        if (value === "#-Infinity") { return -1 / 0; }
+    }
+    return value;
+}
+
+export function inspectAnswers(input: string): string {
+    let raw: Record<string, unknown> = json.parse(input);
+    let body: Record<string, unknown> = raw.answers as Record<string, unknown>;
+    let key: string = raw.key as string;
+    let answer: Record<string, unknown> | null = decode.recordOrNull(body[key]);
+    if (answer !== null) {
+        let present: Record<string, unknown> = answer as Record<string, unknown>;
+        if (Object.hasOwn(present, "confidence")) {
+            present.confidence = special(present.confidence);
+            body[key] = present;
+        }
+    }
+    let allowed: string[] = [];
+    for (let item of decode.arrayOrEmpty(raw.allowed)) { allowed[allowed.length] = item as string; }
+    let log: string[] = [];
+    let picked: string = answers.answerOf(body, key, allowed, log, special(raw.above) as number,
+        function(number: number): string {
+            let expected: number = special(raw.expectedConfidence) as number;
+            if (!(number === expected || (number !== number && expected !== expected))) {
+                throw {code: "PARITY_PRIMITIVE", message: "Wrong confidence passed to formatting"};
+            }
+            return raw.fixed as string;
+        });
+    return json.stringify({picked: picked, log: log}) as string;
+}
+
+export function inspect(input: string): string {
+    let raw: Record<string, unknown> = json.parse(input);
+    let value: sketch.Sketch = sketch.parseSketch(raw.sketch as string) as sketch.Sketch;
+    let texts: unknown[] = decode.arrayOrEmpty(raw.numberTexts);
+    let numberText: (value: number) => string = function(number: number): string {
+        for (let item of texts) {
+            let sample: Record<string, unknown> = item as Record<string, unknown>;
+            if (sample.value as number === number) { return sample.text as string; }
+        }
+        throw {code: "PARITY_PRIMITIVE", message: "Missing numeric text"};
+    };
+    let results: Record<string, unknown>[] = [];
+    let index: number = 0;
+    for (let figure of value.values) {
+        let options: Record<string, unknown>[] = [];
+        for (let option of expressions.expressionsFor(value, index, numberText)) {
+            options[options.length] = {key: option.key, description: option.description};
+        }
+        let questions: Record<string, unknown> = expressions.expressionQuestions(value, index, numberText);
+        let criteriaKeys: Record<string, unknown> = {};
+        for (let key of tables.keys(questions)) {
+            let question: Record<string, unknown> = questions[key] as Record<string, unknown>;
+            criteriaKeys[key] = tables.keys(question.criteria as Record<string, unknown>);
+        }
+        results[results.length] = {id: figure.id, options: options, questions: questions,
+            questionKeys: tables.keys(questions), criteriaKeys: criteriaKeys};
+        index = index + 1;
+    }
+    return json.stringify({results: results}) as string;
+}
