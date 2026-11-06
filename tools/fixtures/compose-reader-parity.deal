@@ -1,0 +1,272 @@
+import * as events from "./compose-events";
+import * as bindings from "./compose-bindings";
+import * as reader from "./compose-reader";
+import * as readerState from "./compose-state";
+import * as sketchParity from "./sketch-parity";
+import * as sketch from "./sketch";
+import * as decode from "./plan-decoding";
+import * as json from "std/json";
+import * as table from "std/table";
+import * as contracts from "./compose-contracts";
+import * as composeScreen from "./compose-screen";
+import * as template from "./template-spec";
+import * as source from "./compose-source";
+import * as inputEmission from "./compose-input-emission";
+import * as figureEmission from "./compose-figure-emission";
+import * as callEmission from "./compose-call-emission";
+import * as clockEmission from "./compose-clock-emission";
+import * as partEmission from "./compose-part-emission";
+import * as assembly from "./compose-assembly";
+import * as catalogueParity from "./catalogue-slots-parity";
+import * as contentParity from "./catalogue-content-parity";
+import * as screenParity from "./screen-plan-parity";
+import * as alignment from "./compose-alignment";
+import * as catalogueData from "./catalogue-contracts";
+import * as provided from "./compose-provided";
+import * as preview from "./compose-preview";
+
+export async function inspect(input: string): Promise<string> {
+    let raw: Record<string, unknown> = json.parse(input);
+    if (decode.stringField(raw, "mode", "") === "content-text" || decode.stringField(raw, "mode", "") === "content-list" || decode.stringField(raw, "mode", "") === "content-flow" || decode.stringField(raw, "mode", "") === "content-provenance" || decode.stringField(raw, "mode", "") === "content-sections") { return await contentParity.inspect(input); }
+    if (decode.stringField(raw, "mode", "") === "catalogue-slots") { return catalogueParity.inspect(input); }
+    let value: sketch.Sketch = sketch.parseSketch(raw.sketch as string) as sketch.Sketch;
+    let effects: events.Effect[] = [];
+    for (let item of decode.arrayOrEmpty(raw.effects)) {
+        let effect: Record<string, unknown> = item as Record<string, unknown>;
+        let params: events.EffectParam[] = [];
+        for (let parameter of decode.arrayOrEmpty(effect.params)) {
+            let param: Record<string, unknown> = parameter as Record<string, unknown>;
+            params[params.length] = {name: param.name as string, kind: param.kind as string, key: param.key as string, describe: param.describe as string};
+        }
+        let fixed: string[] = [];
+        for (let text of decode.arrayOrEmpty(effect.fixed)) { fixed[fixed.length] = text as string; }
+        effects[effects.length] = {id: effect.id as string, describe: effect.describe as string, target: effect.target as string,
+            fixed: fixed, params: params, done: effect.done as string, mode: effect.mode as string, button: effect.button as string};
+    }
+    let numberText: (value: number) => string = function(number: number): string {
+        for (let item of decode.arrayOrEmpty(raw.numbers)) {
+            let sample: Record<string, unknown> = item as Record<string, unknown>;
+            if (sample.number as number === number) { return sample.text as string; }
+        }
+        throw {code: "PARITY_PRIMITIVE", message: "Missing number text"};
+    };
+    let fixedTwo: (value: number) => string = function(number: number): string {
+        for (let item of decode.arrayOrEmpty(raw.fixed)) {
+            let sample: Record<string, unknown> = item as Record<string, unknown>;
+            if (sample.number as number === number) { return sample.text as string; }
+        }
+        throw {code: "PARITY_PRIMITIVE", message: "Missing fixed text"};
+    };
+    let served: string[] = [];
+    for (let item of decode.arrayOrEmpty(raw.served)) { served[served.length] = item as string; }
+        let tools: bindings.Primitives = {
+            numberText: numberText, fixedTwo: fixedTwo,
+            utf16Length: function(text: string): number {
+                let lengths: Record<string, unknown> = raw.lengths as Record<string, unknown>;
+                return lengths[text] as number;
+            },
+            power: function(a: number, b: number): number { throw {code: "PARITY_PRIMITIVE", message: "Unexpected power"}; },
+            remainder: function(a: number, b: number): number {
+                for (let item of decode.arrayOrEmpty(raw.remainders)) {
+                    let sample: Record<string, unknown> = item as Record<string, unknown>;
+                    if (sample.a as number === a && sample.b as number === b) { return sample.value as number; }
+                }
+                throw {code: "PARITY_PRIMITIVE", message: "Missing remainder"};
+            },
+            matches: function(pattern: string, text: string): string[] {
+                let samples: Record<string, unknown> = raw.matches as Record<string, unknown>;
+                let result: string[] = [];
+                for (let match of decode.arrayOrEmpty(samples[pattern + "\n" + text])) { result[result.length] = match as string; }
+                return result;
+            }
+        };
+        let comp: readerState.Composition = reader.readComposition(raw.body as string, value, raw.widget as boolean, effects,
+            raw.custom as boolean, tools, function(text: string): string {
+                let samples: Record<string, unknown> = raw.lower as Record<string, unknown>;
+                return samples[text] as string;
+            });
+        if (decode.stringField(raw, "mode", "") === "preview") {
+            let provisional: readerState.Composition | null = preview.provisionalComposition(value, raw.widget as boolean, numberText); let emitted: string = "";
+            if (provisional !== null) {
+                let plan = assembly.screenPlan(provisional as readerState.Composition, effects, [], [], function(kind: string): template.Entry[] { return []; }, null, [], numberText,
+                    function(text: string): string { return (raw.lower as Record<string, unknown>)[text] as string; });
+                emitted = assembly.assemble(plan, true, {numberText: numberText,
+                    upperFirst: function(value: string): string { return (raw.upper as Record<string, unknown>)[value] as string; },
+                    first14: function(value: string): string { return (raw.first14 as Record<string, unknown>)[value] as string; }}, raw.banner as string);
+            }
+            return json.stringify({source: emitted, plan: preview.sketchPlan(value, numberText)}) as string;
+        }
+        if (decode.stringField(raw, "mode", "") === "provided") {
+            let effects: string[] = []; for (let effect of decode.arrayOrEmpty(raw.provided)) { effects[effects.length] = effect as string; }
+            let gone: string[] = provided.dropProvided(comp, effects); let events: unknown[] = []; let customEffects: unknown[] = [];
+            for (let event of comp.events) { events[events.length] = {id: event.event.id, effect: event.effect, moment: event.moment}; }
+            for (let effect of comp.customEffects) { customEffects[customEffects.length] = {need: effect.need, effect: effect.effect}; }
+            return json.stringify({gone: gone, events: events, customEffects: customEffects, custom: comp.custom, phoneNeeds: comp.phoneNeeds,
+                unboundNeeds: comp.unboundNeeds, dropped: comp.dropped}) as string;
+        }
+        if (decode.stringField(raw, "mode", "") === "alignment") {
+            let specs: catalogueData.CatalogueEntry[] = []; let ready: string[] = [];
+            for (let item of decode.arrayOrEmpty(raw.catalogue)) { specs[specs.length] = {fragment: screenParity.fragment(item as Record<string, unknown>), slots: [], contentFields: [], listFields: [], covers: [], coversIf: []}; }
+            for (let kind of decode.arrayOrEmpty(raw.readyKinds)) { ready[ready.length] = kind as string; }
+            let real: Record<string, unknown> = raw.realQuestion as Record<string, unknown>; let criteria: template.Entry[] = [];
+            for (let item of decode.arrayOrEmpty(real.criteria)) { let pair: Record<string, unknown> = item as Record<string, unknown>; criteria[criteria.length] = {key: pair.key as string, value: pair.value as string}; }
+            let config: alignment.Configuration = {wide: raw.wide as boolean, custom: raw.custom as boolean, readyKinds: ready,
+                realData: {instructions: real.instructions as string, criteria: criteria}};
+            let lowercase: (value: string) => string = function(text: string): string { return (raw.lower as Record<string, unknown>)[text] as string; };
+            let candidates: string[] = alignment.candidates(comp, lowercase); let readers: string[] = alignment.readerKinds(comp, specs, config.wide);
+            let calls: unknown[] = []; let tick: number = 0;
+            let result: alignment.Result = await alignment.alignLeftovers(comp, "test", async function(body: string): Promise<string> {
+                let replies: unknown[] = decode.arrayOrEmpty(raw.replies); let i: number = calls.length; calls[calls.length] = json.parse(body);
+                if (i >= replies.length) { return ""; } return replies[i] as string;
+            }, specs, config, lowercase, numberText, fixedTwo, function(): number { tick = tick + 10; return tick; });
+            let asked: unknown[] = []; for (let item of result.asked) { asked[asked.length] = {need: item.need, kind: item.kind, p: item.p, rejected: item.rejected}; }
+            return json.stringify({candidates: candidates, readers: readers, kinds: alignment.alignKinds(specs, config), calls: calls,
+                result: {asked: asked, added: result.added, taken: result.taken, realData: result.realData, readers: result.readers, note: result.note, ms: result.ms},
+                comp: {blocks: comp.blocks, custom: comp.custom, customReads: comp.customReads, phoneNeeds: comp.phoneNeeds, unboundNeeds: comp.unboundNeeds,
+                    inputs: comp.inputs, dropped: comp.dropped, realData: comp.realData, sketch: sketchParity.document(comp.sketch), replaced: comp.replaced}}) as string;
+        }
+        if (decode.stringField(raw, "mode", "") === "assembly") {
+            let catalogue: template.Fragment[] = []; let accepted: string[] = [];
+            for (let value of decode.arrayOrEmpty(raw.blocks)) { catalogue[catalogue.length] = screenParity.fragment(value as Record<string, unknown>); }
+            for (let value of decode.arrayOrEmpty(raw.readyKinds)) { accepted[accepted.length] = value as string; }
+            let plan = assembly.screenPlan(comp, effects, catalogue, [],
+                function(kind: string): template.Entry[] {
+                    let entries: template.Entry[] = [];
+                    for (let value of decode.arrayOrEmpty((raw.defaults as Record<string, unknown>)[kind])) {
+                        let pair: Record<string, unknown> = value as Record<string, unknown>;
+                        entries[entries.length] = {key: pair.key as string, value: pair.value as string};
+                    } return entries;
+                }, null, accepted, numberText,
+                function(value: string): string { return (raw.lower as Record<string, unknown>)[value] as string; });
+            return json.stringify({complete: assembly.assemble(plan, false, {numberText: numberText,
+                    upperFirst: function(value: string): string { return (raw.upper as Record<string, unknown>)[value] as string; },
+                    first14: function(value: string): string { return (raw.first14 as Record<string, unknown>)[value] as string; }}, raw.banner as string),
+                partial: assembly.assemble(plan, true, {numberText: numberText,
+                    upperFirst: function(value: string): string { return (raw.upper as Record<string, unknown>)[value] as string; },
+                    first14: function(value: string): string { return (raw.first14 as Record<string, unknown>)[value] as string; }}, raw.banner as string)}) as string;
+        }
+        if (decode.stringField(raw, "mode", "") === "parts") {
+            let blocks: template.Fragment[] = [];
+            if (raw.sectionsRead as boolean) {
+                blocks[blocks.length] = {kind: "test", criteria: "", supportClass: "", stateFields: [], initStatements: "", initEntries: "", functions: "", viewBlock: "",
+                    imports: [], ports: [{dir: "reads", name: "value", type: "number", ref: "value", fallback: "", computed: false, optional: false}],
+                    holes: [], indexed: true, owns: "", tab: ""};
+            }
+            let parts: template.Fragment[] = partEmission.compositionParts(comp, effects, blocks, numberText,
+                function(value: string): string { return (raw.lower as Record<string, unknown>)[value] as string; });
+            let result: unknown[] = [];
+            for (let part of parts) {
+                let fields: unknown[] = []; for (let field of part.stateFields) { fields[fields.length] = {name: field.name, type: field.type}; }
+                let ports: unknown[] = []; for (let port of part.ports) { ports[ports.length] = {dir: port.dir, name: port.name, type: port.type,
+                    ref: port.ref, fallback: port.fallback, computed: port.computed, optional: port.optional}; }
+                let noHoles: unknown[] = [];
+                result[result.length] = {kind: part.kind, criteria: part.criteria, supportClass: part.supportClass, stateFields: fields,
+                    initStatements: part.initStatements, initEntries: part.initEntries, functions: part.functions, viewBlock: part.viewBlock,
+                    imports: part.imports, ports: ports, holes: noHoles, indexed: part.indexed, owns: part.owns, tab: part.tab};
+            }
+            return json.stringify({parts: result}) as string;
+        }
+        if (decode.stringField(raw, "mode", "") === "source") {
+            let fields: source.Field[] = source.inputFields(comp, numberText); let all: unknown[] = [];
+            for (let field of fields) { all[all.length] = {name: field.name, type: field.type, init: field.init}; }
+            let entries: unknown[] = []; let list: sketch.SketchList | null = comp.sketch.list;
+            if (list !== null) { for (let field of source.entryFields(list as sketch.SketchList, numberText)) {
+                entries[entries.length] = {name: field.name, type: field.type, init: field.init};
+            } }
+            let formulas: unknown[] = []; for (let binding of comp.bindings) { formulas[formulas.length] = source.formulaExpr(binding); }
+            let displays: unknown[] = [];
+            for (let item of comp.sketch.values) { displays[displays.length] = {stat: source.statFor(item, item.id, numberText),
+                row: source.figureRow(item, item.id, numberText), hero: source.heroText(item, item.id, numberText)}; }
+            let effectFields: unknown[] = []; for (let field of source.effectFields(comp, effects)) {
+                effectFields[effectFields.length] = {name: field.name, type: field.type, init: field.init};
+            }
+            let allFields: source.Field[] = source.inputFields(comp, numberText);
+            for (let field of source.clockFields()) { allFields[allFields.length] = field; }
+            if (list !== null) { for (let field of source.entryFields(list as sketch.SketchList, numberText)) { allFields[allFields.length] = field; } }
+            for (let field of source.effectFields(comp, effects)) { allFields[allFields.length] = field; }
+            let lower: (value: string) => string = function(value: string): string { return (raw.lower as Record<string, unknown>)[value] as string; };
+            let figures: figureEmission.Figures = figureEmission.figuresOf(comp, effects, numberText, lower);
+            let figureParts: unknown[] = [];
+            let emittedParts: template.Fragment[] = [figureEmission.figuresPart(comp, effects, raw.sectionsRead as boolean, numberText),
+                figureEmission.heroPart(comp, figures, numberText), figureEmission.summaryPart(comp, figures, numberText)];
+            for (let part of emittedParts) {
+                let partPorts: unknown[] = []; for (let port of part.ports) { partPorts[partPorts.length] = {dir: port.dir, name: port.name, type: port.type,
+                    ref: port.ref, fallback: port.fallback, computed: port.computed, optional: port.optional}; }
+                figureParts[figureParts.length] = {kind: part.kind, functions: part.functions, viewBlock: part.viewBlock, ports: partPorts};
+            }
+            let clockPart: template.Fragment = clockEmission.clockPart(comp, allFields, effects, numberText);
+            let emittedCalls: unknown[] = [];
+            for (let moment of ["countdown_end", "entry_added", "button", "row_button"]) {
+                emittedCalls[emittedCalls.length] = {moment: moment, locals: callEmission.callsNeedLocals(comp, moment),
+                    calls: callEmission.effectCallsAt(comp, effects, moment, "", numberText)};
+            }
+            let inputPart: template.Fragment = inputEmission.inputsPart(comp, allFields, numberText,
+                function(value: string): string { return (raw.lower as Record<string, unknown>)[value] as string; });
+            let inputFields: unknown[] = []; for (let field of inputPart.stateFields) { inputFields[inputFields.length] = {name: field.name, type: field.type}; }
+            let ports: unknown[] = []; for (let port of inputPart.ports) { ports[ports.length] = {dir: port.dir, name: port.name, type: port.type, ref: port.ref,
+                fallback: port.fallback, computed: port.computed, optional: port.optional}; }
+            return json.stringify({clockPart: {functions: clockPart.functions, viewBlock: clockPart.viewBlock}, calls: emittedCalls, figures: {heroes: figures.heroes, bars: figures.bars, stats: figures.stats, table: figures.table, clockLabel: figures.clockLabel,
+                    clockShown: figures.clockShown, clockButtons: figures.clockButtons}, figureParts: figureParts,
+                fields: all, entries: entries, formulas: formulas, displays: displays,
+                locals: source.inputLocals(comp, numberText), effectFields: effectFields,
+                inputPart: {kind: inputPart.kind, stateFields: inputFields, functions: inputPart.functions, viewBlock: inputPart.viewBlock,
+                    initEntries: inputPart.initEntries, ports: ports}}) as string;
+        }
+        if (decode.stringField(raw, "mode", "") === "screen") {
+            let parts: template.Fragment[] = [];
+            for (let item of decode.arrayOrEmpty(raw.parts)) {
+                let part: Record<string, unknown> = item as Record<string, unknown>;
+                parts[parts.length] = {kind: part.kind as string, criteria: "", supportClass: "", stateFields: [],
+                    initStatements: "", initEntries: "", functions: "", viewBlock: "", imports: [], ports: [], holes: [], indexed: false, owns: "", tab: ""};
+            }
+            let blocks: template.Fragment[] = [];
+            for (let item of decode.arrayOrEmpty(raw.blocks)) {
+                let block: Record<string, unknown> = item as Record<string, unknown>;
+                blocks[blocks.length] = {kind: block.kind as string, criteria: "", supportClass: "", stateFields: [],
+                    initStatements: "", initEntries: "", functions: "", viewBlock: "", imports: [], ports: [], holes: [], indexed: true, owns: "", tab: ""};
+            }
+            let accepted: string[] = [];
+            for (let item of decode.arrayOrEmpty(raw.readyKinds)) { accepted[accepted.length] = item as string; }
+            let screen = composeScreen.screenPlan(comp, parts, blocks, [], function(kind: string): template.Entry[] { return []; }, null, accepted, numberText);
+            let slots: unknown[] = []; let globals: unknown[] = []; let states: unknown[] = []; let components: unknown[] = [];
+            for (let slot of screen.slots) { slots[slots.length] = {id: slot.id, need: slot.need, reads: slot.reads, writes: slot.writes,
+                when: slot.when, phone: slot.phone, accepts: slot.accepts, asked: slot.asked, fill: slot.fill, by: slot.by, detail: slot.detail}; }
+            for (let pair of screen.globals) { globals[globals.length] = {key: pair.key, value: pair.value}; }
+            for (let state of screen.state) { states[states.length] = {name: state.name, role: state.role, type: state.type, label: state.label}; }
+            for (let component of screen.components) { components[components.length] = {fill: component.fill, kind: (component.spec as template.Fragment).kind}; }
+            return json.stringify({widget: screen.widget, globals: globals, state: states, components: components, slots: slots}) as string;
+        }
+        if (decode.stringField(raw, "mode", "") === "contracts") {
+            let parts: contracts.PartsContract = contracts.partsContract(comp, effects);
+            let plan = contracts.wholeScreenPlan(value, raw.widget as boolean, numberText);
+            let slots: unknown[] = []; let globals: unknown[] = [];
+            for (let slot of plan.slots) { slots[slots.length] = {id: slot.id, need: slot.need, phone: slot.phone, fill: slot.fill, detail: slot.detail}; }
+            for (let pair of plan.globals) { globals[globals.length] = {key: pair.key, value: pair.value}; }
+            return json.stringify({parts: {lines: parts.lines, clock: parts.clock, list: parts.list},
+                only: contracts.inputsOnlyForCustom(comp), inputs: contracts.customInputs(comp),
+                whole: {widget: plan.widget, globals: globals, slots: slots}}) as string;
+        }
+        let widgets: Record<string, unknown>[] = [];
+        for (let named of comp.widgets) { widgets[widgets.length] = {id: named.id, value: named.value}; }
+        let selected: Record<string, unknown>[] = [];
+        for (let binding of comp.bindings) { selected[selected.length] = {id: binding.id, formula: binding.formula, a: binding.a,
+            b: binding.b, expr: binding.expr, reads: binding.reads, show: binding.show, scale: binding.scale}; }
+        let keptEvents: Record<string, unknown>[] = [];
+        for (let binding of comp.events) {
+            let args: Record<string, unknown>[] = [];
+            for (let arg of binding.args) { args[args.length] = {name: arg.name, source: arg.source}; }
+            keptEvents[keptEvents.length] = {id: binding.event.id, effect: binding.effect, moment: binding.moment, args: args};
+        }
+        let customEffects: Record<string, unknown>[] = [];
+        for (let effect of comp.customEffects) { customEffects[customEffects.length] = {need: effect.need, effect: effect.effect}; }
+        let replaced: Record<string, unknown>[] = [];
+        for (let part of comp.replaced) { replaced[replaced.length] = {kind: part.kind, need: part.need, detail: part.detail}; }
+        let inputs: string[] = [];
+        for (let input of comp.inputs) { inputs[inputs.length] = input.id; }
+        return json.stringify({sketch: sketchParity.document(comp.sketch), original: sketchParity.document(value), deadline: comp.deadline,
+            theme: comp.theme, widgets: widgets, bindings: selected, countdownFrom: comp.countdownFrom, countdownUnit: comp.countdownUnit,
+            events: keptEvents, dropped: comp.dropped, defaulted: comp.defaulted, inputs: inputs, unbound: comp.unbound,
+            unboundNeeds: comp.unboundNeeds, answers: comp.answers, provisional: comp.provisional, widget: comp.widget, figures: comp.figures,
+            blocks: comp.blocks, readyKinds: comp.readyKinds, realData: comp.realData, custom: comp.custom, customReads: comp.customReads,
+            phoneNeeds: comp.phoneNeeds, customEffects: customEffects, claimed: comp.claimed, replaced: replaced}) as string;
+}

@@ -1,0 +1,292 @@
+import * as writer from "./custom-writer";
+import * as calls from "./custom-calls";
+import * as holes from "./hole-settlement";
+import * as template from "./template-spec";
+import * as decode from "./plan-decoding";
+import * as json from "std/json";
+import * as flow from "./hole-flow";
+import * as screen from "./screen-plan";
+import * as custom from "./custom-section";
+import * as checking from "./custom-check";
+import * as claims from "./compose-claims";
+import * as catalogueHoles from "./catalogue-holes";
+import * as catalogue from "./catalogue-contracts";
+import * as repairText from "./provisional-repair-text";
+import * as settlement from "./program-settlement";
+import * as questions from "./agent-questions";
+import * as sketch from "./sketch";
+import * as surface from "./agent-surface";
+import * as smokeFixture from "./program-smoke-parity";
+import * as playFixture from "./program-play-parity";
+import * as identities from "./construction-identities";
+
+export async function inspect(input: string): Promise<string> {
+    let raw: Record<string, unknown> = json.parse(input);
+    if (decode.stringField(raw, "mode", "") === "identities") {
+        let registry: identities.Registry = identities.create(["request"]); let budget: writer.Budget = writer.createBudget();
+        let one: string = registry.issue("original.slot", "one"); registry.issue("renamed.slot", one); registry.issue("catalogue.hole", "two");
+        budget.charge([one]); budget.charge([registry.issue("renamed.slot", "one"), "two"]);
+        let copied: string[] = registry.all(); copied[0] = "changed"; let failed: string = "";
+        try { registry.issue("original.slot", "invented"); } catch (caught) { failed = (caught as Error).code; }
+        return json.stringify({all: registry.all(), failed: failed, remaining: budget.remaining(registry.all()), one: budget.remaining([one]), two: budget.remaining(["two"])}) as string;
+    }
+    if (decode.stringField(raw, "mode", "") === "play") { return playFixture.inspect(raw); }
+    if (decode.stringField(raw, "mode", "") === "smoke") { return smokeFixture.inspect(raw); }
+    if (decode.stringField(raw, "mode", "") === "surface") {
+        let tools: surface.Mechanisms = {test: function(pattern: string, flags: string, value: string): boolean { return (raw.tests as Record<string, unknown>)[pattern + "\n" + value] as boolean; },
+            checking: {compile: function(source: string): settlement.Compiled { return {identity: source, diagnostics: ""}; }, smoke: function(identity: string): string { return ""; },
+                now: function(): number { return 0; }, numberText: function(value: number): string { return decode.integerText(value); }}, play: function(identity: string): string { return ""; }};
+        if (decode.stringField(raw, "action", "") === "write") {
+            let tick: number = 0; let dispatches: unknown[] = []; let order: unknown[] = []; let statuses: string[] = []; let i: number = 0;
+            tools.checking.now = function(): number { tick = tick + 10; return tick; };
+            tools.checking.compile = function(source: string): settlement.Compiled { order[order.length] = "compile:" + source;
+                let diagnostics: string = ""; if (source === "bad") { diagnostics = "1:1 E bad"; } return {identity: "compiled:" + source, diagnostics: diagnostics}; };
+            tools.checking.smoke = function(identity: string): string { order[order.length] = "smoke:" + identity; return ""; };
+            tools.play = function(identity: string): string { order[order.length] = "play:" + identity; if (identity === "compiled:runtime") { return "The program compiled, but failed"; } return ""; };
+            let budget: writer.Budget = writer.createBudget(); let host: surface.Host = {language: "language", guide: "guide", identities: ["original"], budget: budget,
+                askCode: async function(system: string, user: string, tokens: number, think: boolean): Promise<string | null> {
+                    dispatches[dispatches.length] = {system: system, user: user, tokens: tokens, think: think};
+                    let replies: unknown[] = decode.arrayOrEmpty(raw.replies); let at: number = i; i = i + 1; if (at >= replies.length || replies[at] === null) { return null; } return replies[at] as string;
+                }, askPlan: async function(system: string, user: string, partial: (text: string) => void, think: boolean): Promise<string | null> { return null; },
+                cancelled: function(): boolean { return raw.cancelled as boolean; }, status: function(text: string): void { statuses[statuses.length] = text; }};
+            let result: surface.Result = await surface.writeSurfaceApp("test", {kind: "whole", title: "Game", design: "Design", scene: ""}, host, tools, raw.catalogue as string);
+            return json.stringify({source: result.source, executable: result.executable, attempts: result.attempts, rounds: result.rounds, failed: result.failed,
+                writeMs: result.writeMs, checkMs: result.checkMs, note: result.note, dispatches: dispatches, order: order, statuses: statuses, remaining: budget.remaining(["original"])}) as string;
+        }
+        let parsed: surface.Brief | null = surface.parseSurfaceBrief(raw.reply as string); let brief: unknown = null;
+        if (parsed !== null) { let b: surface.Brief = parsed as surface.Brief; brief = {kind: b.kind, title: b.title, design: b.design, scene: b.scene}; }
+        return json.stringify({brief: brief, looks: surface.looksLikeSurface(raw.prompt as string, tools), source: surface.sourceIn(raw.reply as string),
+            language: surface.surfaceLanguage(raw.language as string, "guide", raw.catalogue as string), classify: surface.classifyPrompt(), components: surface.componentNames()}) as string;
+    }
+    if (decode.stringField(raw, "mode", "") === "questions") {
+        let value: sketch.Sketch = sketch.parseSketch(raw.sketch as string) as sketch.Sketch; let log: questions.Asked[] = []; let shown: unknown[] = []; let tick: number = 0;
+        let numberText: (value: number) => string = function(value: number): string { return decode.integerText(value); };
+        let result: string = await questions.askBlocking("test", value.questions, async function(body: string): Promise<string> { return raw.reply as string; },
+            async function(question: questions.Question): Promise<unknown> {
+                shown[shown.length] = {text: question.text, options: question.options, fallback: question.fallback}; return raw.picked;
+            }, log, function(): number { tick = tick + 10; return tick; }, numberText);
+        let entries: unknown[] = []; for (let entry of log) { entries[entries.length] = {question: entry.question, answer: entry.answer, changed: entry.changed, waitedMs: entry.waitedMs}; }
+        return json.stringify({request: json.parse(questions.blockingRequest("test", value.questions, numberText)), result: result, log: entries, shown: shown}) as string;
+    }
+    if (decode.stringField(raw, "mode", "") === "program-settlement") {
+        let events: unknown[] = []; let tick: number = 0; let replies: unknown[] = decode.arrayOrEmpty(raw.replies); let index: number = 0;
+        let tools: settlement.Mechanisms = {compile: function(source: string): settlement.Compiled {
+            events[events.length] = {type: "compile", source: source}; let diagnostics: string = "";
+            if (source === "bad") { diagnostics = "1:1 E bad"; } return {identity: "compiled:" + source, diagnostics: diagnostics};
+        }, smoke: function(identity: string): string { events[events.length] = {type: "smoke", identity: identity};
+            if (identity === "compiled:runtime") { return "The program compiled, but failed"; } return ""; },
+            now: function(): number { tick = tick + 10; return tick; }, numberText: function(value: number): string { return decode.integerText(value); }};
+        let host: settlement.Host = {language: raw.language as string, askCode: null,
+            cancelled: function(): boolean { return raw.cancelled as boolean; }, status: function(text: string): void { events[events.length] = {type: "status", text: text}; }};
+        if (raw.hasModel as boolean) { host.askCode = async function(system: string, user: string, tokens: number, think: boolean): Promise<string | null> {
+            events[events.length] = {type: "ask", system: system, user: user, tokens: tokens, think: think};
+            let i: number = index; index = index + 1; if (i >= replies.length || replies[i] === null) { return null; } return replies[i] as string;
+        }; }
+        let budget: writer.Budget = writer.createBudget();
+        let used: number = 0; while (used < decode.numberField(raw, "used", 0)) { budget.charge(["original"]); used = used + 1; }
+        let result: settlement.Settled = {source: "", executable: "", errors: "", repair: null, checkMs: 0, note: ""};
+        if (decode.stringField(raw, "action", "") === "budget") { result = await settlement.settleBudgetedProgram(raw.source as string, "test", host, tools, ["original"], budget); }
+        else { result = await settlement.settleProvisionalProgram(raw.source as string, "test", host, tools); }
+        let repair: unknown = null;
+        if (result.repair !== null) { let r: settlement.Repaired = result.repair as settlement.Repaired; repair = {source: r.source, executable: r.executable, rounds: r.rounds, failed: r.failed, ms: r.ms}; }
+        if (decode.stringField(raw, "action", "") === "budget") { return json.stringify({source: result.source, errors: result.errors, repair: repair, events: events, remaining: budget.remaining(["original"])}) as string; }
+        return json.stringify({source: result.source, executable: result.executable, errors: result.errors, repair: repair, checkMs: result.checkMs, note: result.note, events: events}) as string;
+    }
+    if (decode.stringField(raw, "mode", "") === "repair-text") {
+        let numberText: (value: number) => string = function(value: number): string { return decode.integerText(value); };
+        let result: repairText.Applied = repairText.applyProvisionalRepair(raw.source as string, raw.reply as string, numberText);
+        return json.stringify({source: result.source, edits: result.edits, error: result.error,
+            quoted: repairText.quoteDiagnostics(raw.source as string, raw.diagnostics as string, numberText),
+            prompt: repairText.repairPrompt("Request: test", raw.diagnostics as string, raw.source as string, numberText)}) as string;
+    }
+    if (decode.stringField(raw, "mode", "") === "catalogue-holes") {
+        let specs: catalogue.CatalogueEntry[] = []; let kinds: string[] = []; let values: template.Entry[][] = [];
+        for (let entry of decode.arrayOrEmpty(raw.specs)) {
+            let spec: Record<string, unknown> = entry as Record<string, unknown>; let declared: template.Hole[] = [];
+            for (let entry of decode.arrayOrEmpty(spec.holes)) {
+                let h: Record<string, unknown> = entry as Record<string, unknown>;
+                declared[declared.length] = {key: h.key as string, token: h.token as string, signature: h.signature as string, purpose: h.purpose as string,
+                    defaultBody: h.defaultBody as string, when: h.when as string, byModel: h.byModel as boolean, usesSdk: h.usesSdk as boolean, slot: h.slot as string};
+            }
+            specs[specs.length] = {fragment: {kind: spec.kind as string, criteria: "", supportClass: "", stateFields: [], initStatements: "", initEntries: "", functions: "", viewBlock: "",
+                imports: [], ports: [], holes: declared, indexed: true, owns: "", tab: ""}, slots: [], contentFields: [], listFields: [], covers: [], coversIf: []};
+        }
+        for (let kind of decode.arrayOrEmpty(raw.kinds)) { kinds[kinds.length] = kind as string; }
+        let selected: template.Entry[][] | null = null;
+        if (raw.values !== null) {
+            for (let entry of decode.arrayOrEmpty(raw.values)) { let pairs: template.Entry[] = [];
+                for (let entry of decode.arrayOrEmpty(entry)) { let pair: Record<string, unknown> = entry as Record<string, unknown>; pairs[pairs.length] = {key: pair.key as string, value: pair.value as string}; }
+                values[values.length] = pairs;
+            } selected = values;
+        }
+        let numberText: (value: number) => string = function(value: number): string { return decode.integerText(value); };
+        let length: (value: string) => number = function(value: string): number { return (raw.lengths as Record<string, unknown>)[value] as number; };
+        let all: catalogueHoles.Instance[] = catalogueHoles.holesOf(kinds, selected, specs, numberText);
+        let keys: string[] = []; for (let hole of all) { keys[keys.length] = hole.key; }
+        let calls: unknown[] = []; let thoughts: boolean[] = []; let compiled: number = 0;
+        let bodies: template.Entry[] = [];
+        let build: (bodies: template.Entry[]) => string = function(bodies: template.Entry[]): string {
+            let out: string = ""; for (let hole of catalogueHoles.holesOf(kinds, null, specs, numberText)) {
+                let body: string | undefined = template.get(bodies, hole.key); let code: string = hole.spec.defaultBody;
+                if (body !== undefined) { code = body as string; }
+                out = out + "//@hole " + hole.key + " begin\n" + code + "\n//@hole " + hole.key + " end\n";
+            } return out;
+        };
+        let result: catalogueHoles.Filled = await catalogueHoles.fillHoles("test", kinds, specs, selected, raw.sdk as string,
+            async function(system: string, user: string, think: boolean): Promise<string | null> {
+                let replies: unknown[] = decode.arrayOrEmpty(raw.replies); let i: number = calls.length;
+                calls[calls.length] = {system: system, user: user}; thoughts[thoughts.length] = think;
+                if (i >= replies.length || replies[i] === null) { return null; } return replies[i] as string;
+            }, build, function(source: string): catalogueHoles.Diagnostic[] {
+                let sets: unknown[] = decode.arrayOrEmpty(raw.diagnostics); let i: number = compiled; compiled = compiled + 1;
+                let result: catalogueHoles.Diagnostic[] = [];
+                if (i < sets.length) { for (let entry of decode.arrayOrEmpty(sets[i])) { let d: Record<string, unknown> = entry as Record<string, unknown>;
+                    result[result.length] = {line: d.line as number, message: d.message as string}; } } return result;
+            }, function(hole: catalogueHoles.Instance): string { return "issued." + hole.key; }, writer.createBudget(), numberText, length);
+        let pairs: unknown[] = []; for (let body of result.bodies) { pairs[pairs.length] = {key: body.key, value: body.value}; }
+        let marked: unknown[] = []; let bySlot: unknown[] = [];
+        for (let entries of catalogueHoles.holeValues(kinds, result.bodies, specs, numberText, true)) {
+            let pairs: unknown[] = []; for (let entry of entries) { pairs[pairs.length] = {key: entry.key, value: entry.value}; } marked[marked.length] = pairs;
+        }
+        for (let entries of catalogueHoles.holeValues(kinds, result.bodies, specs, numberText, false)) {
+            let pairs: unknown[] = []; for (let entry of entries) { pairs[pairs.length] = {key: entry.key, value: entry.value}; } bySlot[bySlot.length] = pairs;
+        }
+        return json.stringify({keys: keys, bodies: pairs, note: result.note, repairs: result.repairs, calls: calls, thoughts: thoughts, compiled: compiled, marked: marked, bySlot: bySlot}) as string;
+    }
+    if (decode.stringField(raw, "mode", "") === "claims") {
+        let needs: string[] = []; for (let value of decode.arrayOrEmpty(raw.needs)) { needs[needs.length] = value as string; }
+        let calls: string[] = []; let numberText: (value: number) => string = function(value: number): string { return decode.integerText(value); };
+        let ask: (body: string) => Promise<string> = async function(body: string): Promise<string> { calls[calls.length] = body; return raw.reply as string; };
+        let undone: string[] = await claims.claimsUndone(needs, "test", "source", ask, numberText);
+        let done: string[] = await claims.claimsDone(needs, "test", "source", ask, numberText);
+        let plan: screen.ScreenPlan = screen.create(); claims.putBack(plan, undone, numberText); let slots: unknown[] = [];
+        for (let slot of plan.slots) { slots[slots.length] = {id: slot.id, need: slot.need, phone: slot.phone, fill: slot.fill, detail: slot.detail}; }
+        return json.stringify({undone: undone, done: done, calls: calls, slots: slots}) as string;
+    }
+    if (decode.stringField(raw, "mode", "") === "check") {
+        let order: string[] = []; let fields: string[] = [];
+        for (let value of decode.arrayOrEmpty(raw.fields)) { fields[fields.length] = value as string; }
+        let mechanisms: checking.Mechanisms = {
+            compile: function(source: string): checking.Compiled { order[order.length] = "compile";
+                return {identity: "compiled", unreadFields: fields, diagnostics: raw.compile as string}; },
+            smoke: function(identity: string): string { order[order.length] = "smoke"; return raw.smoke as string; },
+            play: function(identity: string, fingers: boolean, buttons: boolean): string { order[order.length] = "play"; return raw.play as string; },
+            numberOf: function(value: string): number { return json.parse("{\"number\":" + value + "}").number as number; },
+            numberText: function(value: number): string { return decode.integerText(value); }
+        };
+        return json.stringify({problem: checking.check(raw.source as string, raw.scene as boolean, mechanisms), order: order}) as string;
+    }
+    let request: writer.Request = writer.create();
+    request.prompt = "test"; request.phone = raw.phone as string; request.whole = raw.whole as boolean;
+    request.ownsClock = raw.clock as boolean; request.ownsList = raw.list as boolean;
+    for (let need of decode.arrayOrEmpty(raw.needs)) {
+        request.needs[request.needs.length] = need as string;
+        request.identities[request.identities.length] = need as string;
+    }
+    request.inputs = ["input"]; request.parts = ["part"]; request.facts = ["fact"];
+    request.compose = function(section: template.Fragment | null): string { if (section === null) { return "base"; } return "composed"; };
+    let verification: number = 0;
+    request.verify = async function(body: string): Promise<string> {
+        let answers: unknown[] = decode.arrayOrEmpty(raw.verification); let i: number = verification; verification = verification + 1;
+        if (i >= answers.length) { return "{}"; } return answers[i] as string;
+    };
+    let dispatched: unknown[] = []; let checked: number = 0; let now: number = 0;
+    let tools: writer.Primitives = {
+        matches: function(pattern: string, value: string): calls.Match[] {
+            let result: calls.Match[] = [];
+            for (let item of decode.arrayOrEmpty((raw.matches as Record<string, unknown>)[pattern + "\n" + value])) {
+                let groups: string[] = []; for (let group of decode.arrayOrEmpty(item)) { groups[groups.length] = group as string; }
+                result[result.length] = {groups: groups};
+            }
+            return result;
+        },
+        lowercase: function(value: string): string { return (raw.lower as Record<string, unknown>)[value] as string; },
+        numberText: function(value: number): string { return decode.integerText(value); },
+        now: function(): number { now = now + 10; return now; },
+        checking: {
+            compile: function(source: string): checking.Compiled { return {identity: "compiled", unreadFields: [], diagnostics: ""}; },
+            smoke: function(identity: string): string {
+                let problems: unknown[] = decode.arrayOrEmpty(raw.problems); let i: number = checked; checked = checked + 1;
+                if (i >= problems.length) { return ""; } return problems[i] as string;
+            },
+            play: function(identity: string, fingers: boolean, buttons: boolean): string { return ""; },
+            numberOf: function(value: string): number { throw {code: "UNEXPECTED_PRIMITIVE", message: value}; },
+            numberText: function(value: number): string { return decode.integerText(value); }
+        }
+    };
+    let budget: writer.Budget = writer.createBudget();
+    if (decode.stringField(raw, "mode", "") === "budget") {
+        let attempts: number[] = []; let failures: string[] = []; let dispatchedBudget: boolean[] = [];
+        let ask: (system: string, user: string, tokens: number, think: boolean) => Promise<string | null> =
+            async function(system: string, user: string, tokens: number, think: boolean): Promise<string | null> {
+                dispatchedBudget[dispatchedBudget.length] = think;
+                if (raw.operational as boolean) { throw {code: "TRANSPORT", message: "offline"}; }
+                return "bad";
+            };
+        // A group, renamed child, and re-entered child keep original issued
+        // identities. An unrelated need retains its independent allowance.
+        request.identities = ["stable.0", "stable.1"];
+        try {
+            let grouped: holes.Written = await writer.writeSection(request, "language", ask, budget, tools, "scene", 6000);
+            attempts[attempts.length] = grouped.attempts;
+        } catch (caught) { let error: Error = caught as Error; failures[failures.length] = error.code; }
+        request.needs = ["renamed child"]; request.identities = ["stable.0"];
+        try {
+            let child: holes.Written = await writer.writeSection(request, "language", ask, budget, tools, "scene", 6000);
+            attempts[attempts.length] = child.attempts;
+        } catch (caught) { let error: Error = caught as Error; failures[failures.length] = error.code; }
+        try {
+            let reentered: holes.Written = await writer.writeSection(request, "language", ask, budget, tools, "scene", 6000);
+            attempts[attempts.length] = reentered.attempts;
+        } catch (caught) { let error: Error = caught as Error; failures[failures.length] = error.code; }
+        let exhausted: holes.Written = await writer.writeSection(request, "language", ask, budget, tools, "scene", 6000);
+        return json.stringify({attempts: attempts, failures: failures, dispatched: dispatchedBudget, finalAttempts: exhausted.attempts,
+            remaining: budget.remaining(["stable.0"]), siblingRemaining: budget.remaining(["stable.1"]),
+            unrelatedRemaining: budget.remaining(["unrelated"])}) as string;
+    }
+    if (decode.stringField(raw, "mode", "") === "hole") {
+        let plan: screen.ScreenPlan = screen.create();
+        template.set(plan.globals, "__SUPPORTING__", "promise");
+        if (!(raw.whole as boolean)) {
+            plan.components[plan.components.length] = {fill: "part", spec: custom.parseSection("<fields></fields><functions></functions><view>base</view>"), values: []};
+        }
+        for (let need of request.needs) { screen.addToWrite(plan, need, need, true); }
+        let records: unknown[] = []; let lookups: unknown[] = [];
+        let host: flow.Host = {language: "language", askCode: async function(system: string, user: string, tokens: number, think: boolean): Promise<string | null> {
+            let i: number = dispatched.length; dispatched[dispatched.length] = {tokens: tokens, think: think};
+            let replies: unknown[] = decode.arrayOrEmpty(raw.replies); if (i >= replies.length) { return null; }
+            let reply: unknown = replies[i]; if (reply === null) { return null; } return reply as string;
+        }, askJev: request.verify, looked: [], cannot: [], budget: budget,
+            identity: function(slot: screen.PlanSlot): string { return slot.id; },
+            lookup: async function(needs: string[]): Promise<string[]> {
+                let result: string[] = []; for (let need of needs) { lookups[lookups.length] = need; result[result.length] = ""; } return result;
+            }, onHole: function(record: holes.HoleRecord): void { records[records.length] = {needs: record.needs, outcome: record.outcome, attempts: record.attempts, whole: record.whole}; }};
+        for (let value of decode.arrayOrEmpty(raw.known)) { template.set(host.cannot, value as string, "Known unavailable."); }
+        let notices: holes.NoticePrimitives = {sentenceEnd: function(value: string): number { return -1; },
+            utf16Length: function(value: string): number { return (raw.lengths as Record<string, unknown>)[value] as number; },
+            first137: function(value: string): string { return value; }};
+        let written: holes.Written | null = await flow.writeHole(plan, "test", ["input"], host, ["fact"], null, tools, notices,
+            function(value: string): string { return value; },
+            function(specs: (template.Fragment | null)[], globals: template.Entry[], values: template.Entry[][]): string { return "composed"; }, "scene", 6000);
+        let slots: unknown[] = []; let components: unknown[] = [];
+        for (let slot of plan.slots) { slots[slots.length] = {fill: slot.fill, by: slot.by, detail: slot.detail}; }
+        for (let component of plan.components) { components[components.length] = {fill: component.fill, kind: (component.spec as template.Fragment).kind}; }
+        let attempts: number = -1; let failed: string = "";
+        if (written !== null) { attempts = (written as holes.Written).attempts; failed = (written as holes.Written).failed; }
+        return json.stringify({attempts: attempts, failed: failed, slots: slots, components: components, records: records,
+            lookups: lookups, dispatched: dispatched, remaining: budget.remaining(request.needs), supporting: template.get(plan.globals, "__SUPPORTING__")}) as string;
+    }
+    let result: holes.Written = await writer.writeSection(request, "language",
+        async function(system: string, user: string, tokens: number, think: boolean): Promise<string | null> {
+            let i: number = dispatched.length; dispatched[dispatched.length] = {system: system, user: user, budget: tokens, think: think};
+            let replies: unknown[] = decode.arrayOrEmpty(raw.replies); if (i >= replies.length) { return null; }
+            let reply: unknown = replies[i]; if (reply === null) { return null; } return reply as string;
+        }, budget, tools, "scene", 6000);
+    let declined: unknown[] = []; for (let pair of result.declined) { declined[declined.length] = {key: pair.key, value: pair.value}; }
+    let retained: string | null = null; if (result.section !== null) { retained = (result.section as template.Fragment).viewBlock; }
+    let remaining: number = budget.remaining(request.needs);
+    budget.charge([request.needs[0], "split"]);
+    return json.stringify({section: retained, cannot: result.cannot, declined: declined, missed: result.missed, thought: result.thought,
+        attempts: result.attempts, failed: result.failed, ms: result.ms, dispatched: dispatched, checked: checked, verification: verification,
+        remaining: remaining, splitRemaining: budget.remaining([request.needs[0]]), unrelatedRemaining: budget.remaining(["unrelated"])}) as string;
+}

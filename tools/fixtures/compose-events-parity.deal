@@ -1,0 +1,118 @@
+import * as events from "./compose-events";
+import * as questions from "./compose-questions";
+import * as countdown from "./compose-countdown";
+import * as bindings from "./compose-bindings";
+import * as choice from "./needs-choice";
+import * as sketch from "./sketch";
+import * as decode from "./plan-decoding";
+import * as json from "std/json";
+import * as table from "std/table";
+
+export function inspect(input: string): string {
+    let raw: Record<string, unknown> = json.parse(input);
+    let value: sketch.Sketch = sketch.parseSketch(raw.sketch as string) as sketch.Sketch;
+    let effects: events.Effect[] = [];
+    for (let item of decode.arrayOrEmpty(raw.effects)) {
+        let effect: Record<string, unknown> = item as Record<string, unknown>;
+        let params: events.EffectParam[] = [];
+        for (let parameter of decode.arrayOrEmpty(effect.params)) {
+            let param: Record<string, unknown> = parameter as Record<string, unknown>;
+            params[params.length] = {name: param.name as string, kind: param.kind as string, key: param.key as string, describe: param.describe as string};
+        }
+        let fixed: string[] = [];
+        for (let text of decode.arrayOrEmpty(effect.fixed)) { fixed[fixed.length] = text as string; }
+        effects[effects.length] = {id: effect.id as string, describe: effect.describe as string, target: effect.target as string,
+            fixed: fixed, params: params, done: effect.done as string, mode: effect.mode as string, button: effect.button as string};
+    }
+    let numberText: (value: number) => string = function(number: number): string {
+        for (let item of decode.arrayOrEmpty(raw.numbers)) {
+            let sample: Record<string, unknown> = item as Record<string, unknown>;
+            if (sample.number as number === number) { return sample.text as string; }
+        }
+        throw {code: "PARITY_PRIMITIVE", message: "Missing number text"};
+    };
+    let fixedTwo: (value: number) => string = function(number: number): string {
+        for (let item of decode.arrayOrEmpty(raw.fixed)) {
+            let sample: Record<string, unknown> = item as Record<string, unknown>;
+            if (sample.number as number === number) { return sample.text as string; }
+        }
+        throw {code: "PARITY_PRIMITIVE", message: "Missing fixed text"};
+    };
+    let served: string[] = [];
+    for (let item of decode.arrayOrEmpty(raw.served)) { served[served.length] = item as string; }
+    if (decode.stringField(raw, "mode", "") === "countdown") {
+        let selected: bindings.Binding[] = [];
+        for (let item of decode.arrayOrEmpty(raw.bindings)) {
+            let binding: Record<string, unknown> = item as Record<string, unknown>;
+            let reads: string[] = [];
+            for (let name of decode.arrayOrEmpty(binding.reads)) { reads[reads.length] = name as string; }
+            selected[selected.length] = {id: binding.id as string, formula: "", a: binding.a as string, b: binding.b as string,
+                expr: "", reads: reads, show: "stat", scale: ""};
+        }
+        let result: countdown.Countdown = countdown.readCountdown(value, selected, raw.answers as Record<string, unknown>, numberText, fixedTwo);
+        let input: unknown = null;
+        let added: sketch.SketchInput | null = result.input;
+        if (added !== null) {
+            let field: sketch.SketchInput = added as sketch.SketchInput;
+            let options: unknown[] = [];
+            input = {id: field.id, label: field.label, kind: field.kind, min: field.min, max: field.max, value: field.value,
+                unit: field.unit, measure: field.measure, options: options};
+        }
+        return json.stringify({from: result.from, unit: result.unit, input: input, widget: result.widget,
+            defaulted: result.defaulted, answers: result.answers}) as string;
+    }
+    if (decode.stringField(raw, "mode", "") === "questions") {
+        let catalogueRaw: Record<string, unknown> = raw.catalogue as Record<string, unknown>;
+        let catalogue: choice.Catalogue = {sections: [], realDataInstructions: catalogueRaw.realDataInstructions as string, realDataCriteria: []};
+        for (let item of decode.arrayOrEmpty(catalogueRaw.sections)) {
+            let section: Record<string, unknown> = item as Record<string, unknown>;
+            catalogue.sections[catalogue.sections.length] = {key: section.key as string, description: section.description as string};
+        }
+        for (let item of decode.arrayOrEmpty(catalogueRaw.realDataCriteria)) {
+            let criterion: Record<string, unknown> = item as Record<string, unknown>;
+            catalogue.realDataCriteria[catalogue.realDataCriteria.length] = {key: criterion.key as string, description: criterion.description as string};
+        }
+        let sections: questions.Section[] = [];
+        for (let item of decode.arrayOrEmpty(raw.sections)) {
+            let section: Record<string, unknown> = item as Record<string, unknown>;
+            sections[sections.length] = {question: section.question as string, kind: section.kind as string, owns: section.owns as string};
+        }
+        let request: string = questions.buildComposeRequest(raw.prompt as string, value, raw.widget as boolean, served, sections,
+            catalogue, effects, function(text: string): number {
+                let lengths: Record<string, unknown> = raw.lengths as Record<string, unknown>;
+                return lengths[text] as number;
+            }, numberText);
+        let body: Record<string, unknown> = json.parse(request);
+        let ordered: Record<string, unknown> = body.questions as Record<string, unknown>;
+        let optionOrder: Record<string, unknown> = {};
+        for (let key of table.keys(ordered)) {
+            let question: Record<string, unknown> = ordered[key] as Record<string, unknown>;
+            optionOrder[key] = table.keys(question.criteria as Record<string, unknown>);
+        }
+        return json.stringify({body: body, questionOrder: table.keys(ordered), optionOrder: optionOrder}) as string;
+    }
+    let result: events.EventResult = events.readEvents(value, effects, raw.answers as Record<string, unknown>, served,
+        raw.widget as boolean, raw.custom as boolean, numberText, fixedTwo);
+    let projected: Record<string, unknown>[] = [];
+    for (let binding of result.events) {
+        let args: Record<string, unknown>[] = [];
+        for (let arg of binding.args) { args[args.length] = {name: arg.name, source: arg.source}; }
+        projected[projected.length] = {id: binding.event.id, effect: binding.effect, moment: binding.moment, args: args};
+    }
+    let customEffects: Record<string, unknown>[] = [];
+    for (let effect of result.customEffects) { customEffects[customEffects.length] = {need: effect.need, effect: effect.effect}; }
+    let sources: Record<string, unknown>[] = [];
+    for (let effect of effects) {
+        for (let param of effect.params) {
+            let options: Record<string, unknown>[] = [];
+            for (let option of events.paramSources(value, param, numberText)) {
+                options[options.length] = {key: option.key, description: option.description};
+            }
+            sources[sources.length] = {effect: effect.id, param: param.name, options: options};
+        }
+    }
+    return json.stringify({events: projected, sectionInputs: result.sectionInputs, dropped: result.dropped, claimed: result.claimed,
+        custom: result.custom, phoneNeeds: result.phoneNeeds, unboundNeeds: result.unboundNeeds, customEffects: customEffects,
+        unbound: result.unbound, answers: result.answers, sources: sources,
+        questions: events.eventQuestions(value, effects, numberText)}) as string;
+}

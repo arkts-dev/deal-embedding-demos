@@ -15,7 +15,7 @@ function numeric(value: number): unknown {
 }
 
 // Test-only projection of nominal models. Never used as production decoding.
-function document(value: sketch.Sketch): Record<string, unknown> {
+export function document(value: sketch.Sketch): Record<string, unknown> {
     let inputs: Record<string, unknown>[] = [];
     for (let input of value.inputs) {
         let options: Record<string, unknown>[] = [];

@@ -1,0 +1,69 @@
+import * as play from "./program-surface-play";
+import * as smoke from "./program-smoke";
+import * as decode from "./plan-decoding";
+import * as json from "std/json";
+import * as execution from "./program-execution";
+import * as checking from "./custom-check";
+
+function trap(value: unknown): smoke.Trap | null {
+    if (value === null || value === undefined) { return null; } let raw: Record<string, unknown> = value as Record<string, unknown>;
+    return {code: raw.code as string, message: raw.message as string, line: raw.line as number, loopLine: raw.loopLine as number};
+}
+function nodes(values: unknown): play.Node[] {
+    let out: play.Node[] = []; for (let value of decode.arrayOrEmpty(values)) {
+        let n: Record<string, unknown> = value as Record<string, unknown>;
+        out[out.length] = {kind: n.kind as string, label: n.label as string, action: n.action as string, value: n.value as string,
+            minimum: n.minimum as number, maximum: n.maximum as number, enabled: n.enabled as boolean, text: n.text as string,
+            eventValue: n.eventValue as number, children: nodes(n.children)};
+    } return out;
+}
+function ops(values: unknown): play.Op[] {
+    let out: play.Op[] = []; for (let value of decode.arrayOrEmpty(values)) {
+        let n: Record<string, unknown> = value as Record<string, unknown>; let points: number[] = [];
+        for (let p of decode.arrayOrEmpty(n.points)) { points[points.length] = p as number; }
+        out[out.length] = {kind: n.kind as string, x: n.x as number, y: n.y as number, w: n.w as number, h: n.h as number,
+            r: n.r as number, start: n.start as number, sweep: n.sweep as number, size: n.size as number, color: n.color as string,
+            text: n.text as string, points: points, children: ops(n.children)};
+    } return out;
+}
+export function inspect(raw: Record<string, unknown>): string {
+    let numbers: number[] = []; let texts: string[] = [];
+    for (let item of decode.arrayOrEmpty(raw.numbers)) { let pair: Record<string, unknown> = item as Record<string, unknown>;
+        numbers[numbers.length] = pair.number as number; texts[texts.length] = pair.text as string;
+    }
+    let numberText: (n: number) => string = function(n: number): string {
+        let i: number = 0; for (let value of numbers) { if (value === n) { return texts[i]; } i = i + 1; }
+        throw {code: "FIXTURE", message: "Missing number sample"};
+    };
+    if (decode.stringField(raw, "action", "") === "fingerprint") {
+        let touches: unknown[] = []; for (let t of play.script()) { touches[touches.length] = {frame: t.frame, phase: t.phase, id: t.id, x: t.x, y: t.y}; }
+        return json.stringify({fingerprint: play.fingerprint(ops(raw.ops), numberText), script: touches}) as string;
+    }
+    let events: unknown[] = []; let cursor: number = 0; let uiCursor: number = 0; let gfxCursor: number = 0;
+    let executions: unknown[] = decode.arrayOrEmpty(raw.executions); let frames: unknown[] = decode.arrayOrEmpty(raw.frames); let graphics: unknown[] = decode.arrayOrEmpty(raw.graphics);
+    let tools: play.Mechanisms = {
+        execute: function(name: string, args: string[]): smoke.Executed {
+            events[events.length] = {type: "execute", name: name, args: args}; 
+            let reply: Record<string, unknown> = executions[cursor] as Record<string, unknown>; cursor = cursor + 1;
+            if (typeof reply.fault === "string") { throw {code: "INFRA", message: reply.fault as string}; }
+            return {value: decode.stringField(reply, "value", ""), trap: trap(reply.trap)};
+        }, decodeUi: function(value: string): play.Ui {
+            events[events.length] = {type: "ui", value: value}; 
+            let reply: Record<string, unknown> = frames[uiCursor] as Record<string, unknown>; uiCursor = uiCursor + 1; return {nodes: nodes(reply.nodes), trap: trap(reply.trap)};
+        }, decodeGfx: function(value: string): play.Gfx {
+            events[events.length] = {type: "gfx", value: value}; 
+            let reply: Record<string, unknown> = graphics[gfxCursor] as Record<string, unknown>; gfxCursor = gfxCursor + 1; return {ops: ops(reply.ops), trap: trap(reply.trap)};
+        }, numberValue: function(n: number): string { return "number:" + numberText(n); },
+        pointerValue: function(kind: string, id: number, x: number, y: number): string { return "pointer:" + kind + ":" + numberText(id) + ":" + numberText(x) + ":" + numberText(y); },
+        effectsAllowed: function(allowed: boolean): void { events[events.length] = {type: "effects", allowed: allowed}; },
+        clearEffects: function(): void { events[events.length] = {type: "clear"}; }, numberText: numberText
+    };
+    let backend: execution.Backend = {compile: function(source: string): checking.Compiled { return {identity: source, diagnostics: "", unreadFields: []}; },
+        open: function(identity: string): execution.Machine { return {mechanisms: tools, handlers: [], stringValue: function(value: string): string { return value; }, booleanValue: function(value: boolean): string { return "boolean"; }}; },
+        now: function(): number { return 0; }, numberText: numberText, numberOf: function(value: string): number { return 0; }};
+    try { let problem: string = "";
+        if (decode.stringField(raw, "action", "") === "adapter") { problem = execution.customMechanisms(backend).play("compiled", raw.requireSurface as boolean, raw.pressButtons as boolean); }
+        else { problem = play.playSurface(raw.requireSurface as boolean, raw.pressButtons as boolean, tools); }
+        return json.stringify({problem: problem, events: events, error: ""}) as string; }
+    catch (caught) { let error: Error = caught as Error; if (error.code !== "INFRA") { throw error; } return json.stringify({problem: "", events: events, error: error.code}) as string; }
+}

@@ -1,0 +1,68 @@
+import * as bindings from "./compose-bindings";
+import * as sketch from "./sketch";
+import * as decode from "./plan-decoding";
+import * as json from "std/json";
+
+function observed(value: number): unknown {
+    if (value !== value) { return "#NaN"; }
+    if (value === 1 / 0) { return "#Infinity"; }
+    if (value === -1 / 0) { return "#-Infinity"; }
+    if (value === 0 && 1 / value < 0) { return "#-0"; }
+    return value;
+}
+export function inspect(input: string): string {
+    let raw: Record<string, unknown> = json.parse(input);
+    let value: sketch.Sketch = sketch.parseSketch(raw.sketch as string) as sketch.Sketch;
+    let samples: unknown[] = decode.arrayOrEmpty(raw.numbers);
+    let tools: bindings.Primitives = {
+        utf16Length: function(text: string): number {
+            let lengths: Record<string, unknown> = raw.lengths as Record<string, unknown>;
+            return lengths[text] as number;
+        },
+        numberText: function(number: number): string {
+            for (let sample of samples) {
+                let entry: Record<string, unknown> = sample as Record<string, unknown>;
+                if (entry.number as number === number) { return entry.text as string; }
+            }
+            throw {code: "PARITY_PRIMITIVE", message: "Missing number text"};
+        },
+        fixedTwo: function(number: number): string {
+            for (let sample of decode.arrayOrEmpty(raw.fixed)) {
+                let entry: Record<string, unknown> = sample as Record<string, unknown>;
+                if (entry.number as number === number) { return entry.text as string; }
+            }
+            throw {code: "PARITY_PRIMITIVE", message: "Missing fixed text"};
+        },
+        matches: function(pattern: string, text: string): string[] {
+            let map: Record<string, unknown> = raw.matches as Record<string, unknown>;
+            let result: string[] = [];
+            for (let item of decode.arrayOrEmpty(map[pattern + "\n" + text])) { result[result.length] = item as string; }
+            return result;
+        },
+        power: function(a: number, b: number): number { throw {code: "PARITY_PRIMITIVE", message: "Unexpected power"}; },
+        remainder: function(a: number, b: number): number { throw {code: "PARITY_PRIMITIVE", message: "Unexpected remainder"}; }
+    };
+    let served: string[] = [];
+    for (let item of decode.arrayOrEmpty(raw.served)) { served[served.length] = item as string; }
+    let result: bindings.ValueBindings = bindings.bindValues(value, raw.answers as Record<string, unknown>, served,
+        raw.hasBlocks as boolean, tools);
+    let projected: Record<string, unknown>[] = [];
+    for (let binding of result.bindings) {
+        projected[projected.length] = {id: binding.id, formula: binding.formula, a: binding.a, b: binding.b,
+            expr: binding.expr, reads: binding.reads, show: binding.show, scale: binding.scale};
+    }
+    let failed: Record<string, unknown>[] = [];
+    for (let failure of result.failed) { failed[failed.length] = {id: failure.id, reason: failure.reason}; }
+    let environments: unknown[] = [];
+    let index: number = 0;
+    for (let figure of value.values) {
+        let env: Record<string, unknown>[] = [];
+        for (let entry of bindings.exampleNumbers(value, result.bindings, index, tools)) {
+            env[env.length] = {name: entry.name, value: observed(entry.value)};
+        }
+        environments[environments.length] = env;
+        index = index + 1;
+    }
+    return json.stringify({bindings: projected, failed: failed, shownBySection: result.shownBySection,
+        answers: result.answers, environments: environments}) as string;
+}

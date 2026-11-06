@@ -1,0 +1,294 @@
+import * as plan from "./screen-plan";
+import * as template from "./template-spec";
+import * as decode from "./plan-decoding";
+import * as json from "std/json";
+import * as text from "./section-text";
+import * as emission from "./section-emission";
+import * as custom from "./custom-section";
+import * as holes from "./hole-settlement";
+import * as calls from "./custom-calls";
+import * as arrangements from "./catalogue-layouts";
+import * as record from "./composition-record";
+import * as recordJson from "./composition-record-json";
+import * as recordEdits from "./composition-record-edits";
+import * as catalogueTypes from "./catalogue-contracts";
+import * as contentText from "./catalogue-content-text";
+import * as stages from "./run-stages";
+
+export function fragment(item: Record<string, unknown>): template.Fragment {
+    let ports: template.Port[] = []; let fields: template.StateField[] = []; let imports: string[] = []; let holes: template.Hole[] = [];
+    for (let value of decode.arrayOrEmpty(item.ports)) {
+        let port: Record<string, unknown> = value as Record<string, unknown>;
+        ports[ports.length] = {dir: port.dir as string, name: port.name as string, type: port.type as string,
+            ref: decode.stringField(port, "ref", ""), fallback: decode.stringField(port, "fallback", ""), computed: bool(port.computed), optional: bool(port.optional)};
+    }
+    for (let value of decode.arrayOrEmpty(item.stateFields)) {
+        let field: Record<string, unknown> = value as Record<string, unknown>; fields[fields.length] = {name: field.name as string, type: field.type as string};
+    }
+    for (let value of decode.arrayOrEmpty(item.imports)) { imports[imports.length] = value as string; }
+    for (let value of decode.arrayOrEmpty(item.holes)) {
+        let hole: Record<string, unknown> = value as Record<string, unknown>;
+        holes[holes.length] = {key: hole.key as string, token: hole.token as string, signature: hole.signature as string, purpose: hole.purpose as string,
+            defaultBody: hole.defaultBody as string, when: hole.when as string, byModel: hole.byModel as boolean, usesSdk: hole.usesSdk as boolean, slot: hole.slot as string};
+    }
+    let indexed: boolean = true; if (typeof item.indexed === "boolean") { indexed = item.indexed as boolean; }
+    return {kind: item.kind as string, criteria: decode.stringField(item, "criteria", ""), supportClass: decode.stringField(item, "supportClass", ""), stateFields: fields,
+        initStatements: decode.stringField(item, "initStatements", ""), initEntries: decode.stringField(item, "initEntries", ""), functions: decode.stringField(item, "functions", ""),
+        viewBlock: decode.stringField(item, "viewBlock", ""), imports: imports, ports: ports, holes: holes, indexed: indexed, owns: decode.stringField(item, "owns", ""), tab: decode.stringField(item, "tab", "")};
+}
+function bool(value: unknown): boolean { if (typeof value === "boolean") { return value as boolean; } return false; }
+export function inspect(input: string): string {
+    let raw: Record<string, unknown> = json.parse(input);
+    if (decode.stringField(raw, "mode", "") === "stages") {
+        let values: stages.Stage[] = []; for (let item of decode.arrayOrEmpty(raw.stages)) { let stage: Record<string, unknown> = item as Record<string, unknown>;
+            stages.add(values, stage.name as string, stage.who as string, stage.ms as number, stage.note as string); }
+        let projected: unknown[] = []; for (let value of values) { projected[projected.length] = {name: value.name, who: value.who, ms: value.ms, note: value.note}; }
+        let grouped: unknown[] = []; for (let value of stages.byWho(values)) { grouped[grouped.length] = {name: value.name, who: value.who, ms: value.ms, note: value.note}; }
+        return json.stringify({stages: projected, grouped: grouped, app: stages.appMs(values), you: stages.yourMs(values)}) as string;
+    }
+    if (decode.stringField(raw, "mode", "") === "record-json") {
+        let catalogue: template.Fragment[] = []; for (let item of decode.arrayOrEmpty(raw.catalogue)) { catalogue[catalogue.length] = fragment(item as Record<string, unknown>); }
+        let parsed: record.Composition | null = recordJson.compositionFromJson(raw.text as string, catalogue); let encoded: unknown = null;
+        if (decode.stringField(raw, "action", "") === "edit") {
+            let specs: catalogueTypes.CatalogueEntry[] = []; let index: number = 0;
+            for (let fragment of catalogue) {
+                let metadata: Record<string, unknown> = decode.arrayOrEmpty(raw.catalogue)[index] as Record<string, unknown>; let fields: catalogueTypes.ContentField[] = []; let slots: catalogueTypes.Slot[] = [];
+                for (let item of decode.arrayOrEmpty(metadata.contentFields)) { let field: Record<string, unknown> = item as Record<string, unknown>;
+                    fields[fields.length] = {token: field.token as string, key: field.key as string, fallback: field.fallback as string, hint: field.hint as string, maxLength: field.maxLength as number, numeric: field.numeric as boolean}; }
+                for (let item of decode.arrayOrEmpty(metadata.slots)) { let slot: Record<string, unknown> = item as Record<string, unknown>; let values: string[] = [];
+                    for (let value of decode.arrayOrEmpty(slot.values)) { values[values.length] = value as string; }
+                    slots[slots.length] = {token: slot.token as string, values: values, kind: "", instructions: "", criteria: [], above: -1, provides: []}; }
+                specs[specs.length] = {fragment: fragment, slots: slots, contentFields: fields, listFields: [], covers: [], coversIf: []}; index = index + 1;
+            }
+            let comp: record.Composition = parsed as record.Composition; let chosen: Record<string, unknown> = raw.edit as Record<string, unknown>;
+            let edit: recordEdits.Edit = {op: chosen.op as string, kind: chosen.kind as string, target: chosen.target as string, note: ""};
+            let tools: contentText.Primitives = {utf16Length: function(value: string): number { return 0; }, slice: function(value: string, start: number, end: number): string { return ""; },
+                replaceRegex: function(value: string, pattern: string, flags: string, replacement: string): string { return ""; }, matches: function(value: string, pattern: string, flags: string): string[] { let out: string[] = []; return out; },
+                parseNumber: function(value: string): number { return 0; }, numberText: function(value: number): string { return decode.integerText(value); }};
+            let supplied: template.Entry[] | null = []; if (bool(raw.defaults)) { supplied = null; }
+            let next: record.Composition | null = recordEdits.applyEdit(comp, edit, supplied, specs, [], tools); let applied: unknown = null;
+            if (next !== null) { applied = json.parse(recordJson.compositionToJson(next as record.Composition)); }
+            let answer: recordEdits.Edit = recordEdits.readEditAnswer(raw.answer as string, comp, specs);
+            return json.stringify({applied: applied, answer: {op: answer.op, target: answer.target, kind: answer.kind, note: answer.note}, request: json.parse(recordEdits.buildEditRequest("test", comp, specs))}) as string;
+        }
+        if (parsed !== null) { encoded = json.parse(recordJson.compositionToJson(parsed as record.Composition)); }
+        return json.stringify({encoded: encoded}) as string;
+    }
+    if (decode.stringField(raw, "mode", "") === "record") {
+        let screen: plan.ScreenPlan = plan.create(); screen.layout = raw.layout as string;
+        for (let entry of decode.arrayOrEmpty(raw.components)) {
+            let item: Record<string, unknown> = entry as Record<string, unknown>; let spec: template.Fragment | null = null;
+            if (item.spec !== null) { spec = fragment(item.spec as Record<string, unknown>); }
+            screen.components[screen.components.length] = {fill: item.fill as string, spec: spec, values: []};
+        }
+        for (let entry of decode.arrayOrEmpty(raw.slots)) {
+            let item: Record<string, unknown> = entry as Record<string, unknown>; let slot: plan.PlanSlot = plan.slot("id", item.need as string);
+            slot.by = item.by as number; screen.slots[screen.slots.length] = slot;
+        }
+        let comp: record.Composition = record.compositionFromPlan(screen, "test", [], []); let blocks: unknown[] = [];
+        for (let block of comp.blocks) { let literal: unknown = null;
+            if (block.literal !== null) { let spec: template.Fragment = block.literal as template.Fragment;
+                literal = {kind: spec.kind, criteria: spec.criteria, indexed: spec.indexed, tab: spec.tab, owns: spec.owns, view: spec.viewBlock}; }
+            blocks[blocks.length] = {kind: block.kind, literal: literal};
+        }
+        let catalogue: template.Fragment[] = []; for (let item of decode.arrayOrEmpty(raw.catalogue)) { catalogue[catalogue.length] = fragment(item as Record<string, unknown>); }
+        let tools: emission.Primitives = {numberText: function(value: number): string { return decode.integerText(value); },
+            upperFirst: function(value: string): string { return (raw.upper as Record<string, unknown>)[value] as string; },
+            first14: function(value: string): string { return (raw.first14 as Record<string, unknown>)[value] as string; }};
+        return json.stringify({kinds: record.kinds(comp), targets: record.targetKinds(comp), count: record.catalogueCount(comp), blocks: blocks,
+            source: record.composeFrom(comp, catalogue, [], tools, raw.banner as string),
+            rebuilds: record.rebuilds(comp, raw.source as string, catalogue, [], tools, raw.banner as string)}) as string;
+    }
+    if (decode.stringField(raw, "mode", "") === "layout") {
+        let layouts: arrangements.Layout[] = []; let kinds: string[] = []; let wanted: string[] = [];
+        for (let value of decode.arrayOrEmpty(raw.layouts)) {
+            let layout: Record<string, unknown> = value as Record<string, unknown>; let slots: arrangements.Slot[] = []; let swaps: string[][] = [];
+            for (let entry of decode.arrayOrEmpty(layout.slots)) {
+                let slot: Record<string, unknown> = entry as Record<string, unknown>; let accepts: string[] = [];
+                for (let kind of decode.arrayOrEmpty(slot.accepts)) { accepts[accepts.length] = kind as string; }
+                slots[slots.length] = {name: slot.name as string, accepts: accepts, max: slot.max as number, required: slot.required as boolean};
+            }
+            for (let entry of decode.arrayOrEmpty(layout.swaps)) {
+                let pair: string[] = []; for (let kind of decode.arrayOrEmpty(entry)) { pair[pair.length] = kind as string; } swaps[swaps.length] = pair;
+            }
+            layouts[layouts.length] = {id: layout.id as string, criteria: layout.criteria as string, slots: slots, swaps: swaps};
+        }
+        for (let kind of decode.arrayOrEmpty(raw.kinds)) { kinds[kinds.length] = kind as string; }
+        for (let kind of decode.arrayOrEmpty(raw.wanted)) { wanted[wanted.length] = kind as string; }
+        let id: string = raw.layout as string;
+        let before: number[] | null = arrangements.arrangeInLayout(layouts, id, kinds);
+        let swapped: number[] = arrangements.swapForLayout(layouts, id, kinds);
+        let completed: number[] = arrangements.completeRequiredSlots(layouts, id, kinds);
+        let fit: string[] = arrangements.fitToSlots(layouts, id, kinds, wanted);
+        let placed: number[] = arrangements.placeKinds(kinds, fit);
+        return json.stringify({before: before, swapped: swapped, completed: completed, fit: fit, placed: placed, kinds: kinds,
+            order: arrangements.arrangeInLayout(layouts, id, kinds), all: arrangements.layoutKinds(layouts), named: arrangements.kindsOfLayout(layouts, id)}) as string;
+    }
+    if (decode.stringField(raw, "mode", "") === "calls") {
+        let tools: calls.Primitives = {matches: function(pattern: string, value: string): calls.Match[] {
+            let samples: Record<string, unknown> = raw.matches as Record<string, unknown>; let result: calls.Match[] = [];
+            for (let item of decode.arrayOrEmpty(samples[pattern + "\n" + value])) {
+                let groups: string[] = []; for (let group of decode.arrayOrEmpty(item)) { groups[groups.length] = group as string; }
+                result[result.length] = {groups: groups};
+            }
+            return result;
+        }};
+        let needs: string[] = []; for (let need of decode.arrayOrEmpty(raw.needs)) { needs[needs.length] = need as string; }
+        let found: string[] = calls.foundTargets(raw.phone as string, tools); let declined: unknown[] = [];
+        for (let pair of calls.declinedNeeds(raw.reply as string, needs, tools)) { declined[declined.length] = {key: pair.key, value: pair.value}; }
+        return json.stringify({found: found, problem: calls.callProblem(raw.reply as string, found, tools), declined: declined}) as string;
+    }
+    if (decode.stringField(raw, "mode", "") === "settle") {
+        let screen: plan.ScreenPlan = plan.create(); template.set(screen.globals, "__SUPPORTING__", "promise");
+        let slots: plan.PlanSlot[] = [];
+        for (let value of decode.arrayOrEmpty(raw.needs)) {
+            let need: Record<string, unknown> = value as Record<string, unknown>;
+            slots[slots.length] = plan.addToWrite(screen, need.id as string, need.need as string, need.phone as boolean);
+        }
+        let written: holes.Written = holes.result(); written.section = custom.parseSection(raw.reply as string);
+        written.cannot = raw.cannot as string; written.failed = "failed"; written.attempts = 3; written.thought = true; written.ms = 20;
+        for (let value of decode.arrayOrEmpty(raw.missed)) { written.missed[written.missed.length] = value as string; }
+        for (let value of decode.arrayOrEmpty(raw.declined)) {
+            let entry: Record<string, unknown> = value as Record<string, unknown>;
+            template.set(written.declined, entry.key as string, entry.value as string);
+        }
+        let records: unknown[] = []; let cannot: template.Entry[] = [];
+        let tools: holes.NoticePrimitives = {
+            sentenceEnd: function(value: string): number { return (raw.ends as Record<string, unknown>)[value] as number; },
+            utf16Length: function(value: string): number { return (raw.lengths as Record<string, unknown>)[value] as number; },
+            first137: function(value: string): string { return (raw.prefix as Record<string, unknown>)[value] as string; }
+        };
+        holes.settle(screen, "test", slots, raw.whole as boolean, "lookup", written, cannot,
+            function(record: holes.HoleRecord): void { records[records.length] = {prompt: record.prompt, origin: record.origin,
+                needs: record.needs, phone: record.phone, outcome: record.outcome, attempts: record.attempts, thought: record.thought,
+                ms: record.ms, missed: record.missed, why: record.why, code: record.code, whole: record.whole, lookup: record.lookup}; }, tools);
+        holes.quietSubtitle(screen); let resultSlots: unknown[] = []; let components: unknown[] = []; let remembered: unknown[] = [];
+        for (let slot of screen.slots) { resultSlots[resultSlots.length] = {fill: slot.fill, by: slot.by, detail: slot.detail}; }
+        for (let component of screen.components) { let spec: template.Fragment = component.spec as template.Fragment;
+            components[components.length] = {fill: component.fill, kind: spec.kind, view: spec.viewBlock}; }
+        for (let entry of cannot) { remembered[remembered.length] = {key: entry.key, value: entry.value}; }
+        return json.stringify({records: records, slots: resultSlots, components: components, cannot: remembered,
+            supporting: template.get(screen.globals, "__SUPPORTING__")}) as string;
+    }
+    if (decode.stringField(raw, "mode", "") === "custom") {
+        let needs: string[] = []; for (let need of decode.arrayOrEmpty(raw.needs)) { needs[needs.length] = need as string; }
+        let section: template.Fragment | null = custom.parseSection(raw.reply as string); let parsed: unknown = null;
+        let repeated: string = "";
+        if (section !== null) {
+            let spec: template.Fragment = section as template.Fragment; let fields: unknown[] = [];
+            for (let field of spec.stateFields) { fields[fields.length] = {name: field.name, type: field.type}; }
+            parsed = {kind: spec.kind, supportClass: spec.supportClass, fields: fields, initEntries: spec.initEntries,
+                functions: spec.functions, viewBlock: spec.viewBlock, indexed: spec.indexed, tab: spec.tab};
+            repeated = custom.repeats(spec, raw.clock as boolean, raw.list as boolean,
+                function(value: string): string { return (raw.lower as Record<string, unknown>)[value] as string; });
+        }
+        return json.stringify({parsed: parsed, repeated: repeated,
+            request: json.parse(custom.verifyRequest("test", needs, raw.reply as string, function(value: number): string { return decode.integerText(value); })),
+            undone: custom.undone(needs, raw.answer as string, function(value: number): string { return decode.integerText(value); })}) as string;
+    }
+    if (decode.stringField(raw, "mode", "") === "text") {
+        let fields: string[] = [];
+        for (let field of decode.arrayOrEmpty(raw.fields)) { fields[fields.length] = field as string; }
+        let values: template.Entry[] = [];
+        for (let entry of decode.arrayOrEmpty(raw.values)) {
+            let pair: Record<string, unknown> = entry as Record<string, unknown>;
+            values[values.length] = {key: pair.key as string, value: pair.value as string};
+        }
+        return json.stringify({filled: text.fillPassthrough(raw.text as string, fields),
+            resolved: text.resolveInstanceText(raw.text as string, "3", values, raw.indexed as boolean),
+            marked: text.markedHole("key", "3", raw.text as string)}) as string;
+    }
+    let specs: (template.Fragment | null)[] = [];
+    for (let entry of decode.arrayOrEmpty(raw.specs)) {
+        if (entry === null) { specs[specs.length] = null; continue; }
+        let item: Record<string, unknown> = entry as Record<string, unknown>;
+        let ports: template.Port[] = [];
+        for (let value of decode.arrayOrEmpty(item.ports)) {
+            let port: Record<string, unknown> = value as Record<string, unknown>;
+            ports[ports.length] = {dir: port.dir as string, name: port.name as string, type: port.type as string,
+                ref: decode.stringField(port, "ref", ""), fallback: decode.stringField(port, "fallback", ""),
+                computed: bool(port.computed), optional: bool(port.optional)};
+        }
+        let fields: template.StateField[] = []; let imports: string[] = []; let holes: template.Hole[] = [];
+        for (let value of decode.arrayOrEmpty(item.stateFields)) {
+            let field: Record<string, unknown> = value as Record<string, unknown>;
+            fields[fields.length] = {name: field.name as string, type: field.type as string};
+        }
+        for (let value of decode.arrayOrEmpty(item.imports)) { imports[imports.length] = value as string; }
+        for (let value of decode.arrayOrEmpty(item.holes)) {
+            let hole: Record<string, unknown> = value as Record<string, unknown>;
+            holes[holes.length] = {key: hole.key as string, token: hole.token as string, signature: hole.signature as string,
+                purpose: hole.purpose as string, defaultBody: hole.defaultBody as string, when: hole.when as string,
+                byModel: hole.byModel as boolean, usesSdk: hole.usesSdk as boolean, slot: hole.slot as string};
+        }
+        let indexed: boolean = true; if (typeof item.indexed === "boolean") { indexed = item.indexed as boolean; }
+        specs[specs.length] = {kind: item.kind as string, criteria: item.criteria as string, supportClass: decode.stringField(item, "supportClass", ""),
+            stateFields: fields, initStatements: decode.stringField(item, "initStatements", ""), initEntries: decode.stringField(item, "initEntries", ""),
+            functions: decode.stringField(item, "functions", ""), viewBlock: decode.stringField(item, "viewBlock", ""),
+            imports: imports, ports: ports, holes: holes, indexed: indexed, owns: "", tab: decode.stringField(item, "tab", "")};
+    }
+    let layouts: template.Layout[] = [];
+    for (let value of decode.arrayOrEmpty(raw.layouts)) {
+        let item: Record<string, unknown> = value as Record<string, unknown>; let slots: template.LayoutSlot[] = [];
+        for (let entry of decode.arrayOrEmpty(item.slots)) {
+            let accepted: string[] = [];
+            for (let text of decode.arrayOrEmpty((entry as Record<string, unknown>).accepts)) { accepted[accepted.length] = text as string; }
+            slots[slots.length] = {accepts: accepted};
+        }
+        layouts[layouts.length] = {id: item.id as string, slots: slots};
+    }
+    let globals: template.Entry[] = [{key: "theme", value: "clean"}];
+    let values: template.Entry[][] = [];
+    for (let value of decode.arrayOrEmpty(raw.values)) {
+        let entries: template.Entry[] = [];
+        for (let pair of decode.arrayOrEmpty(value)) {
+            let item: Record<string, unknown> = pair as Record<string, unknown>;
+            entries[entries.length] = {key: item.key as string, value: item.value as string};
+        }
+        values[values.length] = entries;
+    }
+    if (decode.stringField(raw, "mode", "") === "emission") {
+        let actualGlobals: template.Entry[] = [];
+        for (let value of decode.arrayOrEmpty(raw.globals)) {
+            let pair: Record<string, unknown> = value as Record<string, unknown>;
+            actualGlobals[actualGlobals.length] = {key: pair.key as string, value: pair.value as string};
+        }
+        let tools: emission.Primitives = {numberText: function(value: number): string { return decode.integerText(value); },
+            upperFirst: function(value: string): string { return (raw.upper as Record<string, unknown>)[value] as string; },
+            first14: function(value: string): string { return (raw.first14 as Record<string, unknown>)[value] as string; }};
+        return json.stringify({source: emission.composeFragments(specs, actualGlobals, values, tools, raw.banner as string)}) as string;
+    }
+    let screen: plan.ScreenPlan = plan.planFromBlocks("test", raw.layout as string, specs, globals, values, layouts,
+        function(value: number): string { return decode.integerText(value); });
+    template.set(globals, "theme", "changed");
+    for (let value of decode.arrayOrEmpty(raw.holes)) {
+        let item: Record<string, unknown> = value as Record<string, unknown>;
+        let hole: plan.PlanSlot = plan.addToWrite(screen, item.id as string, item.need as string, item.phone as boolean);
+        hole.reads = ["alpha"]; hole.writes = ["beta"]; hole.when = "tap";
+        if (item.fill as boolean) { plan.fillWith(hole, "reported", 0, "unsupported"); }
+    }
+    let slotValues: unknown[] = [];
+    for (let item of screen.slots) {
+        slotValues[slotValues.length] = {id: item.id, need: item.need, reads: item.reads, writes: item.writes,
+            when: item.when, phone: item.phone, accepts: item.accepts, asked: item.asked, fill: item.fill, by: item.by, detail: item.detail};
+    }
+    let components: unknown[] = [];
+    for (let item of screen.components) {
+        let kind: string | null = null; if (item.spec !== null) { kind = (item.spec as template.Fragment).kind; }
+        let entries: unknown[] = [];
+        for (let pair of item.values) { entries[entries.length] = {key: pair.key, value: pair.value}; }
+        components[components.length] = {fill: item.fill, kind: kind, values: entries};
+    }
+    let states: unknown[] = [];
+    for (let state of screen.state) { states[states.length] = {name: state.name, role: state.role, type: state.type, label: state.label}; }
+    let assembled: number = 0;
+    let emitter: (specs: (template.Fragment | null)[], globals: template.Entry[], values: template.Entry[][]) => string =
+        function(specs: (template.Fragment | null)[], globals: template.Entry[], values: template.Entry[][]): string {
+            assembled = assembled + 1; return "assembled";
+        };
+    let complete: string = plan.assemblePlan(screen, false, emitter); let partial: string = plan.assemblePlan(screen, true, emitter);
+    return json.stringify({origin: screen.origin, prompt: screen.prompt, layout: screen.layout, widget: screen.widget,
+        global: template.get(screen.globals, "theme"), slots: slotValues, components: components, state: states,
+        open: plan.open(screen).length, toWrite: plan.toWrite(screen).length, description: plan.describePlan(screen),
+        complete: complete, partial: partial, assembled: assembled}) as string;
+}

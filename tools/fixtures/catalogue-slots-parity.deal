@@ -1,0 +1,32 @@
+import * as catalogue from "./catalogue-contracts";
+import * as slots from "./catalogue-slots";
+import * as decode from "./plan-decoding";
+import * as template from "./template-spec";
+import * as json from "std/json";
+
+export function inspect(input: string): string {
+    let raw: Record<string, unknown> = json.parse(input); let specs: catalogue.CatalogueEntry[] = [];
+    for (let item of decode.arrayOrEmpty(raw.specs)) {
+        let spec: Record<string, unknown> = item as Record<string, unknown>; let choices: catalogue.Slot[] = [];
+        for (let item of decode.arrayOrEmpty(spec.slots)) {
+            let slot: Record<string, unknown> = item as Record<string, unknown>; let values: string[] = []; let provides: string[] = []; let criteria: template.Entry[] = [];
+            for (let value of decode.arrayOrEmpty(slot.values)) { values[values.length] = value as string; }
+            for (let value of decode.arrayOrEmpty(slot.provides)) { provides[provides.length] = value as string; }
+            for (let value of decode.arrayOrEmpty(slot.criteria)) {
+                let pair: Record<string, unknown> = value as Record<string, unknown>; criteria[criteria.length] = {key: pair.key as string, value: pair.value as string};
+            }
+            choices[choices.length] = {token: slot.token as string, kind: slot.kind as string, instructions: slot.instructions as string, values: values,
+                criteria: criteria, above: slot.above as number, provides: provides};
+        }
+        specs[specs.length] = {fragment: {kind: spec.kind as string, criteria: "", supportClass: "", stateFields: [], initStatements: "", initEntries: "", functions: "", viewBlock: "",
+            imports: [], ports: [], holes: [], indexed: true, owns: "", tab: ""}, slots: choices, contentFields: [], listFields: [], covers: [], coversIf: []};
+    }
+    let kinds: string[] = []; for (let kind of decode.arrayOrEmpty(raw.kinds)) { kinds[kinds.length] = kind as string; }
+    let lowercase: (value: string) => string = function(value: string): string { return (raw.lower as Record<string, unknown>)[value] as string; };
+    let numberText: (value: number) => string = function(value: number): string { return decode.integerText(value); };
+    let values: unknown[] = [];
+    for (let entries of slots.readSlotValues(raw.body as string, kinds, specs, numberText, lowercase)) {
+        let pairs: unknown[] = []; for (let pair of entries) { pairs[pairs.length] = {key: pair.key, value: pair.value}; } values[values.length] = pairs;
+    }
+    return json.stringify({request: json.parse(slots.buildSlotRequest("test", kinds, specs, numberText, lowercase)), values: values}) as string;
+}

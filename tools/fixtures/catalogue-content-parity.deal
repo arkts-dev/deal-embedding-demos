@@ -1,0 +1,159 @@
+import * as catalogue from "./catalogue-contracts";
+import * as content from "./catalogue-content-text";
+import * as lists from "./catalogue-content-lists";
+import * as contentFlow from "./catalogue-content";
+import * as provenance from "./catalogue-provenance";
+import * as fillFlow from "./catalogue-fill";
+import * as writer from "./custom-writer";
+import * as screenParity from "./screen-plan-parity";
+import * as catalogueHoles from "./catalogue-holes";
+import * as template from "./template-spec";
+import * as decode from "./plan-decoding";
+import * as json from "std/json";
+import * as str from "std/string";
+
+export function sample(raw: Record<string, unknown>, key: string, args: unknown[]): unknown {
+    for (let item of decode.arrayOrEmpty(raw.samples)) {
+        let value: Record<string, unknown> = item as Record<string, unknown>;
+        if (value.key as string !== key) { continue; }
+        let expected: unknown[] = decode.arrayOrEmpty(value.args);
+        if (expected.length !== args.length) { continue; }
+        let matches: boolean = true; let i: number = 0;
+        for (let arg of args) {
+            let other: unknown = expected[i];
+            if (typeof arg === "number" && typeof other === "number") {
+                if ((arg as number) !== (other as number)) { matches = false; }
+            } else if (typeof arg === "string" && typeof other === "string") {
+                if ((arg as string) !== (other as string)) { matches = false; }
+            } else { matches = false; }
+            i = i + 1;
+        }
+        if (matches) { return value.result; }
+    }
+    throw {code: "MISSING_PRIMITIVE", message: key + (json.stringify(args) as string)};
+}
+export function listSpec(value: Record<string, unknown>): catalogue.ListField {
+    let hints: string[] = []; let maximum: number[] = []; let numeric: number[] = []; let checks: string[] = []; let fallback: string[][] = [];
+    for (let item of decode.arrayOrEmpty(value.columnHints)) { hints[hints.length] = item as string; }
+    for (let item of decode.arrayOrEmpty(value.columnMax)) { maximum[maximum.length] = item as number; }
+    for (let item of decode.arrayOrEmpty(value.numericColumns)) { numeric[numeric.length] = item as number; }
+    for (let item of decode.arrayOrEmpty(value.columnChecks)) { checks[checks.length] = item as string; }
+    for (let row of decode.arrayOrEmpty(value.fallbackRows)) {
+        let cells: string[] = []; for (let cell of decode.arrayOrEmpty(row)) { cells[cells.length] = cell as string; } fallback[fallback.length] = cells;
+    }
+    return {token: value.token as string, key: value.key as string, hint: value.hint as string,
+        columnHints: hints, columnMax: maximum, rowTemplate: value.rowTemplate as string, separator: value.separator as string,
+        minRows: value.minRows as number, maxRows: value.maxRows as number, fallbackRows: fallback, numericColumns: numeric, columnChecks: checks};
+}
+export function primitives(raw: Record<string, unknown>): content.Primitives {
+    return {
+        utf16Length: function(value: string): number { return sample(raw, "length", [value]) as number; },
+        slice: function(value: string, start: number, end: number): string { return sample(raw, "slice", [value, start, end]) as string; },
+        replaceRegex: function(value: string, pattern: string, flags: string, replacement: string): string {
+            return sample(raw, "replace", [value, pattern, flags, replacement]) as string;
+        },
+        matches: function(value: string, pattern: string, flags: string): string[] {
+            let result: string[] = []; for (let item of decode.arrayOrEmpty(sample(raw, "matches", [value, pattern, flags]))) { result[result.length] = item as string; } return result;
+        },
+        parseNumber: function(value: string): number { return sample(raw, "parse", [value]) as number; },
+        numberText: function(value: number): string { return sample(raw, "number", [value]) as string; }
+    };
+}
+export async function inspect(input: string): Promise<string> {
+    let raw: Record<string, unknown> = json.parse(input); let tools: content.Primitives = primitives(raw);
+    if (decode.stringField(raw, "mode", "") === "content-provenance") {
+        let values: template.Entry[] = [];
+        for (let entry of decode.arrayOrEmpty(raw.values)) { let pair: Record<string, unknown> = entry as Record<string, unknown>;
+            values[values.length] = {key: pair.key as string, value: pair.value as string}; }
+        let lowercase: (value: string) => string = function(value: string): string { return sample(raw, "lower", [value]) as string; };
+        let note: string = provenance.checkLiveProvenance(values, raw.search as string, raw.request as string, lowercase, tools);
+        let pairs: unknown[] = []; for (let pair of values) { pairs[pairs.length] = {key: pair.key, value: pair.value}; }
+        return json.stringify({note: note, values: pairs, found: provenance.foundIn(raw.figure as string, raw.search as string, lowercase, tools),
+            domain: provenance.domainOf(raw.url as string)}) as string;
+    }
+    if (decode.stringField(raw, "mode", "") === "content-flow" || decode.stringField(raw, "mode", "") === "content-sections") {
+        let specs: catalogue.CatalogueEntry[] = []; let kinds: string[] = [];
+        for (let item of decode.arrayOrEmpty(raw.specs)) {
+            let entry: Record<string, unknown> = item as Record<string, unknown>; let fields: catalogue.ContentField[] = [];
+            for (let value of decode.arrayOrEmpty(entry.contentFields)) {
+                let field: Record<string, unknown> = value as Record<string, unknown>;
+                fields[fields.length] = {token: field.token as string, key: field.key as string, fallback: field.fallback as string,
+                    hint: field.hint as string, maxLength: field.maxLength as number, numeric: field.numeric as boolean};
+            }
+            let listFields: catalogue.ListField[] = []; let slots: catalogue.Slot[] = [];
+            for (let value of decode.arrayOrEmpty(entry.listFields)) { listFields[listFields.length] = listSpec(value as Record<string, unknown>); }
+            for (let value of decode.arrayOrEmpty(entry.slots)) {
+                let slot: Record<string, unknown> = value as Record<string, unknown>; let choices: string[] = [];
+                for (let choice of decode.arrayOrEmpty(slot.values)) { choices[choices.length] = choice as string; }
+                slots[slots.length] = {token: slot.token as string, values: choices, kind: "", instructions: "", criteria: [], above: 0.25, provides: []};
+            }
+            specs[specs.length] = {fragment: screenParity.fragment(entry), slots: slots, contentFields: fields, listFields: listFields, covers: [], coversIf: []};
+        }
+        for (let value of decode.arrayOrEmpty(raw.kinds)) { kinds[kinds.length] = value as string; }
+        if (decode.stringField(raw, "mode", "") === "content-sections") {
+            let request: fillFlow.Request = {kinds: kinds, prompt: "original", work: "rewrite", mode: raw.generationMode as string, realData: raw.realData as boolean,
+                offset: 2, slotValues: [], globals: [{key: "__TITLE__", value: "underlying"}, {key: "theme", value: "blue"}],
+                compose: function(values: template.Entry[][], globals: template.Entry[]): string { return "composed"; }};
+            for (let kind of kinds) { request.slotValues[request.slotValues.length] = [{key: "choice", value: "true"}]; }
+            let events: unknown[] = []; let tick: number = 0; let cancellations: number = 0;
+            let calls: fillFlow.Calls = {
+                search: null, content: async function(system: string, user: string, budget: number): Promise<string | null> {
+                    events[events.length] = {type: "content", system: system, user: user, budget: budget};
+                    if (raw.reply === null) { return null; } return raw.reply as string;
+                },
+                hole: async function(system: string, user: string, think: boolean): Promise<string | null> {
+                    events[events.length] = {type: "hole", system: system, user: user}; return raw.holeReply as string;
+                },
+                sdkContext: async function(prompt: string): Promise<string> { events[events.length] = {type: "sdk", prompt: prompt}; return "phone functions"; },
+                status: function(text: string): void { events[events.length] = {type: "status", text: text}; },
+                cancelled: function(): boolean { cancellations = cancellations + 1; return cancellations === (raw.cancelAt as number); },
+                now: function(): number { tick = tick + 10; return tick; },
+                compile: function(source: string): catalogueHoles.Diagnostic[] { events[events.length] = {type: "compile", source: source}; return []; },
+                identity: function(hole: catalogueHoles.Instance): string { return "issued." + hole.key; }, budget: writer.createBudget()
+            };
+            if (raw.hasSearch as boolean) { calls.search = async function(query: string, chars: number): Promise<string> {
+                events[events.length] = {type: "search", query: query, chars: chars}; return raw.search as string;
+            }; }
+            let result: fillFlow.Filled = await fillFlow.fillSections(request, calls, specs, tools,
+                function(value: string): string { return sample(raw, "lower", [value]) as string; });
+            let values: unknown[] = []; let base: unknown[] = []; let globals: unknown[] = []; let bodies: unknown[] = [];
+            for (let entries of result.values) { let pairs: unknown[] = []; for (let pair of entries) { pairs[pairs.length] = {key: pair.key, value: pair.value}; } values[values.length] = pairs; }
+            for (let entries of result.baseValues) { let pairs: unknown[] = []; for (let pair of entries) { pairs[pairs.length] = {key: pair.key, value: pair.value}; } base[base.length] = pairs; }
+            for (let pair of result.globals) { globals[globals.length] = {key: pair.key, value: pair.value}; }
+            for (let pair of result.holeBodies) { bodies[bodies.length] = {key: pair.key, value: pair.value}; }
+            return json.stringify({values: values, baseValues: base, globals: globals, holeBodies: bodies, note: result.note, failed: result.failed,
+                contentNote: result.contentNote, liveNotes: result.liveNotes, holesNote: result.holesNote, grounded: result.grounded, searchText: result.searchText,
+                searched: result.searched, searchMs: result.searchMs, contentMs: result.contentMs, holesMs: result.holesMs, cancelled: result.cancelled, events: events}) as string;
+        }
+        if (typeof raw.defaults === "boolean" && (raw.defaults as boolean)) {
+            let result: unknown[] = [];
+            for (let kind of kinds) { let pairs: unknown[] = [];
+                for (let pair of contentFlow.blockDefaults(kind, specs, tools)) { pairs[pairs.length] = {key: pair.key, value: pair.value}; }
+                result[result.length] = pairs;
+            }
+            return json.stringify({defaults: result}) as string;
+        }
+        let dispatched: unknown[] = [];
+        let filled: contentFlow.Filled = await contentFlow.fillSectionsContent(kinds, "test", raw.generationMode as string, raw.search as string, specs,
+            async function(system: string, user: string, budget: number): Promise<string | null> {
+                dispatched[dispatched.length] = {system: system, user: user, budget: budget};
+                if (raw.reply === null) { return null; } return raw.reply as string;
+            }, tools);
+        let globals: unknown[] = []; let values: unknown[] = [];
+        for (let pair of filled.globalValues) { globals[globals.length] = {key: pair.key, value: pair.value}; }
+        for (let entries of filled.instanceValues) {
+            let pairs: unknown[] = []; for (let pair of entries) { pairs[pairs.length] = {key: pair.key, value: pair.value}; } values[values.length] = pairs;
+        }
+        return json.stringify({globals: globals, values: values, note: filled.note, dispatched: dispatched}) as string;
+    }
+    if (decode.stringField(raw, "mode", "") === "content-text") {
+        return json.stringify({cut: content.cutAtWord(raw.text as string, raw.maximum as number, tools),
+            escaped: content.escapeForVeraString(raw.text as string, raw.maximum as number, tools),
+            integer: content.sanitizeVeraInt(raw.text as string, "fallback"), number: content.checkedNumber(raw.text as string, tools),
+            coordinate: content.checkedCoordinate(raw.text as string, 90, tools)}) as string;
+    }
+    let value: Record<string, unknown> = raw.spec as Record<string, unknown>;
+    let spec: catalogue.ListField = listSpec(value);
+    let expanded: lists.Expansion = lists.expandListRows(raw.rows, spec, tools);
+    return json.stringify({text: expanded.text, note: expanded.note, rows: expanded.rows}) as string;
+}

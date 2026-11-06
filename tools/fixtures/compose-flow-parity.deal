@@ -1,0 +1,296 @@
+import * as events from "./compose-events";
+import * as bindings from "./compose-bindings";
+import * as flow from "./compose-flow";
+import * as choice from "./needs-choice";
+import * as questions from "./compose-questions";
+import * as readerState from "./compose-state";
+import * as sketch from "./sketch";
+import * as decode from "./plan-decoding";
+import * as json from "std/json";
+import * as table from "std/table";
+import * as str from "std/string";
+import * as assembly from "./compose-assembly";
+import * as template from "./template-spec";
+import * as needsFlow from "./needs-composition";
+import * as drawing from "./needs-drawing";
+import * as filtering from "./needs-filtering";
+import * as agent from "./portable-agent";
+import * as settlement from "./program-settlement";
+import * as hole from "./hole-flow";
+import * as writer from "./custom-writer";
+import * as callTypes from "./custom-calls";
+import * as person from "./agent-questions";
+import * as screen from "./screen-plan";
+import * as holeResult from "./hole-settlement";
+import * as catalogueHoles from "./catalogue-holes";
+import * as checking from "./custom-check";
+import * as route from "./portable-build-route";
+import * as catalogueTypes from "./catalogue-contracts";
+import * as screenFixture from "./screen-plan-parity";
+import * as editFixture from "./composition-edit-parity";
+import * as surface from "./agent-surface";
+import * as contentFixture from "./catalogue-content-parity";
+import * as identities from "./construction-identities";
+
+function configureFilling(host: agent.Host, raw: Record<string, unknown>, trace: unknown[]): void {
+    host.filling.sdkContext = async function(prompt: string): Promise<string> { trace[trace.length] = {type: "sdk", prompt: prompt}; return ""; };
+    let holeCalls: number = 0;
+    host.filling.hole = async function(system: string, user: string, think: boolean): Promise<string | null> {
+        trace[trace.length] = {type: "hole", system: system, user: user, think: think};
+        let bad: boolean = decode.stringField(raw, "holeMode", "") === "exhaust" || (decode.stringField(raw, "holeMode", "") === "repair" && holeCalls === 0); holeCalls = holeCalls + 1;
+        if (bad) { return "{\"holes\":{\"whenFinished7\":\"return missing;\"}}"; } return "{\"holes\":{\"whenFinished7\":\"return 0;\"}}";
+    };
+    host.filling.compile = function(source: string): catalogueHoles.Diagnostic[] {
+        let line: number = 1; for (let text of str.split(source, "\n")) {
+            if (str.contains(text, "return missing;")) { return [{line: line, message: "unknown name missing"}, {line: line, message: "expected number, found void"}]; } line = line + 1;
+        } return [];
+    };
+    if (raw.searchText !== undefined) { host.filling.search = async function(query: string, chars: number): Promise<string> {
+        trace[trace.length] = {type: "search", query: query, chars: chars}; return raw.searchText as string;
+    }; }
+}
+function configureAlignment(data: agent.Data, raw: Record<string, unknown>, catalogue: choice.Catalogue): void {
+    if (typeof raw.align === "boolean") { data.alignEnabled = raw.align as boolean; }
+    if (data.alignEnabled) {
+        data.alignment.wide = true; data.alignment.readyKinds = ["checklist", "key_facts", "trend_chart", "spotlight", "search_list", "data_table", "timeline", "bar_chart", "itinerary", "live_facts"];
+        let criteria: template.Entry[] = []; for (let entry of catalogue.realDataCriteria) { criteria[criteria.length] = {key: entry.key, value: entry.description}; }
+        data.alignment.realData = {instructions: catalogue.realDataInstructions, criteria: criteria};
+    }
+}
+function catalogueLists(entry: Record<string, unknown>): catalogueTypes.ListField[] {
+    let out: catalogueTypes.ListField[] = []; for (let item of decode.arrayOrEmpty(entry.listFields)) { out[out.length] = contentFixture.listSpec(item as Record<string, unknown>); } return out;
+}
+function catalogueSlots(entry: Record<string, unknown>): catalogueTypes.Slot[] {
+    let slots: catalogueTypes.Slot[] = [];
+    for (let value of decode.arrayOrEmpty(entry.slots)) { let slot: Record<string, unknown> = value as Record<string, unknown>; let values: string[] = []; let provides: string[] = []; let criteria: template.Entry[] = [];
+        for (let item of decode.arrayOrEmpty(slot.values)) { values[values.length] = item as string; }
+        for (let item of decode.arrayOrEmpty(slot.provides)) { provides[provides.length] = item as string; }
+        let rawCriteria: Record<string, unknown> = slot.criteria as Record<string, unknown>; for (let key of table.keys(rawCriteria)) { criteria[criteria.length] = {key: key, value: rawCriteria[key] as string}; }
+        slots[slots.length] = {token: slot.token as string, values: values, provides: provides, criteria: criteria, kind: slot.kind as string, instructions: slot.instructions as string, above: slot.above as number};
+    } return slots;
+}
+export async function inspect(input: string): Promise<string> {
+    let raw: Record<string, unknown> = json.parse(input);
+    try { return await inspectCore(raw); }
+    catch (caught) { let error: Error = caught as Error;
+        if (decode.stringField(raw, "agentFault", "") === "") { throw error; }
+        return json.stringify({error: error.code, message: error.message}) as string;
+    }
+}
+async function inspectCore(raw: Record<string, unknown>): Promise<string> {
+    if (decode.stringField(raw, "mode", "") === "composition-edit") { return await editFixture.inspect(raw); }
+    let value: sketch.Sketch = sketch.parseSketch(raw.sketch as string) as sketch.Sketch;
+    let effects: events.Effect[] = [];
+    for (let item of decode.arrayOrEmpty(raw.effects)) {
+        let effect: Record<string, unknown> = item as Record<string, unknown>;
+        let params: events.EffectParam[] = [];
+        for (let parameter of decode.arrayOrEmpty(effect.params)) {
+            let param: Record<string, unknown> = parameter as Record<string, unknown>;
+            params[params.length] = {name: param.name as string, kind: param.kind as string, key: param.key as string, describe: param.describe as string};
+        }
+        let fixed: string[] = [];
+        for (let text of decode.arrayOrEmpty(effect.fixed)) { fixed[fixed.length] = text as string; }
+        effects[effects.length] = {id: effect.id as string, describe: effect.describe as string, target: effect.target as string,
+            fixed: fixed, params: params, done: effect.done as string, mode: effect.mode as string, button: effect.button as string};
+    }
+    let numberText: (value: number) => string = function(number: number): string {
+        for (let item of decode.arrayOrEmpty(raw.numbers)) {
+            let sample: Record<string, unknown> = item as Record<string, unknown>;
+            if (sample.number as number === number) { return sample.text as string; }
+        }
+        throw {code: "PARITY_PRIMITIVE", message: "Missing number text"};
+    };
+    let fixedTwo: (value: number) => string = function(number: number): string {
+        for (let item of decode.arrayOrEmpty(raw.fixed)) {
+            let sample: Record<string, unknown> = item as Record<string, unknown>;
+            if (sample.number as number === number) { return sample.text as string; }
+        }
+        throw {code: "PARITY_PRIMITIVE", message: "Missing fixed text"};
+    };
+    let served: string[] = [];
+    for (let item of decode.arrayOrEmpty(raw.served)) { served[served.length] = item as string; }
+        let tools: bindings.Primitives = {
+            numberText: numberText, fixedTwo: fixedTwo,
+            utf16Length: function(text: string): number {
+                let lengths: Record<string, unknown> = raw.lengths as Record<string, unknown>;
+                return lengths[text] as number;
+            },
+            power: function(a: number, b: number): number { throw {code: "PARITY_PRIMITIVE", message: "Unexpected power"}; },
+            remainder: function(a: number, b: number): number {
+                for (let item of decode.arrayOrEmpty(raw.remainders)) {
+                    let sample: Record<string, unknown> = item as Record<string, unknown>;
+                    if (sample.a as number === a && sample.b as number === b) { return sample.value as number; }
+                }
+                throw {code: "PARITY_PRIMITIVE", message: "Missing remainder"};
+            },
+            matches: function(pattern: string, text: string): string[] {
+                let samples: Record<string, unknown> = raw.matches as Record<string, unknown>;
+                let result: string[] = [];
+                for (let match of decode.arrayOrEmpty(samples[pattern + "\n" + text])) { result[result.length] = match as string; }
+                return result;
+            }
+        };
+            let catalogueRaw: Record<string, unknown> = raw.catalogue as Record<string, unknown>;
+            let catalogue: choice.Catalogue = {sections: [], realDataInstructions: catalogueRaw.realDataInstructions as string, realDataCriteria: []};
+            for (let item of decode.arrayOrEmpty(catalogueRaw.sections)) {
+                let section: Record<string, unknown> = item as Record<string, unknown>;
+                catalogue.sections[catalogue.sections.length] = {key: section.key as string, description: section.description as string};
+            }
+            for (let item of decode.arrayOrEmpty(catalogueRaw.realDataCriteria)) {
+                let criterion: Record<string, unknown> = item as Record<string, unknown>;
+                catalogue.realDataCriteria[catalogue.realDataCriteria.length] = {key: criterion.key as string, description: criterion.description as string};
+            }
+            let sectionData: questions.Section[] = [];
+            for (let item of decode.arrayOrEmpty(raw.sections)) {
+                let section: Record<string, unknown> = item as Record<string, unknown>;
+                sectionData[sectionData.length] = {question: "", kind: section.kind as string, owns: section.owns as string};
+            }
+            let requests: unknown[] = [];
+            let calls: number = 0;
+            let assembled: number = 0;
+            let timeCalls: number = 0;
+            let pre: Record<string, unknown> | null = decode.objectOrNull(raw.pre);
+            let initial: flow.ComposeResult = flow.create(); initial.jevMs = 7;
+            let assemble: (comp: readerState.Composition) => string = function(comp: readerState.Composition): string {
+                assembled = assembled + 1;
+                let plan = assembly.screenPlan(comp, effects, [], [], function(kind: string): template.Entry[] { return []; }, null, [], numberText,
+                    function(value: string): string { return (raw.lower as Record<string, unknown>)[value] as string; });
+                return assembly.assemble(plan, false, {numberText: numberText,
+                    upperFirst: function(value: string): string { return (raw.upper as Record<string, unknown>)[value] as string; },
+                    first14: function(value: string): string { return (raw.first14 as Record<string, unknown>)[value] as string; }}, raw.banner as string);
+            };
+            let lower: (text: string) => string = function(text: string): string { return (raw.lower as Record<string, unknown>)[text] as string; };
+            if (decode.stringField(raw, "mode", "") === "needs-flow" || decode.stringField(raw, "mode", "") === "agent" || decode.stringField(raw, "mode", "") === "route") {
+                let trace: unknown[] = []; let planCalls: number = 0; let tick: number = 0;
+                let draw: drawing.DrawingTools = {
+                    ask: async function(system: string, user: string, partial: (text: string) => void, thinking: boolean): Promise<string | null> {
+                        if (decode.stringField(raw, "agentFault", "") === "plan") { throw {code: "TRANSPORT", message: "plan unavailable"}; }
+                        trace[trace.length] = {type: "plan", user: user, thinking: thinking};
+                        let replies: unknown[] = decode.arrayOrEmpty(raw.plans); let i: number = planCalls; planCalls = planCalls + 1;
+                        if (i >= replies.length || replies[i] === null) { return null; } return replies[i] as string;
+                    }, preview: function(value: sketch.Sketch): void { trace[trace.length] = {type: "preview", title: value.title}; },
+                    review: async function(value: sketch.Sketch): Promise<string> { return ""; },
+                    head: function(value: string, units: number): string { return (raw.heads as Record<string, unknown>)[value] as string; }
+                };
+                let filter: filtering.TextTools = {normalize: function(value: string): string { return (raw.normalized as Record<string, unknown>)[value] as string; },
+                    units: function(value: string): number[] { let result: number[] = [];
+                        for (let c of value) { for (let unit of decode.arrayOrEmpty((raw.characters as Record<string, unknown>)[c])) { result[result.length] = unit as number; } } return result; },
+                    matches: function(pattern: string, value: string): boolean { return (raw.filterMatches as Record<string, unknown>)[pattern + "\n" + value] as boolean; }};
+                if (decode.stringField(raw, "mode", "") === "agent" || decode.stringField(raw, "mode", "") === "route") {
+                    let now: () => number = function(): number { tick = tick + 10; return tick; };
+                    let cancelled: () => boolean = function(): boolean { return raw.cancelled as boolean; };
+                    let status: (text: string) => void = function(text: string): void { trace[trace.length] = {type: "status", text: text}; };
+                    let compile: (source: string) => settlement.Compiled = function(source: string): settlement.Compiled {
+                        if (decode.stringField(raw, "agentFault", "") === "compiler") { throw {code: "INFRA", message: "compiler unavailable"}; }
+                        return {identity: "compiled:" + source, diagnostics: ""}; };
+                    let askJev: (body: string) => Promise<string> = async function(body: string): Promise<string> {
+                        if (decode.stringField(raw, "agentFault", "") === "jev") { throw {code: "TRANSPORT", message: "jev unavailable"}; }
+                        let replies: unknown[] = decode.arrayOrEmpty(raw.replies); let i: number = calls; calls = calls + 1;
+                        requests[requests.length] = json.parse(body); if (i >= replies.length) { return ""; } return replies[i] as string; };
+                    let budget: writer.Budget = writer.createBudget(); let registry: identities.Registry = identities.create(["request"]);
+                    let prior: number = 0; while (prior < decode.numberField(raw, "originalUsed", 0)) { budget.charge(["request"]); prior = prior + 1; }
+                    let host: agent.Host = {constructionIdentities: registry.all, askJev: askJev, ask: async function(question: person.Question): Promise<unknown> { return null; }, cancelled: cancelled, status: status,
+                        preview: function(identity: string): void { trace[trace.length] = {type: "preview", identity: identity}; },
+                        toolCount: function(): number { return 0; }, toolSpanSince: function(start: number): number { return 0; },
+                        holes: {language: "", askCode: null, askJev: askJev, lookup: async function(needs: string[]): Promise<string[]> { throw {code: "FIXTURE", message: "Unexpected lookup"}; },
+                            looked: [], cannot: [], budget: budget, identity: function(slot: screen.PlanSlot): string { return registry.issue("slot:" + slot.id, slot.id); }, onHole: function(record: holeResult.HoleRecord): void {}},
+                        filling: {search: null, content: async function(system: string, user: string, tokens: number): Promise<string | null> { if (decode.stringField(raw, "agentFault", "") === "content") { throw {code: "TRANSPORT", message: "content unavailable"}; }
+                            trace[trace.length] = {type: "content", system: system, user: user, tokens: tokens}; return raw.contentReply as string; },
+                            hole: async function(system: string, user: string, think: boolean): Promise<string | null> { throw {code: "FIXTURE", message: "Unexpected hole"}; },
+                            sdkContext: async function(prompt: string): Promise<string> { return ""; }, status: status, cancelled: cancelled, now: now,
+                            compile: function(source: string): catalogueHoles.Diagnostic[] { throw {code: "FIXTURE", message: "Unexpected hole compile"}; }, identity: function(instance: catalogueHoles.Instance): string { return registry.issue("catalogue:" + instance.key, instance.key); }, budget: budget},
+                        settling: {language: "", askCode: null, cancelled: cancelled, status: status}};
+                    if (raw.customReply !== undefined) {
+                        host.holes.language = "language";
+                        host.holes.askCode = async function(system: string, user: string, tokens: number, think: boolean): Promise<string | null> {
+                            if (decode.stringField(raw, "agentFault", "") === "custom") { throw {code: "TRANSPORT", message: "custom unavailable"}; }
+                            trace[trace.length] = {type: "custom", system: system, user: user, tokens: tokens, think: think};
+                            return raw.customReply as string;
+                        };
+                        host.holes.lookup = async function(needs: string[]): Promise<string[]> {
+                            if (decode.stringField(raw, "agentFault", "") === "lookup") { throw {code: "INFRA", message: "lookup unavailable"}; }
+                            let out: string[] = []; for (let need of needs) { trace[trace.length] = {type: "lookup", need: need}; out[out.length] = ""; } return out;
+                        };
+                    }
+                    let mechanisms: agent.Mechanisms = {drawing: draw, filtering: filter, bindings: tools,
+                        content: {utf16Length: tools.utf16Length, slice: function(value: string, start: number, end: number): string { throw {code: "FIXTURE", message: "Unexpected slice"}; },
+                            replaceRegex: function(value: string, pattern: string, flags: string, replacement: string): string { throw {code: "FIXTURE", message: "Unexpected regex"}; },
+                            matches: function(value: string, pattern: string, flags: string): string[] { throw {code: "FIXTURE", message: "Unexpected regex"}; },
+                            parseNumber: function(value: string): number { throw {code: "FIXTURE", message: "Unexpected parse"}; }, numberText: numberText},
+                        emission: {numberText: numberText, upperFirst: function(value: string): string { return (raw.upper as Record<string, unknown>)[value] as string; },
+                            first14: function(value: string): string { return (raw.first14 as Record<string, unknown>)[value] as string; }},
+                        writer: {matches: function(pattern: string, value: string): callTypes.Match[] { let out: callTypes.Match[] = []; return out; }, lowercase: lower, numberText: numberText, now: now,
+                            checking: {compile: function(source: string): checking.Compiled { return {identity: source, diagnostics: "", unreadFields: []}; },
+                                smoke: function(compiled: string): string { if (decode.stringField(raw, "agentFault", "") === "smoke") { throw {code: "INFRA", message: "smoke unavailable"}; } return ""; }, play: function(compiled: string, fingers: boolean, buttons: boolean): string { return ""; },
+                                numberOf: function(value: string): number { return 0; }, numberText: numberText}},
+                        notices: {sentenceEnd: function(value: string): number { return -1; }, utf16Length: tools.utf16Length, first137: function(value: string): string { return value; }},
+                        settlement: {compile: compile, smoke: function(identity: string): string { return ""; }, now: now, numberText: numberText},
+                        first8000: function(value: string): string { return value; }};
+                    let data: agent.Data = {planLanguage: "system", catalogue: [], choices: catalogue, sections: sectionData, effects: effects, readyKinds: [], layouts: [],
+                        banner: raw.banner as string, sceneGuide: "", sceneTokens: 6000, custom: true, planEnabled: true, alignEnabled: false,
+                        alignment: {wide: false, custom: true, readyKinds: [], realData: null}};
+                    for (let item of decode.arrayOrEmpty(raw.agentCatalogue)) {
+                        let entry: Record<string, unknown> = item as Record<string, unknown>; let fields: catalogueTypes.ContentField[] = [];
+                        for (let value of decode.arrayOrEmpty(entry.contentFields)) { let field: Record<string, unknown> = value as Record<string, unknown>;
+                            fields[fields.length] = {token: field.token as string, key: field.key as string, fallback: field.fallback as string, hint: field.hint as string, maxLength: field.maxLength as number, numeric: field.numeric as boolean}; }
+                        data.catalogue[data.catalogue.length] = {fragment: screenFixture.fragment(entry), slots: catalogueSlots(entry), contentFields: fields, listFields: catalogueLists(entry), covers: [], coversIf: []};
+                    }
+                    configureAlignment(data, raw, catalogue); configureFilling(host, raw, trace);
+                    mechanisms.content.slice = function(value: string, start: number, end: number): string { return (raw.slices as Record<string, unknown>)[value + "\n" + decode.integerText(start) + "\n" + decode.integerText(end)] as string; };
+                    mechanisms.content.replaceRegex = function(value: string, pattern: string, flags: string, replacement: string): string { return (raw.replacements as Record<string, unknown>)[value + "\n" + pattern + "\n" + flags + "\n" + replacement] as string; };
+                    if (raw.samples !== undefined) { mechanisms.content = contentFixture.primitives(raw); }
+                    if (decode.stringField(raw, "action", "") === "runnable") {
+                        let plan: screen.ScreenPlan = screen.create(); let spec: template.Fragment = {kind: raw.kind as string, criteria: "task", supportClass: "", stateFields: [],
+                            initStatements: "", initEntries: "", functions: "", viewBlock: "{ ui.Text(\"task\"); }", imports: [], ports: [], holes: [], indexed: false, owns: "", tab: ""};
+                        plan.components[plan.components.length] = {fill: raw.fill as string, spec: spec, values: []};
+                        let slot: screen.PlanSlot = screen.slot("task", "task"); screen.fillWith(slot, raw.fill as string, 0, ""); plan.slots[plan.slots.length] = slot;
+                        screen.addToWrite(plan, "gap", "missing", false);
+                        mechanisms.settlement.compile = function(source: string): settlement.Compiled {
+                            if (raw.infrastructure as boolean) { throw {code: "INFRA", message: "compiler unavailable"}; }
+                            return {identity: "task", diagnostics: raw.diagnostics as string}; };
+                        mechanisms.settlement.smoke = function(identity: string): string { return raw.smoke as string; };
+                        try { return json.stringify({runnable: route.retainedRunnable(plan, data, mechanisms), error: ""}) as string; }
+                        catch (caught) { let error: Error = caught as Error; return json.stringify({runnable: null, error: error.code}) as string; }
+                    }
+                    if (decode.stringField(raw, "mode", "") === "route") {
+                        let surfaceMode: boolean = decode.stringField(raw, "action", "") === "surface";
+                        let surfaceHost: surface.Host = {language: "language", guide: "guide", askCode: host.holes.askCode,
+                            askPlan: async function(system: string, user: string, partial: (value: string) => void, think: boolean): Promise<string | null> {
+                                trace[trace.length] = {type: "classify", system: system, user: user, think: think}; return raw.surfaceBrief as string;
+                            }, cancelled: cancelled, status: status, identities: ["request"], budget: budget};
+                        let surfaceTools: surface.Mechanisms = {test: function(pattern: string, flags: string, value: string): boolean { return surfaceMode; }, checking: mechanisms.settlement,
+                            play: function(identity: string): string { trace[trace.length] = {type: "play", identity: identity}; return ""; }};
+                        let outcome: route.Outcome = await route.buildScreen({agent: {prompt: raw.prompt as string, widget: raw.widget as boolean, scene: "", sceneAllowed: raw.sceneAllowed as boolean}, mode: "deepseek", wholeEnabled: raw.wholeEnabled as boolean, surfaceEnabled: surfaceMode}, host, data, mechanisms, surfaceHost, surfaceTools, decode.stringField(raw, "surfaceCatalogue", ""));
+                        let result: agent.Result = outcome.agent as agent.Result;
+                        return json.stringify({kind: outcome.kind, reason: outcome.reason, source: result.source, executable: result.executable, note: result.note, errors: result.errors,
+                            plan: result.plan, composed: result.composed.composition !== null, record: result.record !== null, blocks: result.blocks, asked: result.asked.length, previews: result.previews, requests: requests, trace: trace}) as string;
+                    }
+                    let result: agent.Result = await agent.runAgent({prompt: raw.prompt as string, widget: raw.widget as boolean, scene: "", sceneAllowed: raw.sceneAllowed as boolean}, host, data, mechanisms);
+                    return json.stringify({source: result.source, executable: result.executable, note: result.note, errors: result.errors, plan: result.plan,
+                        composed: result.composed.composition !== null, record: result.record !== null, blocks: result.blocks, asked: result.asked.length,
+                        previews: result.previews, requests: requests, trace: trace}) as string;
+                }
+                let result: flow.ComposeResult = await needsFlow.composeNeeds(raw.prompt as string, "system", raw.widget as boolean, "", raw.sceneAllowed as boolean,
+                    draw, filter, async function(body: string): Promise<string> { let replies: unknown[] = decode.arrayOrEmpty(raw.replies); let i: number = calls; calls = calls + 1;
+                        requests[requests.length] = json.parse(body); if (i >= replies.length) { return ""; } return replies[i] as string; },
+                    catalogue, sectionData, effects, true, tools, lower, function(): number { tick = tick + 10; return tick; }, assemble);
+                return json.stringify({source: result.source, note: result.note, sketch: result.sketch, tries: result.planTries, replanned: result.replanned,
+                    dropped: result.dropped, unboundNeeds: result.unboundNeeds, composed: result.composition !== null, requests: requests, trace: trace, assembled: assembled}) as string;
+            }
+            let result: flow.ComposeResult = await flow.composeFromSketch(initial, "test", value,
+                async function(request: string): Promise<string> {
+                    requests[requests.length] = json.parse(request);
+                    let replies: unknown[] = decode.arrayOrEmpty(raw.replies);
+                    let at: number = calls; calls = calls + 1;
+                    if (at >= replies.length) { throw {code: "NETWORK", message: "No reply"}; }
+                    return replies[at] as string;
+                }, raw.widget as boolean, pre, served, catalogue, sectionData, effects, raw.custom as boolean, tools,
+                function(text: string): string {
+                    let samples: Record<string, unknown> = raw.lower as Record<string, unknown>;
+                    return samples[text] as string;
+                }, function(): number { timeCalls = timeCalls + 1; return timeCalls * 10; },
+                assemble);
+            return json.stringify({source: result.source, note: result.note, jevMs: result.jevMs, answers: result.answers,
+                dropped: result.dropped, unboundNeeds: result.unboundNeeds, composed: result.composition !== null,
+                parsed: result.parsed !== null, requests: requests, calls: calls, assembled: assembled}) as string;
+}

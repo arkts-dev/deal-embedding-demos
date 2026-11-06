@@ -1,0 +1,44 @@
+import * as flow from "./composition-edit-flow";
+import * as edits from "./composition-record-edits";
+import * as record from "./composition-record";
+import * as recordJson from "./composition-record-json";
+import * as catalogue from "./catalogue-contracts";
+import * as text from "./catalogue-content-text";
+import * as template from "./template-spec";
+import * as settlement from "./program-settlement";
+import * as fixture from "./screen-plan-parity";
+import * as decode from "./plan-decoding";
+import * as json from "std/json";
+
+export async function inspect(raw: Record<string, unknown>): Promise<string> {
+    let specs: catalogue.CatalogueEntry[] = []; let fragments: template.Fragment[] = [];
+    for (let item of decode.arrayOrEmpty(raw.agentCatalogue)) {
+        let entry: Record<string, unknown> = item as Record<string, unknown>; let fields: catalogue.ContentField[] = [];
+        for (let value of decode.arrayOrEmpty(entry.contentFields)) { let field: Record<string, unknown> = value as Record<string, unknown>;
+            fields[fields.length] = {token: field.token as string, key: field.key as string, fallback: field.fallback as string, hint: field.hint as string, maxLength: field.maxLength as number, numeric: field.numeric as boolean}; }
+        let spec: template.Fragment = fixture.fragment(entry); fragments[fragments.length] = spec;
+        specs[specs.length] = {fragment: spec, slots: [], contentFields: fields, listFields: [], covers: [], coversIf: []};
+    }
+    let comp: record.Composition = recordJson.compositionFromJson(raw.text as string, fragments) as record.Composition;
+    let events: unknown[] = [];
+    let tools: text.Primitives = {utf16Length: function(value: string): number { return 0; }, slice: function(value: string, start: number, end: number): string { throw {code: "FIXTURE", message: "Unexpected slice"}; },
+        replaceRegex: function(value: string, pattern: string, flags: string, replacement: string): string { throw {code: "FIXTURE", message: "Unexpected regex"}; }, matches: function(value: string, pattern: string, flags: string): string[] { throw {code: "FIXTURE", message: "Unexpected regex"}; },
+        parseNumber: function(value: string): number { throw {code: "FIXTURE", message: "Unexpected parse"}; }, numberText: function(value: number): string { return decode.integerText(value); }};
+    try {
+        let result: flow.Result = await flow.editComposition("test", comp, raw.generationMode as string,
+            async function(request: string, value: record.Composition): Promise<edits.Edit> {
+                events[events.length] = {type: "select", request: request}; if (decode.stringField(raw, "fault", "") === "selector") { throw {code: "INFRA", message: "selector unavailable"}; }
+                return edits.readEditAnswer(raw.answer as string, value, specs);
+            }, async function(system: string, user: string, tokens: number): Promise<string | null> { events[events.length] = {type: "content", system: system, user: user, tokens: tokens}; return "{}"; },
+            specs, [], [], tools, {numberText: tools.numberText,
+                upperFirst: function(value: string): string { return (raw.upper as Record<string, unknown>)[value] as string; },
+                first14: function(value: string): string { return (raw.first14 as Record<string, unknown>)[value] as string; }},
+            {compile: function(source: string): settlement.Compiled { events[events.length] = {type: "compile", source: source};
+                if (decode.stringField(raw, "fault", "") === "compiler") { throw {code: "INFRA", message: "compiler unavailable"}; }
+                return {identity: "compiled:" + source, diagnostics: raw.diagnostics as string}; },
+                smoke: function(identity: string): string { events[events.length] = {type: "smoke", identity: identity}; return raw.smoke as string; },
+                now: function(): number { return 0; }, numberText: tools.numberText}, raw.banner as string);
+        let saved: unknown = null; if (result.composition !== null) { saved = json.parse(recordJson.compositionToJson(result.composition as record.Composition)); }
+        return json.stringify({applied: result.applied, note: result.note, composition: saved, source: result.source, executable: result.executable, events: events, error: ""}) as string;
+    } catch (caught) { let error: Error = caught as Error; if (error.code !== "INFRA") { throw error; } return json.stringify({error: error.code, events: events}) as string; }
+}

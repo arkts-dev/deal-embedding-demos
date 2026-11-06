@@ -1,0 +1,59 @@
+import * as smoke from "./program-smoke";
+import * as decode from "./plan-decoding";
+import * as json from "std/json";
+import * as play from "./program-surface-play";
+import * as execution from "./program-execution";
+import * as checking from "./custom-check";
+
+function trap(value: unknown): smoke.Trap | null {
+    if (value === null || value === undefined) { return null; }
+    let raw: Record<string, unknown> = value as Record<string, unknown>;
+    return {code: raw.code as string, message: raw.message as string, line: raw.line as number, loopLine: raw.loopLine as number};
+}
+function nodes(values: unknown): smoke.Node[] {
+    let out: smoke.Node[] = []; for (let value of decode.arrayOrEmpty(values)) {
+        let raw: Record<string, unknown> = value as Record<string, unknown>;
+        out[out.length] = {kind: raw.kind as string, label: raw.label as string, children: nodes(raw.children)};
+    } return out;
+}
+function playNodes(values: smoke.Node[]): play.Node[] {
+    let out: play.Node[] = []; for (let n of values) { out[out.length] = {kind: n.kind, label: n.label, action: "", value: "", minimum: 0, maximum: 0,
+        enabled: false, text: "", eventValue: 0, children: playNodes(n.children)}; } return out;
+}
+export function inspect(raw: Record<string, unknown>): string {
+    let events: unknown[] = []; let cursor: number = 0; let uiCursor: number = 0; let gfxCursor: number = 0;
+    let handlers: smoke.Handler[] = []; for (let item of decode.arrayOrEmpty(raw.handlers)) {
+        let h: Record<string, unknown> = item as Record<string, unknown>; handlers[handlers.length] = {name: h.name as string, kind: h.kind as string};
+    }
+    let tools: smoke.Mechanisms = {
+        execute: function(name: string, args: string[]): smoke.Executed {
+            events[events.length] = {type: "execute", name: name, args: args};
+            let replies: unknown[] = decode.arrayOrEmpty(raw.executions); let at: number = cursor; cursor = cursor + 1;
+            if (at >= replies.length) { throw {code: "FIXTURE", message: "Missing VM reply"}; }
+            let reply: Record<string, unknown> = replies[at] as Record<string, unknown>;
+            if (typeof reply.fault === "string") { throw {code: "INFRA", message: reply.fault as string}; }
+            return {value: decode.stringField(reply, "value", ""), trap: trap(reply.trap)};
+        }, decodeUi: function(value: string): smoke.Decoded {
+            events[events.length] = {type: "ui", value: value}; let replies: unknown[] = decode.arrayOrEmpty(raw.frames); let at: number = uiCursor; uiCursor = uiCursor + 1;
+            let reply: Record<string, unknown> = replies[at] as Record<string, unknown>; return {nodes: nodes(reply.nodes), trap: trap(reply.trap)};
+        }, decodeGfx: function(value: string): smoke.Trap | null {
+            events[events.length] = {type: "gfx", value: value}; let replies: unknown[] = decode.arrayOrEmpty(raw.graphics); let at: number = gfxCursor; gfxCursor = gfxCursor + 1; return trap(replies[at]);
+        }, numberValue: function(value: number): string { return "number:" + decode.integerText(value); },
+        stringValue: function(value: string): string { return "string:" + value; }, booleanValue: function(value: boolean): string { if (value) { return "boolean:true"; } return "boolean:false"; },
+        pointerValue: function(kind: string, id: number, x: number, y: number): string { return "pointer:" + kind + ":" + decode.integerText(id) + ":" + decode.integerText(x) + ":" + decode.integerText(y); },
+        effectsAllowed: function(allowed: boolean): void { events[events.length] = {type: "effects", allowed: allowed}; },
+        clearEffects: function(): void { events[events.length] = {type: "clear"}; }, numberText: function(value: number): string { return decode.integerText(value); }
+    };
+    let backend: execution.Backend = {compile: function(source: string): checking.Compiled { return {identity: source, diagnostics: "", unreadFields: []}; },
+        open: function(identity: string): execution.Machine { return {handlers: handlers, stringValue: tools.stringValue, booleanValue: tools.booleanValue,
+            mechanisms: {execute: tools.execute, decodeUi: function(value: string): play.Ui { let result: smoke.Decoded = tools.decodeUi(value); return {nodes: playNodes(result.nodes), trap: result.trap}; },
+                decodeGfx: function(value: string): play.Gfx { return {ops: [], trap: tools.decodeGfx(value)}; }, numberValue: tools.numberValue, pointerValue: tools.pointerValue,
+                effectsAllowed: tools.effectsAllowed, clearEffects: tools.clearEffects, numberText: tools.numberText}}; },
+        now: function(): number { return 0; }, numberText: tools.numberText, numberOf: function(value: string): number { return 0; }};
+    try { let problem: string = "";
+        if (decode.stringField(raw, "action", "") === "adapter") { problem = execution.customMechanisms(backend).smoke("compiled"); }
+        else if (decode.stringField(raw, "action", "") === "settlement") { problem = execution.settlementMechanisms(backend).smoke("compiled"); }
+        else { problem = smoke.smokeRun(handlers, raw.requireContent as boolean, tools); }
+        return json.stringify({problem: problem, events: events, error: ""}) as string; }
+    catch (caught) { let error: Error = caught as Error; if (error.code !== "INFRA") { throw error; } return json.stringify({problem: "", events: events, error: error.code}) as string; }
+}
