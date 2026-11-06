@@ -2,7 +2,7 @@
 kind: research
 id: constrained-generation-delivery
 created_at: 2026-11-01
-updated_at: 2026-11-05
+updated_at: 2026-11-06
 status: incomplete
 references:
   - framework-speed-retrace.md
@@ -14,7 +14,7 @@ sources:
   - dependencies/deal-embedding/ui/fragment-contract.json
   - tools/generation-gateway.py
 gaps:
-  - Tested port components are not integrated; divergent production policy remains.
+  - Production orchestration is not connected; divergent policy remains.
   - Agent/build failure-chain coverage and backend integration remain unfinished.
   - Complete platform-independent coverage and the final correctness/latency target remain unproved.
 ---
@@ -30,7 +30,7 @@ Paths under `core/` and `ui/` belong to `dependencies/deal-embedding/`. OHOS ref
 | Mechanism | Port status |
 |---|---|
 | `NeedsPlan` / `NeedsChoose` | Parsing through retries/filtering/choices and real composition assembly tested together. Production replacement/deletion pending; step incomplete. |
-| `VeraCompose` | Reader/chooser/contracts and complete part-source emission connect through screen slots to assembly; Vera-string parity is not portable execution proof. |
+| `VeraCompose` | Reader/chooser/contracts and complete part-source emission connect through screen slots to assembly; partial source lowering executes on Android; broader constructs remain unsupported. |
 | `AgentHole` / `AgentCustom` | Writer/checks, authority, partial retention, lookup/refusal reuse/splitting and notices tested. Original identities bound widening/final repairs. Integrated catalogue/custom path tested. |
 | `ScreenPlan` / `VeraBuildRoute` | State/slots, assembly, surface/whole fallback and budget exhaustion tested. Broad failure-chain/backend coverage remains. |
 | Supporting core | Catalogue filling, layouts/alignment, previews/questions, repairs, smoke/play policy, records and structural edits tested. Transitive coverage remains incomplete. |
@@ -58,14 +58,14 @@ Construct/check sections before canonical materialization; afterward use revisio
 
 Build30 passes 15 host/nine device suites/seven installed hashes; dispatch-bound acknowledgement and frame selftests pass. Harness records per-scenario operational errors and continues without retries. Cohort20 archived/purged six apps with retained data verified; all four rendered. Budget25.465s/Food58.235s passed semantics; Departure48.037s lacked calculations; Equipment188.689s completed comparison but budget representation was unsupported by assessor. Extraction consumed14.827/26.976/30.531/149.870s across7/6/8/21 calls respectively. No full-source fallback or exact edits. Full stages/tokens: ignored `benchmark-20/pipeline-stages.json`.
 
-JS/JVM differentials cover needs-to-source, filling/layouts, alignment, repairs, records/edits and catalogue/custom agent chains, including search, lists/function-hole repairs. Operational failures propagate; grouped/split/re-entered budgets share identities. Catalogue remains data; broader failures remain. JVM storage/origin assembly fixes constant-pool exhaustion; affected suites pass. Full compiler suite stops at an unchanged rejected-syntax JS fixture, not a complete pass. Production unchanged. Receipts: ignored `build/needs-plan-parity/`; historical failures: `build/constrained-generation/`.
+JS/JVM differentials cover needs-to-source, filling/layouts, alignment, repairs, records/edits and catalogue/custom agent chains, including search, lists/function-hole repairs. Operational failures propagate; grouped/split/re-entered budgets share identities. Catalogue remains data; broader failures remain. JVM storage/origin assembly fixes constant-pool exhaustion; affected suites pass. Full compiler suite stops at an unchanged rejected-syntax JS fixture, not a complete pass. Production unchanged. Partial shared lowering passes actual Android compilation, sandbox input recomputation/restoration; unsupported constructs reject. Evidence: ignored `build/portable-integration/` and `build/needs-plan-parity/`; historical failures: `build/constrained-generation/`.
 
 ## Execution order and controlling checkpoint
 
-1. Finish integrated agent/recovery/build failure coverage, transitive dependencies and backend mechanisms. Differential-test against the pin; isolated source-string/component parity is not production delivery.
+1. Integration first: connect orchestration to the real backend. Close transitive/failure/coverage gaps exposed by compilation and end-to-end execution; no standalone expansion unless connection requires it.
 2. Switch the single production route to the shared core and delete superseded extraction/admission/recovery policy. Needs replacement depends on backend integration; do not mark complete before replacement/deletion.
-3. After internal parity, benchmark all four Android scenarios, report semantics separately, and remedy correctness/performance until the final target is met. Defer OHOS backend integration and fresh live benchmarks until portable internal parity.
+3. After cutover, verify all four Android scenarios and measure committed-frame timing; remedy semantics/performance until the target holds. Defer OHOS and premature live benchmarks.
 
-No known external/toolchain blocker prevents implementation. Remaining dependencies are unfinished work; timing feasibility is unproved. Updates state changes, tests and remaining integration dependencies, explicitly identifying whether production changed. No speculative progress claims.
+No external blocker. Integration remains unfinished; timing feasibility is unproved. Updates state changes, tests and remaining integration dependencies, explicitly identifying whether production changed. No speculative progress claims.
 
-**Disposition:** 10% SF estimated, held until integrated replacement is demonstrated. Historical combined first-frame time is 320.426s versus 51.274s; neither establishes the final target. Checkpoints do not imply acceptance or full parity.
+**Disposition:** Incomplete; no supported progress percentage. Historical combined first-frame time is 320.426s versus 51.274s; neither establishes the target. Backend tests do not establish production delivery.
