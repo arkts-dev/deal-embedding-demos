@@ -62,6 +62,23 @@ class JevChooserTest(unittest.TestCase):
             else:issued['decisionQuestions']['purpose']['criteria']['compare']=''
             with self.assertRaises((ValueError,KeyError)):
                 payload_for('state\n\nISSUED OPTIONS\n'+json.dumps(issued),'jev-latest')
+    def test_portable_typed_choice_and_noul(self):
+        questions=copy.deepcopy(self.questions)
+        questions['enabled']={'type':'noul','instructions':'Does this apply?','criteria':{}}
+        self.body['input']='\nPORTABLE CHOICE\n'+json.dumps({'model':'jev-latest','state':'literal 🌍 facts','questions':questions})
+        self.response['answers']['enabled']={'type':'noul','noul':0.7}
+        class Reply:
+            def __enter__(inner):return inner
+            def __exit__(inner,*args):pass
+            def read(inner,limit):return json.dumps(self.response).encode()
+        result=json.loads(infer(self.body,'fixture-secret',open_url=lambda *a,**k:Reply()))
+        self.assertEqual(json.loads(result['content'])['answers'],self.response['answers'])
+        self.assertEqual(result['request']['state'],'literal 🌍 facts')
+        self.response['answers']['enabled']['noul']=True
+        with self.assertRaises(ValueError):infer(self.body,'fixture-secret',open_url=lambda *a,**k:Reply())
+        questions['purpose']['type']='invented'
+        self.body['input']='\nPORTABLE CHOICE\n'+json.dumps({'model':'jev-latest','state':'facts','questions':questions})
+        with self.assertRaises(ValueError):payload_for(self.body['input'],'jev-latest')
     def test_capture_limit_preserves_valid_decision(self):
         self.response['extra']='x'*(2*1024*1024-500)
         class Reply:

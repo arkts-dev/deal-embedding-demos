@@ -59,7 +59,7 @@ Inspect exposes Activity/Dialogue/Source/saved tools through public observation.
 python3 tools/verify-behavior.py
 python3 tools/verify-selection.py
 python3 tools/verify-boundaries.py
-node tools/test-source-agent.js
+adb shell am instrument -w dev.deal.connectors.tests/.PortableBackendInstrumentation
 node tools/test-source-repair.js
 node tools/test-protocol.js
 node tools/test-framework-assistance.js

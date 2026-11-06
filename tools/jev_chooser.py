@@ -8,6 +8,21 @@ MARKER = '\n\nISSUED OPTIONS\n'
 
 
 def payload_for(input_text, model):
+    state, portable, raw = input_text.rpartition('\nPORTABLE CHOICE\n')
+    if portable:
+        payload = json.loads(raw)
+        if set(payload) != {'model', 'state', 'questions'} or not isinstance(payload['state'], str) or not isinstance(payload['questions'], dict):
+            raise ValueError('Invalid portable choice request')
+        for name, question in payload['questions'].items():
+            if not isinstance(name, str) or not name or not isinstance(question, dict) or set(question) != {'type', 'instructions', 'criteria'}:
+                raise ValueError('Invalid portable question')
+            if question['type'] not in ('choice', 'noul') or not isinstance(question['instructions'], str) or not question['instructions'] or not isinstance(question['criteria'], dict):
+                raise ValueError('Invalid portable question type')
+            if question['type'] == 'choice' and not question['criteria']:
+                raise ValueError('Empty choice criteria')
+            if any(not key or not isinstance(description, str) or not description for key, description in question['criteria'].items()):
+                raise ValueError('Invalid portable criteria')
+        return dict(payload, model=model)
     state, separator, issued_text = input_text.rpartition(MARKER)
     if not separator:
         raise ValueError('Missing issued questions')
@@ -40,6 +55,11 @@ def normalize(data, questions):
     selected = {}
     for name, question in questions.items():
         answer = answers[name]
+        if question.get('type') == 'noul':
+            value = answer.get('noul') if isinstance(answer, dict) else None
+            if not isinstance(answer, dict) or answer.get('type') != 'noul' or type(value) not in (int, float) or not math.isfinite(value) or not 0 <= value <= 1:
+                raise ValueError('Invalid noul answer')
+            continue
         if not isinstance(answer, dict) or answer.get('type') != 'choice' or not isinstance(answer.get('choice'), str):
             raise ValueError('Invalid choice answer')
         probabilities = answer.get('probabilities')
@@ -60,12 +80,14 @@ def normalize(data, questions):
         selected[name] = answer['choice']
     typed = [{'question': name, 'choice': answers[name]['choice'],
               'probabilities': [{'option': option, 'probability': value} for option, value in answers[name]['probabilities'].items()],
-              'confidence': answers[name].get('confidence')} for name in questions]
+              'confidence': answers[name].get('confidence')} for name in questions if questions[name].get('type') != 'noul']
     return json.dumps({'answers': selected, 'typedAnswers': typed}, separators=(',', ':'))
 
 
 def infer(body, key, model='jev-latest', open_url=None):
     payload = payload_for(body['input'], model)
+    if not payload['questions']:
+        return json.dumps({'content':'{"answers":{}}','model':model,'metadata':{'provider':'typesafe','in':0,'out':0,'cached':None,'finish':'decision'}}).encode()
     request = urllib.request.Request(ENDPOINT, data=json.dumps(payload).encode(), headers={
         'Content-Type': 'application/json', 'Authorization': 'Bearer ' + key,
     })
@@ -75,6 +97,10 @@ def infer(body, key, model='jev-latest', open_url=None):
         raise ValueError('Jev response limit')
     data = json.loads(raw)
     content = normalize(data, payload['questions'])
+    if '\nPORTABLE CHOICE\n' in body['input']:
+        # Keep typed probabilities/confidence for the shared core's thresholds.
+        # normalize above checks provider shape without choosing a disposition.
+        content = json.dumps({'answers': data['answers']}, separators=(',', ':'))
     usage = data.get('usage') or {}
     def count(value):
         return value if type(value) is int and 0 <= value <= 2147483647 else None

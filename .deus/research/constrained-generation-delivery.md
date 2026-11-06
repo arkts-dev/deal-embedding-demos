@@ -14,27 +14,27 @@ sources:
   - dependencies/deal-embedding/ui/fragment-contract.json
   - tools/generation-gateway.py
 gaps:
-  - Production orchestration is not connected; divergent policy remains.
-  - Agent/build failure-chain coverage and backend integration remain unfinished.
+  - Production is cut over; broader backend mechanisms and per-need provenance remain unfinished.
+  - Agent/build failure-chain and backend coverage remain incomplete.
   - Complete platform-independent coverage and the final correctness/latency target remain unproved.
 ---
 
 # Production delivery plan
 
-Port all platform-independent studio core to readable DEAL, including supporting dependencies beyond the seven initially named files. One shared core owns orchestration and policy; Android and later OHOS supply backend mechanisms. Replace production and delete superseded policy. Preserve public APIs, promptless UX and authority. No independent policy additions. Final outcome: four semantically correct Android scenarios within 20 seconds combined; parity alone does not guarantee this timing.
+Port all platform-independent studio machinery to readable DEAL. Shared core owns policy; Android and later OHOS supply mechanisms. Replace/delete superseded production policy. Preserve public APIs, promptless UX and authority. No independent policy additions. Target: four semantically correct Android scenarios within 20 seconds combined; parity alone does not guarantee timing.
 
 ## Mapping and implementation status
 
-Paths under `core/` and `ui/` belong to `dependencies/deal-embedding/`. OHOS reference: `deal-studio-ohos` revision `7ee06af1941729b00a110493ad9d1d9b5b127d17`, under `entry/src/main/ets/vera/`.
+`core/` and `ui/` are under `dependencies/deal-embedding/`. Reference: `deal-studio-ohos` revision `7ee06af1941729b00a110493ad9d1d9b5b127d17`, under `entry/src/main/ets/vera/`.
 
 | Mechanism | Port status |
 |---|---|
-| `NeedsPlan` / `NeedsChoose` | Parsing through retries/filtering/choices and real composition assembly tested together. Production replacement/deletion pending; step incomplete. |
+| `NeedsPlan` / `NeedsChoose` | Parsing through retries/filtering/choices and real composition assembly tested together. Production entry replaced; obsolete extraction/admission/recovery removed; broader delivery incomplete. |
 | `VeraCompose` | Reader/chooser/contracts and complete part-source emission connect through screen slots to assembly; partial source lowering executes on Android; broader constructs remain unsupported. |
 | `AgentHole` / `AgentCustom` | Writer/checks, authority, partial retention, lookup/refusal reuse/splitting and notices tested. Original identities bound widening/final repairs. Integrated catalogue/custom path tested. |
 | `ScreenPlan` / `VeraBuildRoute` | State/slots, assembly, surface/whole fallback and budget exhaustion tested. Broad failure-chain/backend coverage remains. |
 | Supporting core | Catalogue filling, layouts/alignment, previews/questions, repairs, smoke/play policy, records and structural edits tested. Transitive coverage remains incomplete. |
-| Production | `core/generation.deal` still invokes the divergent constrained route. Deterministic route execution is installed in tests only. |
+| Production | `generation.deal` invokes shared buildScreen with frozen disclosure/contracts and pinned catalogue data, then ordinary canonical admission. Public arithmetic and operational-failure tests pass. |
 
 ## Required recovery alignment
 
@@ -46,26 +46,26 @@ Issue **UI-section holes**, not only pure functions: stable IDs, typed imports/e
 
 Split refused groups; retry only unresolved needs within remaining budgets. Remove transitive dependents lacking outputs; retain independent working sections with visible gap notices. Report missing behavior as failed semantics, not a delivery blocker; never invent facts. Jev coverage readings are advisory, not proof.
 
-Fallback requires no surviving runnable task component after dependency pruning and real provisional assembly/checking, including retained partial sections/notices. Notices alone do not count. Record subset/revision/check evidence. Cancellation/provider/checker-infrastructure failures never establish absence. Local rejection or exhaustion alone never authorizes whole-screen generation.
+Fallback requires no surviving runnable task after dependency pruning and real provisional assembly/checking, including partial sections. Notices alone do not count. Record subset/revision/check evidence. Cancellation/provider/checker-infrastructure failures never establish absence. Local rejection or exhaustion alone never authorizes whole-screen generation.
 
 ## Invariants and acceptance
 
-Portable DEAL owns shared synthesis, composition, recovery and fallback; native/Python adapters supply mechanisms and transport. Reference behavior is authoritative, not the independently designed evidence/admission strategy currently in production. Preserve intent/context, disclosed contracts, grants, cancellation and capability authority. No scenario/package/provider-name branches, fabricated answers or field-name-derived units. Retain documented checked-JSON/Unicode boundary differences; do not add policy under the guise of portability.
+Portable DEAL owns shared synthesis, composition, recovery and fallback; native/Python adapters supply mechanisms and transport. Reference behavior is authoritative; the independently designed evidence/admission strategy is removed. Preserve intent/context, disclosed contracts, grants, cancellation and capability authority. No scenario/package/provider-name branches, fabricated answers or field-name-derived units. Retain documented checked-JSON/Unicode boundary differences; do not add policy under the guise of portability.
 
 Construct/check sections before canonical materialization; afterward use revision/digest-bound unique, disjoint exact edits only, never regeneration. Measure custom work, fallback, rejected turns and escalation. Before inference, finish deterministic verification without overlapping builds. Before each fresh cohort, archive all six apps, classify before generated-only purge and verify retained data exactly; preserve every historical receipt. Stop timing at first runnable committed frame before untimed semantics. Report semantic and visual outcomes separately. Semantically incorrect plumbing may be checkpointed, but does not satisfy the final objective.
 
 ## Evidence and limitations
 
-Build30 passes 15 host/nine device suites/seven installed hashes; dispatch-bound acknowledgement and frame selftests pass. Harness records per-scenario operational errors and continues without retries. Cohort20 archived/purged six apps with retained data verified; all four rendered. Budget25.465s/Food58.235s passed semantics; Departure48.037s lacked calculations; Equipment188.689s completed comparison but budget representation was unsupported by assessor. Extraction consumed14.827/26.976/30.531/149.870s across7/6/8/21 calls respectively. No full-source fallback or exact edits. Full stages/tokens: ignored `benchmark-20/pipeline-stages.json`.
+Historical Build30 passed 15 host/nine device suites/seven installed hashes and dispatch/frame tests. Harness records errors and continues without retries. Cohort20 archived/purged six apps with retained data verified; all four rendered. Budget25.465s/Food58.235s passed semantics; Departure48.037s lacked calculations; Equipment188.689s completed comparison but budget representation was unsupported by assessor. Extraction consumed14.827/26.976/30.531/149.870s across7/6/8/21 calls respectively. No full-source fallback or exact edits. Full stages/tokens: ignored `benchmark-20/pipeline-stages.json`.
 
-JS/JVM differentials cover needs-to-source, catalogue/custom chains, repairs, records/edits and shared budgets; full compiler coverage remains unclaimed. Fixed needs traverse `portable-request` → `buildScreen` → real Android compilation → shared `program-smoke` → sandbox input recomputation/restoration. Separate module identities fix the reproduced cross-program initialization failure. Source-only host and Guidance regressions pass. Evidence: ignored `build/portable-route/`, `build/portable-integration/`, `build/needs-plan-parity/`; historical failures: `build/constrained-generation/`. Arithmetic proves neither live transport/publication nor effects/surface/custom unread-state coverage. Unsupported mechanisms fail operationally. Production remains unchanged.
+JS/JVM differentials cover needs-to-source, catalogue/custom chains, records/edits and budgets; full compiler coverage remains unclaimed. Public `ApplicationProtocol.generate` reaches shared buildScreen, Android compilation/smoke and canonical publication. Arithmetic mounts, recomputes, reopens and reloads unchanged source. Pre-dispatch/in-flight cancellation, provider failure and unsupported lowering publish nothing and never fallback. Nine obsolete policy modules and three obsolete harnesses are removed. Source-only host, exact-edit and Guidance regressions pass; gateway/Jev tests preserve typed answers and thinking selection. Evidence: ignored `build/portable-public/`, prior `build/portable-route/`, `build/portable-integration/`, `build/needs-plan-parity/`. No live inference; a targeted reference-flow rerun timed out without a result. Need provenance, custom analysis, effects, lookup/search/questions and surface/play remain unfinished; missing provenance rejects operationally, never imposes a global ceiling.
 
 ## Execution order and controlling checkpoint
 
-1. Integration first: connect orchestration to the real backend. Close transitive/failure/coverage gaps exposed by compilation and end-to-end execution; no standalone expansion unless connection requires it.
-2. Switch the single production route to the shared core and delete superseded extraction/admission/recovery policy. Needs replacement depends on backend integration; do not mark complete before replacement/deletion.
-3. After cutover, verify all four Android scenarios and measure committed-frame timing; remedy semantics/performance until the target holds. Defer OHOS and premature live benchmarks.
+1. Complete mechanisms exposed by public integration: per-original-need provenance, custom analysis, disclosed capability execution, broader lowering, search/questions and surface/play. No standalone expansion unrelated to delivery.
+2. Keep one production route; delete further obsolete adapters only after checking retained catalogue/source clients. Preserve canonical exact-edit/reload authority and operational errors.
+3. Verify four Android scenarios and committed-frame timing; remedy semantics/performance until the target holds. Defer OHOS and premature live benchmarks.
 
-No external blocker. Integration remains unfinished; timing feasibility is unproved. Updates state changes, tests and remaining integration dependencies, explicitly identifying whether production changed. No speculative progress claims.
+No external blocker. Integration and timing feasibility remain unproved. Report installed changes, tests and gaps, not speculative progress.
 
-**Disposition:** Incomplete; no supported progress percentage. Historical combined first-frame time is 320.426s versus 51.274s; neither establishes the target. Backend tests do not establish production delivery.
+**Disposition:** Incomplete; no supported progress percentage. Historical combined first-frame time is 320.426s versus 51.274s; neither establishes the target. Public arithmetic cutover does not establish complete production delivery.

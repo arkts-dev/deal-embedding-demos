@@ -68,7 +68,7 @@ def admit(body):
     if not COUNTS_PATH: return
     path = pathlib.Path(COUNTS_PATH)
     counts = json.loads(path.read_text()) if path.exists() else {'choice': 0, 'source': 0}
-    kind = 'choice' if '\n\nISSUED OPTIONS\n' in body['input'] else 'source'
+    kind = 'choice' if any(marker in body['input'] for marker in ('\n\nISSUED OPTIONS\n', '\nPORTABLE CHOICE\n')) else 'source'
     if body.get('discovery'): kind = 'discovery'
     counts.setdefault(kind, 0)
     limit = SOURCE_LIMIT if kind in ('source', 'discovery') else CHOICE_LIMIT
@@ -89,8 +89,20 @@ def infer(body):
     elif backend not in BACKENDS:
         raise GatewayFailure('BACKEND_UNAVAILABLE', 'Requested build-time backend is not enabled in this gateway')
     admit(body)
-    if not discovery and options.chooser == 'jev' and '\n\nISSUED OPTIONS\n' in body['input']:
+    portable_choice = '\nPORTABLE CHOICE\n' in body['input']
+    if not discovery and options.chooser == 'jev' and ('\n\nISSUED OPTIONS\n' in body['input'] or portable_choice):
         return infer_jev(body, JEV_KEY, options.jev_model)
+    portable = None
+    if '\nPORTABLE COMPLETION\n' in body['input']:
+        text, _, encoded = body['input'].rpartition('\nPORTABLE COMPLETION\n')
+        portable = json.loads(encoded)
+        if set(portable) != {'operation', 'thinking'} or portable['operation'] not in ('plan', 'code', 'content') or type(portable['thinking']) is not bool:
+            raise ValueError('Invalid portable completion')
+        body = dict(body, input=text)
+        if portable['operation'] == 'plan':
+            backend = options.needs_thinking_backend if portable['thinking'] else options.needs_backend
+            if backend == 'deepseek-flash' and DISCOVERY is None or backend == 'cerebras' and backend not in BACKENDS:
+                raise GatewayFailure('BACKEND_UNAVAILABLE', 'Explicit needs backend is not enabled')
     needs = None
     if '\nGENERATION OPERATION\n' in body['input']:
         text, marker, operation_text = body['input'].rpartition('\nGENERATION OPERATION\n')
@@ -101,7 +113,7 @@ def infer(body):
         backend = options.needs_thinking_backend if needs['thinking'] else options.needs_backend
         if backend == 'deepseek-flash' and DISCOVERY is None or backend == 'cerebras' and backend not in BACKENDS:
             raise GatewayFailure('BACKEND_UNAVAILABLE','Explicit needs backend is not enabled')
-    source = not discovery and needs is None and '\n\nISSUED OPTIONS\n' not in body['input']
+    source = not discovery and needs is None and portable is None and not portable_choice and '\n\nISSUED OPTIONS\n' not in body['input']
     hole = None
     if source:
         _, marker, state = body['input'].rpartition('\nNATIVE TOOL TURN\n')
@@ -111,6 +123,10 @@ def infer(body):
                 if type(turn.get('thinking')) is not bool: raise ValueError('Missing core hole thinking policy')
                 hole = turn['thinking']
     messages=source_messages(body) if source else stable_messages(body)
+    if portable_choice:
+        from jev_chooser import payload_for
+        choice = payload_for(body['input'], options.jev_model)
+        messages = [{'role':'user','content':json.dumps(choice)}]
     if needs and body.get('diagnostics'):
         messages.append({'role':'user','content':'The previous needs document was rejected. Correct the document without dropping requirements. Diagnostic: '+body['diagnostics']})
     if hole is not None and body.get('diagnostics'):
@@ -131,6 +147,13 @@ def infer(body):
         if limit == -1: payload.pop('max_tokens',None)
         if getattr(options,'stream_source',False):
             payload.update(stream=True, stream_options={'include_usage':True})
+    if portable:
+        if portable['operation'] == 'plan': payload['response_format'] = {'type':'json_object'}
+        if backend == 'deepseek-flash':
+            payload.update(temperature=0, thinking={'type':'enabled' if portable['thinking'] else 'disabled'})
+            payload.pop('max_tokens',None)
+        elif backend == 'cerebras': payload['reasoning_effort'] = 'high' if portable['thinking'] else 'low'
+    if portable_choice: payload['response_format'] = {'type':'json_object'}
     if source:
         payload.update(tools=tools_for(body), tool_choice='required', parallel_tool_calls=initial_write_batch(body))
     if discovery:
@@ -168,6 +191,10 @@ def infer(body):
     if hole is not None:
         metadata.update(operation='hole-thinking' if hole else 'hole', thinkingRequested=hole)
         operation = 'hole-thinking' if hole else 'hole'
+    if portable:
+        operation = 'needs' if portable['operation'] == 'plan' else portable['operation']
+        if portable['thinking']: operation += '-thinking'
+        metadata['thinkingRequested'] = portable['thinking']
     if discovery: metadata['thinking'] = 'disabled'
     if needs: metadata['thinking'] = 'enabled' if needs['thinking'] else 'disabled'
     metadata.update(operation=operation,totalMs=total_ms,prefixSha256=prefix_fingerprint(messages),receiptTiming=receipt_timing)

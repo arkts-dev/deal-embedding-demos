@@ -66,6 +66,9 @@ class GatewayTest(unittest.TestCase):
         body={'input':'state\n\nISSUED OPTIONS\n{}'}
         self.assertEqual(namespace['infer'](body),b'jev')
         self.assertEqual(calls,['admit',(body,'private-key','jev-test')])
+        portable={'input':'\nPORTABLE CHOICE\n{}'}
+        self.assertEqual(namespace['infer'](portable),b'jev')
+        self.assertEqual(calls[-1],(portable,'private-key','jev-test'))
         namespace['infer_jev']=lambda *args:(_ for _ in ()).throw(urllib.error.URLError('unreachable'))
         with self.assertRaises(urllib.error.URLError):namespace['infer'](body)
 
@@ -139,5 +142,13 @@ class GatewayTest(unittest.TestCase):
         result=json.loads(namespace['infer'](body));self.assertEqual(result['metadata']['operation'],'needs');self.assertEqual(seen[-1]['thinking'],{'type':'disabled'});self.assertNotIn('tools',seen[-1]);self.assertIn('exact diagnostic',seen[-1]['messages'][-1]['content'])
         body.update(input='facts\nGENERATION OPERATION\n'+json.dumps({'operation':'needs','thinking':True}))
         result=json.loads(namespace['infer'](body));self.assertEqual(result['metadata']['operation'],'needs-thinking');self.assertEqual(seen[-1]['thinking'],{'type':'enabled'})
+        for operation,thinking in [('plan',False),('plan',True),('code',False),('code',True),('content',False)]:
+            body.update(input='pinned rules\n\nUSER INTENT\nliteral 🌍 facts\nPORTABLE COMPLETION\n'+json.dumps({'operation':operation,'thinking':thinking}),backend='cerebras',diagnostics='')
+            result=json.loads(namespace['infer'](body))
+            self.assertNotIn('tools',seen[-1]);self.assertNotIn('PORTABLE COMPLETION',json.dumps(seen[-1]['messages']))
+            self.assertEqual(result['content'],'{}')
+            self.assertEqual(result['metadata']['thinkingRequested'],thinking)
+            if operation=='plan':self.assertEqual(seen[-1]['thinking'],{'type':'enabled' if thinking else 'disabled'})
+            else:self.assertEqual(seen[-1]['reasoning_effort'],'high' if thinking else 'low')
 
 if __name__=='__main__':unittest.main()

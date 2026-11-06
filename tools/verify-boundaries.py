@@ -14,7 +14,7 @@ assert {p.name for p in (library/'android/src/capabilities').glob('*.kt')} == {
     'CapabilityContract.kt','CapabilityCodec.kt','InvocationContext.kt','CapabilityRegistry.kt','CapabilityDiscovery.kt','CapabilityService.kt','CapabilityBindings.kt'}
 assert (library/'core/generation.deal').exists()
 assert not (library/'backends').exists()
-assert {p.name for p in (library/'core/host').glob('*.d.deal')} == {'composer.d.deal', 'checker.d.deal', 'discovery.d.deal', 'model.d.deal', 'chooser.d.deal', 'policy-data.d.deal', 'observer.d.deal', 'embedding.d.deal', 'catalogue-policy.d.deal', 'protocol.d.deal'}
+assert {p.name for p in (library/'core/host').glob('*.d.deal')} == {'portable.d.deal', 'composer.d.deal', 'checker.d.deal', 'discovery.d.deal', 'model.d.deal', 'chooser.d.deal', 'policy-data.d.deal', 'observer.d.deal', 'embedding.d.deal', 'catalogue-policy.d.deal', 'protocol.d.deal'}
 assert {p.name for p in (library/'android/src/compiler').glob('*.kt')} == {
     'ExperienceCompiler.kt', 'BehaviorCandidate.kt', 'FragmentComposition.kt'}
 for adapter in ['BehaviorCandidate.kt', 'FragmentComposition.kt']:
