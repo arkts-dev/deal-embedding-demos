@@ -42,13 +42,13 @@ def main():
     run('node', ROOT / 'tools/test-portable-ui.js', work, evidence, classes, 'lower')
     # The Android bridge compiles this small unit independently on JVM.
     jvm = work / 'jvm'
-    (jvm / 'src').mkdir(parents=True)
+    (jvm / 'src/lowering').mkdir(parents=True)
     for name in ['portable-backend', 'portable-source-lowering', 'plan-decoding', 'source-literals']:
-        shutil.copyfile(EMBEDDING / f'core/{name}.deal', jvm / f'src/{name}.deal')
+        shutil.copyfile(EMBEDDING / f'core/{name}.deal', jvm / f'src/lowering/{name}.deal')
     shutil.copyfile(EMBEDDING / 'core/backend/syntax.d.deal', jvm / 'syntax.d.deal')
     (jvm / 'deal.json').write_text(json.dumps({'languageVersion': '1.5', 'backend': 'jvm', 'moduleRoots': ['src'], 'externals': {'portable/syntax': {'declaration': 'syntax.d.deal'}}}))
-    run('java', f'-Ddeal.home={DEAL}', '-cp', classes, 'deal.Main', 'compile', jvm / 'src/portable-backend.deal', '--backend', 'jvm', '--output', jvm / 'java')
-    generated = jvm / 'java/Portable_backend.java'
+    run('java', f'-Ddeal.home={DEAL}', '-cp', classes, 'deal.Main', 'compile', jvm / 'src/lowering/portable-backend.deal', '--backend', 'jvm', '--output', jvm / 'java')
+    generated = jvm / 'java/LoweringPortable_backend.java'
     generated.write_text('package dev.deal.embedding.portable; ' + generated.read_text())
     run('javac', '--release', '21', '-proc:none', '-cp', classes, '-d', work / 'classes', generated, EMBEDDING / 'tools/PortableBackendBridge.java')
     pair = json.loads(subprocess.check_output(['java', '-cp', f'{work}/classes:{classes}', 'PortableBackendBridge', str(work / 'reference.deal')], text=True))

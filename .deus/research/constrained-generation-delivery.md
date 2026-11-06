@@ -34,7 +34,7 @@ Paths under `core/` and `ui/` belong to `dependencies/deal-embedding/`. OHOS ref
 | `AgentHole` / `AgentCustom` | Writer/checks, authority, partial retention, lookup/refusal reuse/splitting and notices tested. Original identities bound widening/final repairs. Integrated catalogue/custom path tested. |
 | `ScreenPlan` / `VeraBuildRoute` | State/slots, assembly, surface/whole fallback and budget exhaustion tested. Broad failure-chain/backend coverage remains. |
 | Supporting core | Catalogue filling, layouts/alignment, previews/questions, repairs, smoke/play policy, records and structural edits tested. Transitive coverage remains incomplete. |
-| Production | `core/generation.deal` still invokes the divergent constrained route. Tested port modules have not improved installed Android behavior. |
+| Production | `core/generation.deal` still invokes the divergent constrained route. Deterministic route execution is installed in tests only. |
 
 ## Required recovery alignment
 
@@ -58,7 +58,7 @@ Construct/check sections before canonical materialization; afterward use revisio
 
 Build30 passes 15 host/nine device suites/seven installed hashes; dispatch-bound acknowledgement and frame selftests pass. Harness records per-scenario operational errors and continues without retries. Cohort20 archived/purged six apps with retained data verified; all four rendered. Budget25.465s/Food58.235s passed semantics; Departure48.037s lacked calculations; Equipment188.689s completed comparison but budget representation was unsupported by assessor. Extraction consumed14.827/26.976/30.531/149.870s across7/6/8/21 calls respectively. No full-source fallback or exact edits. Full stages/tokens: ignored `benchmark-20/pipeline-stages.json`.
 
-JS/JVM differentials cover needs-to-source, filling/layouts, alignment, repairs, records/edits and catalogue/custom agent chains, including search, lists/function-hole repairs. Operational failures propagate; grouped/split/re-entered budgets share identities. Catalogue remains data; broader failures remain. JVM storage/origin assembly fixes constant-pool exhaustion; affected suites pass. Full compiler suite stops at an unchanged rejected-syntax JS fixture, not a complete pass. Production unchanged. Partial shared lowering passes actual Android compilation, sandbox input recomputation/restoration; unsupported constructs reject. Evidence: ignored `build/portable-integration/` and `build/needs-plan-parity/`; historical failures: `build/constrained-generation/`.
+JS/JVM differentials cover needs-to-source, catalogue/custom chains, repairs, records/edits and shared budgets; full compiler coverage remains unclaimed. Fixed needs traverse `portable-request` → `buildScreen` → real Android compilation → shared `program-smoke` → sandbox input recomputation/restoration. Separate module identities fix the reproduced cross-program initialization failure. Source-only host and Guidance regressions pass. Evidence: ignored `build/portable-route/`, `build/portable-integration/`, `build/needs-plan-parity/`; historical failures: `build/constrained-generation/`. Arithmetic proves neither live transport/publication nor effects/surface/custom unread-state coverage. Unsupported mechanisms fail operationally. Production remains unchanged.
 
 ## Execution order and controlling checkpoint
 
