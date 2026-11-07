@@ -64,6 +64,21 @@ def main():
     (candidate / 'js/portable').mkdir(parents=True, exist_ok=True)
     shutil.copyfile(EMBEDDING / 'core/portable-numbers.js', candidate / 'js/portable/numbers.js')
     run('node', ROOT / 'tools/test-portable-ui.js', work, evidence, classes, 'session')
+    # Time controls/formatting use the same real compiler/session, not a
+    # departure formula or provider stand-in.
+    time_pair = json.loads(subprocess.check_output(['java', '-cp', f'{work}/classes:{classes}', 'PortableBackendBridge', str(work / 'time-reference.deal')], text=True))
+    timed = work / 'time-candidate'
+    assert time_pair['deal'] == (timed / 'src/experience.deal').read_text()
+    assert time_pair['dealui'] == (timed / 'src/experience.dealui').read_text()
+    for name in ['portable-presentation', 'plan-decoding']:
+        shutil.copyfile(EMBEDDING / f'core/{name}.deal', timed / f'src/{name}.deal')
+    shutil.copyfile(candidate / 'portable-numbers.d.deal', timed / 'portable-numbers.d.deal')
+    shutil.copyfile(candidate / 'deal.json', timed / 'deal.json')
+    run('java', '-cp', f'{work}/classes:{classes}', 'PortableUiCompile', timed, UI, EMBEDDING / 'ui/platform.dealui-pack')
+    run('java', f'-Ddeal.home={DEAL}', '-cp', classes, 'deal.Main', 'compile', timed / 'src/experience_entry.deal', '--backend', 'js', '--output', timed / 'js')
+    (timed / 'js/portable').mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(EMBEDDING / 'core/portable-numbers.js', timed / 'js/portable/numbers.js')
+    run('node', ROOT / 'tools/test-portable-ui.js', work, evidence, classes, 'time-session')
     print(f'Integration evidence: {work.relative_to(ROOT)}')
 
 

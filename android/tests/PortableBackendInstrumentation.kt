@@ -236,6 +236,43 @@ function view(state:AppState):ui.View {
                     } finally {api.forget(experience)}
                 }
             }
+            // Departure must retain the actual provider read as construction
+            // work. It must not silently replace it with local arithmetic.
+            val vehicle=dev.deal.apps.vehicle.vehicleCapabilities()
+            var travelReads=0;var departureCalls=0
+            val observedVehicle=NativeCapabilities(vehicle.contract,mapOf("estimate" to {args:org.json.JSONArray->travelReads++;vehicle.invoke("estimate",args)}))
+            val departureModel=object:ModelClient {
+                override fun complete(input:String,previous:String,diagnostics:String,cancellation:GenerationCancellation,log:EmbeddingLog):String {
+                    cancellation.check();departureCalls++
+                    if(input.contains("\nPORTABLE COMPLETION\n")) {
+                        check(JSONObject(input.substringAfterLast("\nPORTABLE COMPLETION\n")).getString("operation")=="plan"){"Unexpected construction before provenance: $input"}
+                        check(input.contains("Simulated vehicle travel") && input.contains("estimate")){"Departure contract not disclosed"}
+                        return """{"title":"Departure","inputs":[{"id":"start","label":"Collection start","kind":"time","value":960},{"id":"distance","label":"Distance km","kind":"count","value":12},{"id":"unload","label":"Unloading minutes","kind":"count","value":15},{"id":"inspection","label":"Inspection minutes","kind":"count","value":10}],"needs":[{"type":"action","id":"travel","when":"distance changes","what":"Read Vehicle travel estimate and recompute departure and inspection using start, distance and buffers","asked":true,"on":"other","from":"use actual Vehicle travel estimate"}]}"""
+                    }
+                    check(input.contains("\nPORTABLE CHOICE\n")){"Unexpected departure transport: $input"}
+                    val questions=JSONObject(input.substringAfterLast("\nPORTABLE CHOICE\n")).getJSONObject("questions")
+                    val answers=JSONObject()
+                    questions.keys().forEach { key ->
+                        val question=questions.getJSONObject(key)
+                        if(question.getString("type")=="choice") {
+                            val criteria=question.getJSONObject("criteria")
+                            val choice=when {criteria.has("none")->"none";criteria.has("own")->"own";criteria.has("no")->"no";criteria.has("false")->"false";else->null}
+                            if(choice!=null)answers.put(key,JSONObject().put("choice",choice).put("confidence",1))
+                        }
+                    }
+                    return JSONObject().put("answers",answers).toString()
+                }
+            }
+            CapabilityRegistry(context,CapabilityDiscovery(context){false},listOf(observedVehicle)).use {registry->
+                ApplicationProtocol(context,Embedding(context,registry,departureModel,config)).use {api->
+                    api.refresh();api.grant("host/trip")
+                    val before=api.saved().map{it.id}.toSet()
+                    val request=api.request("Departure","Equipment collection at16:00. Distance12km; use actual Vehicle travel estimate. Need15min unloading and10min inspection. Editable start,distance,buffers; recompute departure and inspection. No booking.",api.snapshot(WireType("record"),"{}"))
+                    val error=runCatching{api.generate(request)}.exceptionOrNull()
+                    check(error is ProtocolFailure && error.code=="PORTABLE_UNSUPPORTED" && error.message.orEmpty().contains("Original-need provenance")){error.toString()}
+                    check(departureCalls>=2 && travelReads==0 && api.saved().map{it.id}.toSet()==before)
+                }
+            }
             // Failures and cancellation must not dispatch repair/whole fallback,
             // publish candidates, or poison the next request's runtime owner.
             for(failureMode in listOf("provider","cancel","unsupported")) {
@@ -271,7 +308,7 @@ function view(state:AppState):ui.View {
                     }
                 }
             }
-            receipt.putString("portable", "PASS public arithmetic and budget generation → shared buildScreen → Android compilation/shared smoke → canonical publication/mount/edit/reopen/reload; budget over/under/equal, decimal comma and two editable inputs; provider/cancellation/unsupported failures never fallback; no live inference")
+            receipt.putString("portable", "PASS public arithmetic and budget generation → shared buildScreen → Android compilation/shared smoke → canonical publication/mount/edit/reopen/reload; budget over/under/equal, decimal comma and two editable inputs; departure reaches operational provenance refusal with disclosed Vehicle and no fabricated read/publication; provider/cancellation/unsupported failures never fallback; no live inference")
             finish(0, receipt)
         } catch (error: Throwable) { receipt.putString("failure", android.util.Log.getStackTraceString(error)); finish(1, receipt) }
     }
