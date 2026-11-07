@@ -176,6 +176,66 @@ function view(state:AppState):ui.View {
                     } finally {api.forget(experience)}
                 }
             }
+            // Budget delivery path: disclosed amounts, editable signed difference
+            // and an independently recomputed over-budget indicator. No source fixture.
+            var budgetCalls=0
+            val budgetModel=object:ModelClient {
+                override fun complete(input:String,previous:String,diagnostics:String,cancellation:GenerationCancellation,log:EmbeddingLog):String {
+                    cancellation.check();check(previous.isEmpty() && diagnostics.isEmpty());budgetCalls++
+                    if(input.contains("\nPORTABLE COMPLETION\n")) {
+                        check(input.contains("approvedCents") && input.contains("19750"))
+                        return """{"title":"Budget reconciliation","inputs":[{"id":"approved","label":"Approved EUR","kind":"amount","measure":"money","unit":"EUR","value":180},{"id":"committed","label":"Committed EUR","kind":"amount","measure":"money","unit":"EUR","value":197.5}],"needs":[{"type":"figure","id":"balance","label":"Under (+), over (-)","means":"approved less committed, negative when over budget","format":"money","unit":"EUR","formula":"approved-committed"},{"type":"figure","id":"over","label":"Over budget","means":"1 when committed exceeds approved, otherwise 0","format":"count","formula":"committed>approved","example":{"given":{"approved":180,"committed":197.5},"result":1}}]}"""
+                    }
+                    check(input.contains("\nPORTABLE CHOICE\n")){input}
+                    return """{"answers":{"expr.balance":{"choice":"subtract:approved:committed","confidence":1},"show.balance":{"choice":"stat","confidence":1},"written.over":{"choice":"right","confidence":1},"show.over":{"choice":"stat","confidence":1}}}"""
+                }
+            }
+            CapabilityRegistry(context,CapabilityDiscovery(context){false},emptyList()).use { registry ->
+                ApplicationProtocol(context,Embedding(context,registry,budgetModel,config.copy(retainState=true))).use { api ->
+                    val facts=api.snapshot(WireType("record",fields=listOf(WireField("approvedCents",WireType("number")),WireField("committedCents",WireType("number")))),"""{"approvedCents":18000,"committedCents":19750}""")
+                    val experience=api.generate(api.request("Budget","Compare approved18000 EUR cents with committed19750 EUR cents. Editable amounts,show over/under/equal and difference. Local arithmetic,no external reads.",facts))
+                    try {
+                        check(budgetCalls==2 && experience.attempts==2){"Budget dispatched repair/fallback: $budgetCalls $experience"}
+                        val saved=api.source(experience)
+                        fun nodes(node:JSONObject):List<JSONObject> {
+                            val out=mutableListOf(node);val children=node.getJSONArray("children")
+                            for(i in 0 until children.length())out.addAll(nodes(children.getJSONObject(i)))
+                            return out
+                        }
+                        fun prop(node:JSONObject,name:String):JSONObject {
+                            val props=node.getJSONArray("props")
+                            return (0 until props.length()).map{props.getJSONObject(it)}.single{it.getString("name")==name}
+                        }
+                        fun values(tree:JSONObject):List<String> = nodes(tree).filter{it.getString("component")=="ui.Metric"}.map{prop(it,"value").getString("stringValue")}
+                        val session=api.run(experience)
+                        try {
+                            var frame=api.next(session,"");check(frame.snapshot.fault.isEmpty())
+                            check(values(frame.snapshot.tree)==listOf("€-17.50","1")){frame.snapshot.tree.toString()}
+                            val fields=nodes(frame.snapshot.tree).filter{it.getString("component")=="ui.TextField"}
+                            check(fields.size==2)
+                            fun edit(index:Int,value:String,expected:List<String>) {
+                                api.dispatch(session,prop(fields[index],"onChange").getInt("actionSlot"),value)
+                                val changed=api.next(session,frame.cursor)
+                                check(changed.cursor!=frame.cursor && changed.snapshot.version>frame.snapshot.version && changed.snapshot.fault.isEmpty())
+                                check(values(changed.snapshot.tree)==expected){changed.snapshot.tree.toString()};frame=changed
+                            }
+                            edit(1,"198,50",listOf("€-18.50","1"))
+                            edit(0,"200",listOf("€1.50","0"))
+                            edit(0,"198.50",listOf("€0.00","0"))
+                            check(api.source(experience)==saved && budgetCalls==2)
+                        } finally {api.close(session)}
+                        val reopened=api.run(experience)
+                        try {check(values(api.next(reopened,"").snapshot.tree)==listOf("€0.00","0"))}finally{api.close(reopened)}
+                        val reloaded=api.load("Budget canonical source",saved)
+                        try {
+                            check(api.source(reloaded)==saved)
+                            val cold=api.run(reloaded)
+                            try {check(values(api.next(cold,"").snapshot.tree)==listOf("€-17.50","1"))}finally{api.close(cold)}
+                        } finally {api.forget(reloaded)}
+                        check(budgetCalls==2)
+                    } finally {api.forget(experience)}
+                }
+            }
             // Failures and cancellation must not dispatch repair/whole fallback,
             // publish candidates, or poison the next request's runtime owner.
             for(failureMode in listOf("provider","cancel","unsupported")) {
@@ -211,7 +271,7 @@ function view(state:AppState):ui.View {
                     }
                 }
             }
-            receipt.putString("portable", "PASS public ApplicationProtocol.generate → shared buildScreen → Android compilation/shared smoke → canonical publication/mount/edit/reopen; provider/cancellation/unsupported failures publish nothing and never fallback; fixed-route/source regressions pass; no live inference")
+            receipt.putString("portable", "PASS public arithmetic and budget generation → shared buildScreen → Android compilation/shared smoke → canonical publication/mount/edit/reopen/reload; budget over/under/equal, decimal comma and two editable inputs; provider/cancellation/unsupported failures never fallback; no live inference")
             finish(0, receipt)
         } catch (error: Throwable) { receipt.putString("failure", android.util.Log.getStackTraceString(error)); finish(1, receipt) }
     }

@@ -21,7 +21,12 @@ if (mode === 'lower') {
         const sourceDir = path.join(work, 'candidate/src'); fs.mkdirSync(sourceDir, {recursive: true});
         fs.writeFileSync(path.join(sourceDir, 'experience.deal'), pair.deal);
         fs.writeFileSync(path.join(sourceDir, 'experience.dealui'), pair.dealui);
-        for (const rejected of [actual.source.replace('ui.NumberStat(', 'ui.Unsupported('), actual.source.replace('"clean"', '"playful"')]) {
+        for (const columns of [2, 3]) {
+            const grouped = lower.lower.$f(actual.source.replace('ui.MetricGroup("default", 1,', `ui.MetricGroup("default", ${columns},`), syntax);
+            assert.ok(grouped.dealui.includes('ui.MetricGroup()'));
+            assert.equal(grouped.deal, pair.deal, 'Layout hints must not alter state/calculation semantics');
+        }
+        for (const rejected of [actual.source.replace('ui.NumberStat(', 'ui.Unsupported('), actual.source.replace('"clean"', '"playful"'), actual.source.replace('ui.MetricGroup("default", 1,', 'ui.MetricGroup("default", 0,')]) {
             assert.throws(() => lower.lower.$f(rejected, syntax), e => e.code === 'PORTABLE_UNSUPPORTED');
         }
         assert.throws(() => lower.lower.$f(actual.source + '\nfunction invalid(', syntax), e => e.code === 'PORTABLE_SYNTAX');

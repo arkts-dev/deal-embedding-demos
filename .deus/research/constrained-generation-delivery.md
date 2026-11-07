@@ -2,7 +2,7 @@
 kind: research
 id: constrained-generation-delivery
 created_at: 2026-11-01
-updated_at: 2026-11-06
+updated_at: 2026-11-07
 status: incomplete
 references:
   - framework-speed-retrace.md
@@ -21,7 +21,7 @@ gaps:
 
 # Production delivery plan
 
-Port all platform-independent studio machinery to readable DEAL. Shared core owns policy; Android and later OHOS supply mechanisms. Replace/delete superseded production policy. Preserve public APIs, promptless UX and authority. No independent policy additions. Target: four semantically correct Android scenarios within 20 seconds combined; parity alone does not guarantee timing.
+Port platform-independent studio machinery to readable DEAL. Shared core owns policy; Android/OHOS supply mechanisms. Delete superseded policy. Preserve public APIs, promptless UX and authority. Target: four correct Android scenarios within 20 seconds combined; parity does not guarantee timing.
 
 ## Mapping and implementation status
 
@@ -34,7 +34,7 @@ Port all platform-independent studio machinery to readable DEAL. Shared core own
 | `AgentHole` / `AgentCustom` | Writer/checks, authority, partial retention, lookup/refusal reuse/splitting and notices tested. Original identities bound widening/final repairs. Integrated catalogue/custom path tested. |
 | `ScreenPlan` / `VeraBuildRoute` | State/slots, assembly, surface/whole fallback and budget exhaustion tested. Broad failure-chain/backend coverage remains. |
 | Supporting core | Catalogue filling, layouts/alignment, previews/questions, repairs, smoke/play policy, records and structural edits tested. Transitive coverage remains incomplete. |
-| Production | `generation.deal` invokes shared buildScreen with frozen disclosure/contracts and pinned catalogue data, then ordinary canonical admission. Public arithmetic and operational-failure tests pass. |
+| Production | `generation.deal` invokes shared buildScreen with frozen disclosure/contracts and pinned catalogue data, then ordinary canonical admission. Public arithmetic/budget and operational-failure tests pass. |
 
 ## Required recovery alignment
 
@@ -52,20 +52,20 @@ Fallback requires no surviving runnable task after dependency pruning and real p
 
 Portable DEAL owns shared synthesis, composition, recovery and fallback; native/Python adapters supply mechanisms and transport. Reference behavior is authoritative; the independently designed evidence/admission strategy is removed. Preserve intent/context, disclosed contracts, grants, cancellation and capability authority. No scenario/package/provider-name branches, fabricated answers or field-name-derived units. Retain documented checked-JSON/Unicode boundary differences; do not add policy under the guise of portability.
 
-Construct/check sections before canonical materialization; afterward use revision/digest-bound unique, disjoint exact edits only, never regeneration. Measure custom work, fallback, rejected turns and escalation. Before inference, finish deterministic verification without overlapping builds. Before each fresh cohort, archive all six apps, classify before generated-only purge and verify retained data exactly; preserve every historical receipt. Stop timing at first runnable committed frame before untimed semantics. Report semantic and visual outcomes separately. Incorrect plumbing checkpoints do not satisfy the objective.
+Construct/check sections before canonical materialization; afterward use revision/digest-bound unique, disjoint exact edits only, never regeneration. Measure custom work, fallback, rejected turns and escalation. Before inference, finish deterministic verification without overlapping builds. Before fresh cohorts, archive six apps, classify before generated-only purge and verify retained data; preserve historical receipts. Stop timing at first runnable committed frame before untimed semantics. Report semantic and visual outcomes separately. Incorrect plumbing checkpoints do not satisfy the objective.
 
 ## Evidence and limitations
 
 Historical Build30 passed 15 host/nine device suites/seven installed hashes and dispatch/frame tests. Harness records errors and continues without retries. Cohort20 archived/purged six apps with retained data verified; all four rendered. Budget25.465s/Food58.235s passed semantics; Departure48.037s lacked calculations; Equipment188.689s completed comparison but budget representation was unsupported by assessor. Extraction consumed14.827/26.976/30.531/149.870s across7/6/8/21 calls respectively. No full-source fallback or exact edits. Full stages/tokens: ignored `benchmark-20/pipeline-stages.json`.
 
-JS/JVM differentials cover needs-to-source, catalogue/custom chains, records/edits and budgets; full compiler coverage remains unclaimed. Public `ApplicationProtocol.generate` reaches shared buildScreen, Android compilation/smoke and canonical publication. Arithmetic mounts, recomputes, reopens and reloads unchanged source. Pre-dispatch/in-flight cancellation, provider failure and unsupported lowering publish nothing and never fallback. Nine obsolete policy modules and three obsolete harnesses are removed. Source-only host, exact-edit and Guidance regressions pass; gateway/Jev tests preserve typed answers and thinking selection. Evidence: ignored `build/portable-public/`, prior `build/portable-route/`, `build/portable-integration/`, `build/needs-plan-parity/`. No live inference. Reference-flow rerun timed out; full boundary verification requires rebuilt app packages. Need provenance, custom analysis, effects, lookup/search/questions and surface/play remain unfinished; missing provenance rejects operationally, never imposes a global ceiling.
+JS/JVM differentials cover needs-to-source, catalogue/custom chains, records/edits and budgets; full compiler coverage remains unclaimed. Public `ApplicationProtocol.generate` reaches shared buildScreen, Android compilation/smoke and canonical publication. Arithmetic/budget mount, recompute, reopen and reload exact source. Budget tests over/under/equal, decimal comma and both inputs; metric groups use existing adaptive layout. Pre-dispatch/in-flight cancellation, provider failure and unsupported lowering publish nothing and never fallback. Nine obsolete policy modules and three obsolete harnesses are removed. Source-only host, exact-edit and Guidance regressions pass; gateway/Jev tests preserve typed answers and thinking selection. Evidence: ignored `build/portable-budget/device-6.log`, `host-ui.log`, prior `build/portable-public/`, `build/portable-route/`, `build/portable-integration/`, `build/needs-plan-parity/`. No live inference. Reference-flow rerun timed out; full boundary verification requires rebuilt app packages. Need provenance, custom analysis, effects, lookup/search/questions and surface/play remain unfinished; missing provenance rejects operationally, never imposes a global ceiling.
 
 ## Execution order and controlling checkpoint
 
-1. Complete mechanisms exposed by public integration: per-original-need provenance, custom analysis, disclosed capability execution, broader lowering, search/questions and surface/play. No standalone expansion unrelated to delivery.
+1. Actively wire four scenarios; fix exposed gaps generally: provenance, custom analysis, disclosed capabilities, lowering, search/questions and surface/play. No separate audit or scenario-specific production patches.
 2. Keep one production route; delete further obsolete adapters only after checking retained catalogue/source clients. Preserve canonical exact-edit/reload authority and operational errors.
 3. Verify four Android scenarios and committed-frame timing; remedy semantics/performance until the target holds. Defer OHOS and premature live benchmarks.
 
 No external blocker. Integration/timing remain unproved. Report changes, tests and gaps, not speculative progress.
 
-**Disposition:** Incomplete; no supported progress percentage. Historical combined first-frame time is 320.426s versus 51.274s; neither establishes the target. Public arithmetic cutover does not establish complete production delivery.
+**Disposition:** Incomplete; no supported progress percentage. Historical combined first-frame time is 320.426s versus 51.274s; neither establishes the target. Deterministic cutover tests do not establish live delivery.
