@@ -19,9 +19,28 @@ import * as surface from "./agent-surface";
 import * as smokeFixture from "./program-smoke-parity";
 import * as playFixture from "./program-play-parity";
 import * as identities from "./construction-identities";
+import * as composition from "./compose-state";
+import * as composing from "./compose-screen";
 
 export async function inspect(input: string): Promise<string> {
     let raw: Record<string, unknown> = json.parse(input);
+    if (decode.stringField(raw, "mode", "") === "planning") {
+        let value: sketch.Sketch = sketch.parseSketch("{}") as sketch.Sketch;
+        let comp: composition.Composition = composition.create(value, false);
+        composition.addCustom(comp, "same wording", "event.first");
+        composition.addCustom(comp, "removed", "event.middle");
+        composition.addCustom(comp, "same wording", "event.last");
+        let planning: identities.Planning = identities.planning(); planning.issue(comp.customOrigins);
+        let budget: writer.Budget = writer.createBudget(); budget.charge([planning.resolve("event.last")]);
+        composition.removeCustom(comp, "removed");
+        let plan: screen.ScreenPlan = composing.screenPlan(comp, [], [], [], function(kind: string): template.Entry[] { return []; }, null, [], decode.integerText);
+        let origins: string[] = [];
+        for (let slot of plan.slots) { slot.id = "renamed"; origins[origins.length] = planning.resolve(slot.original as string); }
+        budget.charge(origins); budget.charge([origins[1]]);
+        let unissued: string = ""; try { planning.resolve("custom.0"); } catch (caught) { unissued = (caught as Error).code; }
+        let copied: string[] = planning.all(); copied[0] = "changed";
+        return json.stringify({origins: origins, all: planning.all(), unissued: unissued, first: budget.remaining([origins[0]]), last: budget.remaining([origins[1]])}) as string;
+    }
     if (decode.stringField(raw, "mode", "") === "identities") {
         let registry: identities.Registry = identities.create(["request"]); let budget: writer.Budget = writer.createBudget();
         let one: string = registry.issue("original.slot", "one"); registry.issue("renamed.slot", one); registry.issue("catalogue.hole", "two");

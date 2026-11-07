@@ -238,4 +238,8 @@ for(const original of [...cases]){
     const reply=JSON.stringify({mode:'identities'}),expected={all:['request','one','two'],failed:'HOLE_IDENTITY',remaining:1,one:1,two:2};
     assert.deepEqual(JSON.parse(await generated.inspectWriter.$f(reply)),expected,'original identity inventory');cases.push({name:'original identity inventory',reply,expected});
 }
+{
+    const reply=JSON.stringify({mode:'planning'}),expected={origins:['event.first','event.last'],all:['event.first','event.middle','event.last'],unissued:'HOLE_IDENTITY',first:2,last:0};
+    assert.deepEqual(JSON.parse(await generated.inspectWriter.$f(reply)),expected,'issued planning provenance survives compaction and renaming');cases.push({name:'issued planning provenance',reply,expected});
+}
 fs.writeFileSync(path.join(output,'writer-cases.json'),JSON.stringify(cases,null,2));console.log('PASS '+cases.length+' custom writer flows (approved three-call delta explicit)');})().catch(e=>{console.error(e);process.exit(1);});

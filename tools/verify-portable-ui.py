@@ -34,16 +34,17 @@ def main():
     (work / 'reference.deal').write_text(fixture['expected']['source'])
     lower = work / 'lowering'
     (lower / 'src').mkdir(parents=True)
-    for name in ['portable-source-lowering', 'plan-decoding', 'source-literals']:
+    for name in ['portable-source-lowering', 'portable-state-reads', 'plan-decoding', 'source-literals']:
         shutil.copyfile(EMBEDDING / f'core/{name}.deal', lower / f'src/{name}.deal')
     (lower / 'deal.json').write_text(json.dumps({'languageVersion': '1.5', 'backend': 'js', 'moduleRoots': ['src']}))
     run('javac', '--release', '21', '-cp', classes, '-d', work / 'classes', EMBEDDING / 'tools/PortableSyntax.java', ROOT / 'tools/PortableUiCompile.java')
     run('java', f'-Ddeal.home={DEAL}', '-cp', classes, 'deal.Main', 'compile', lower / 'src/portable-source-lowering.deal', '--backend', 'js', '--output', lower / 'js')
+    run('java', f'-Ddeal.home={DEAL}', '-cp', classes, 'deal.Main', 'compile', lower / 'src/portable-state-reads.deal', '--backend', 'js', '--output', lower / 'reads-js')
     run('node', ROOT / 'tools/test-portable-ui.js', work, evidence, classes, 'lower')
     # The Android bridge compiles this small unit independently on JVM.
     jvm = work / 'jvm'
     (jvm / 'src/lowering').mkdir(parents=True)
-    for name in ['portable-backend', 'portable-source-lowering', 'plan-decoding', 'source-literals']:
+    for name in ['portable-backend', 'portable-source-lowering', 'portable-state-reads', 'plan-decoding', 'source-literals']:
         shutil.copyfile(EMBEDDING / f'core/{name}.deal', jvm / f'src/lowering/{name}.deal')
     shutil.copyfile(EMBEDDING / 'core/backend/syntax.d.deal', jvm / 'syntax.d.deal')
     (jvm / 'deal.json').write_text(json.dumps({'languageVersion': '1.5', 'backend': 'jvm', 'moduleRoots': ['src'], 'externals': {'portable/syntax': {'declaration': 'syntax.d.deal'}}}))
@@ -51,6 +52,7 @@ def main():
     generated = jvm / 'java/LoweringPortable_backend.java'
     generated.write_text('package dev.deal.embedding.portable; ' + generated.read_text())
     run('javac', '--release', '21', '-proc:none', '-cp', classes, '-d', work / 'classes', generated, EMBEDDING / 'tools/PortableBackendBridge.java')
+    assert json.loads(subprocess.check_output(['java', '-cp', f'{work}/classes:{classes}', 'PortableBackendBridge', '--unread', str(work / 'analysis.deal')], text=True)) == {'fields': ['c_y']}
     pair = json.loads(subprocess.check_output(['java', '-cp', f'{work}/classes:{classes}', 'PortableBackendBridge', str(work / 'reference.deal')], text=True))
     candidate = work / 'candidate'
     assert pair['deal'] == (candidate / 'src/experience.deal').read_text()
@@ -79,6 +81,24 @@ def main():
     (timed / 'js/portable').mkdir(parents=True, exist_ok=True)
     shutil.copyfile(EMBEDDING / 'core/portable-numbers.js', timed / 'js/portable/numbers.js')
     run('node', ROOT / 'tools/test-portable-ui.js', work, evidence, classes, 'time-session')
+    sdk = work / 'sdk-candidate'
+    sdk_pair = json.loads(subprocess.check_output(['java', '-cp', f'{work}/classes:{classes}', 'PortableBackendBridge', '--configured', str(work / 'sdk-reference.deal'), str(work / 'sdk-contracts.json')], text=True))
+    assert sdk_pair['deal'] == (sdk / 'src/experience.deal').read_text()
+    assert sdk_pair['dealui'] == (sdk / 'src/experience.dealui').read_text()
+    for name in ['portable-presentation', 'plan-decoding']:
+        shutil.copyfile(EMBEDDING / f'core/{name}.deal', sdk / f'src/{name}.deal')
+    shutil.copyfile(candidate / 'portable-numbers.d.deal', sdk / 'portable-numbers.d.deal')
+    (sdk / 'probe.d.deal').write_text('export function read(value: number): Promise<number>;\n')
+    config = json.loads((candidate / 'deal.json').read_text())
+    config['externals']['host/probe'] = {'declaration': 'probe.d.deal'}
+    (sdk / 'deal.json').write_text(json.dumps(config))
+    run('java', '-cp', f'{work}/classes:{classes}', 'PortableUiCompile', sdk, UI, EMBEDDING / 'ui/platform.dealui-pack')
+    run('java', f'-Ddeal.home={DEAL}', '-cp', classes, 'deal.Main', 'compile', sdk / 'src/experience_entry.deal', '--backend', 'js', '--output', sdk / 'js')
+    (sdk / 'js/portable').mkdir(parents=True, exist_ok=True)
+    (sdk / 'js/host').mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(EMBEDDING / 'core/portable-numbers.js', sdk / 'js/portable/numbers.js')
+    (sdk / 'js/host/probe.js').write_text('exports.read = value => globalThis.portableTestRead(value);\n')
+    run('node', ROOT / 'tools/test-portable-ui.js', work, evidence, classes, 'sdk-session')
     print(f'Integration evidence: {work.relative_to(ROOT)}')
 
 

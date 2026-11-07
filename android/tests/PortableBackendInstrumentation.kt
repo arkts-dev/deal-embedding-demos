@@ -236,18 +236,54 @@ function view(state:AppState):ui.View {
                     } finally {api.forget(experience)}
                 }
             }
-            // Departure must retain the actual provider read as construction
-            // work. It must not silently replace it with local arithmetic.
+            // Public departure construction uses disclosed targets and actual
+            // provider execution; the framework contains no travel formula.
             val vehicle=dev.deal.apps.vehicle.vehicleCapabilities()
-            var travelReads=0;var departureCalls=0
-            val observedVehicle=NativeCapabilities(vehicle.contract,mapOf("estimate" to {args:org.json.JSONArray->travelReads++;vehicle.invoke("estimate",args)}))
+            var travelReads=0;var departureCalls=0;var departureCodeCalls=0;var failTravel=false
+            val observedVehicle=NativeCapabilities(vehicle.contract,mapOf("estimate" to {args:org.json.JSONArray->travelReads++;if(failTravel)throw IllegalStateException("Travel fixture unavailable");vehicle.invoke("estimate",args)}))
             val departureModel=object:ModelClient {
                 override fun complete(input:String,previous:String,diagnostics:String,cancellation:GenerationCancellation,log:EmbeddingLog):String {
                     cancellation.check();departureCalls++
                     if(input.contains("\nPORTABLE COMPLETION\n")) {
-                        check(JSONObject(input.substringAfterLast("\nPORTABLE COMPLETION\n")).getString("operation")=="plan"){"Unexpected construction before provenance: $input"}
+                        val operation=JSONObject(input.substringAfterLast("\nPORTABLE COMPLETION\n")).getString("operation")
+                        if(operation=="code") {
+                            departureCodeCalls++
+                            check(departureCodeCalls==1){"Unexpected departure repair: " + input.substringAfterLast("It failed:").take(3000)}
+                            check(previous.isEmpty()&&diagnostics.isEmpty())
+                            check(input.contains("\"target\":\"host\\/trip.estimate\"") || input.contains("\"target\":\"host/trip.estimate\"")){"Actual disclosed call target missing"}
+                            return """<classes></classes>
+<fields>c_travel: number = 0;
+c_start: number = 960;
+c_distance: number = 12;
+c_unload: number = 15;
+c_inspection: number = 10;
+c_message: string = "Read travel first";</fields>
+<functions>
+function c_read(state: AppState, value: number): AppState {
+  sdk.call("host/trip.estimate", ["distanceKm", ui.numberToString(state.c_distance)], "c_answer");
+  return {c_message: "Reading" __PASSTHROUGH__};
+}
+function c_distance(state: AppState, value: number): AppState {
+  sdk.call("host/trip.estimate", ["distanceKm", ui.numberToString(value)], "c_answer");
+  return {c_distance: value, c_message: "Reading" __PASSTHROUGH__};
+}
+function c_start(state: AppState, value: number): AppState { return {c_start: value __PASSTHROUGH__}; }
+function c_unload(state: AppState, value: number): AppState { return {c_unload: value __PASSTHROUGH__}; }
+function c_inspection(state: AppState, value: number): AppState { return {c_inspection: value __PASSTHROUGH__}; }
+function c_answer(state: AppState, value: string): AppState {
+  let travel: number = strings.toNumber(value, -1);
+  if (travel < 0) { return {c_message: "Read failed; retry" __PASSTHROUGH__}; }
+  return {c_travel: travel, c_message: "" __PASSTHROUGH__};
+}
+</functions>
+<view>
+sections.push(ui.Section("content", "Travel", "", [ui.TimeField("default", "Collection start", state.c_start, "c_start"), ui.NumberField("default", "Distance km", state.c_distance, 1, 1000, "c_distance"), ui.NumberField("default", "Unloading minutes", state.c_unload, 0, 120, "c_unload"), ui.NumberField("default", "Inspection minutes", state.c_inspection, 0, 120, "c_inspection"), ui.Button("default", "Read travel", "c_read", 0, true), ui.Text("default", state.c_message)]));
+sections.push(ui.Section("summary", "Times", "", [ui.Stat("default", "Vehicle minutes", ui.numberToString(state.c_travel), "", "chart"), ui.Stat("default", "Departure", ui.clockToString(state.c_start - state.c_travel - state.c_unload - state.c_inspection), "", "clock"), ui.Stat("default", "Inspection", ui.clockToString(state.c_start - state.c_inspection), "", "clock")]));
+</view>"""
+                        }
+                        check(operation=="plan"){"Unexpected departure operation: $operation"}
                         check(input.contains("Simulated vehicle travel") && input.contains("estimate")){"Departure contract not disclosed"}
-                        return """{"title":"Departure","inputs":[{"id":"start","label":"Collection start","kind":"time","value":960},{"id":"distance","label":"Distance km","kind":"count","value":12},{"id":"unload","label":"Unloading minutes","kind":"count","value":15},{"id":"inspection","label":"Inspection minutes","kind":"count","value":10}],"needs":[{"type":"action","id":"travel","when":"distance changes","what":"Read Vehicle travel estimate and recompute departure and inspection using start, distance and buffers","asked":true,"on":"other","from":"use actual Vehicle travel estimate"}]}"""
+                        return """{"title":"Departure","needs":[{"type":"other","what":"Read Vehicle travel estimate and recompute departure and inspection with editable start, distance, unloading and inspection buffers; retry failed reads","on":"other"}]}"""
                     }
                     check(input.contains("\nPORTABLE CHOICE\n")){"Unexpected departure transport: $input"}
                     val questions=JSONObject(input.substringAfterLast("\nPORTABLE CHOICE\n")).getJSONObject("questions")
@@ -264,13 +300,53 @@ function view(state:AppState):ui.View {
                 }
             }
             CapabilityRegistry(context,CapabilityDiscovery(context){false},listOf(observedVehicle)).use {registry->
-                ApplicationProtocol(context,Embedding(context,registry,departureModel,config)).use {api->
+                ApplicationProtocol(context,Embedding(context,registry,departureModel,config.copy(retainState=true))).use {api->
                     api.refresh();api.grant("host/trip")
                     val before=api.saved().map{it.id}.toSet()
                     val request=api.request("Departure","Equipment collection at16:00. Distance12km; use actual Vehicle travel estimate. Need15min unloading and10min inspection. Editable start,distance,buffers; recompute departure and inspection. No booking.",api.snapshot(WireType("record"),"{}"))
-                    val error=runCatching{api.generate(request)}.exceptionOrNull()
-                    check(error is ProtocolFailure && error.code=="PORTABLE_UNSUPPORTED" && error.message.orEmpty().contains("Original-need provenance")){error.toString()}
-                    check(departureCalls>=2 && travelReads==0 && api.saved().map{it.id}.toSet()==before)
+                    val experience=api.generate(request)
+                    var session:Session?=null
+                    try {
+                        check(departureCodeCalls==1 && travelReads==0)
+                        val source=api.source(experience);session=api.run(experience)
+                        var update=api.next(session,"")
+                        fun nodes(node:JSONObject):List<JSONObject> = listOf(node)+(0 until node.getJSONArray("children").length()).flatMap{nodes(node.getJSONArray("children").getJSONObject(it))}
+                        fun prop(node:JSONObject,name:String):JSONObject {val values=node.getJSONArray("props");return (0 until values.length()).map{values.getJSONObject(it)}.single{it.getString("name")==name}}
+                        fun metrics()=nodes(update.snapshot.tree).filter{it.getString("component")=="ui.Metric"}.map{prop(it,"value").getString("stringValue")}
+                        fun dispatch(label:String,payload:String?,ready:()->Boolean) {
+                            val node=nodes(update.snapshot.tree).single{n->val p=n.getJSONArray("props");(0 until p.length()).map{p.getJSONObject(it)}.any{it.optString("name") in listOf("label","text") && it.optString("stringValue")==label}}
+                            val event=if(node.getString("component")=="ui.Button")"onClick" else "onChange"
+                            val version=update.snapshot.version
+                            api.dispatch(session!!,prop(node,event).getInt("actionSlot"),payload)
+                            val deadline=System.nanoTime()+java.util.concurrent.TimeUnit.SECONDS.toNanos(20)
+                            do {check(System.nanoTime()<deadline){"Departure update timed out"};update=api.next(session!!,update.cursor);check(update.snapshot.fault.isEmpty())}while(update.snapshot.version<=version || !ready())
+                        }
+                        dispatch("Read travel",null){metrics()==listOf("29","15:06","15:50")}
+                        check(travelReads==1)
+                        dispatch("Distance km","20"){metrics()==listOf("45","14:50","15:50")}
+                        check(travelReads==2)
+                        dispatch("Unloading minutes","20"){metrics()==listOf("45","14:45","15:50")}
+                        dispatch("Inspection minutes","15"){metrics()==listOf("45","14:40","15:45")}
+                        dispatch("Collection start","1020"){metrics()==listOf("45","15:40","16:45")}
+                        check(travelReads==2 && departureCodeCalls==1 && api.source(experience)==source)
+                        failTravel=true
+                        dispatch("Read travel",null){nodes(update.snapshot.tree).any{n->val p=n.getJSONArray("props");(0 until p.length()).map{p.getJSONObject(it)}.any{it.optString("stringValue")=="Read failed; retry"}}}
+                        check(travelReads==3 && metrics()==listOf("45","15:40","16:45"))
+                        failTravel=false
+                        dispatch("Read travel",null){travelReads==4 && nodes(update.snapshot.tree).none{n->val p=n.getJSONArray("props");(0 until p.length()).map{p.getJSONObject(it)}.any{it.optString("stringValue") in listOf("Reading","Read failed; retry")}}}
+                        check(metrics()==listOf("45","15:40","16:45"))
+                        api.revoke("host/trip")
+                        dispatch("Read travel",null){nodes(update.snapshot.tree).any{n->val p=n.getJSONArray("props");(0 until p.length()).map{p.getJSONObject(it)}.any{it.optString("stringValue")=="Read failed; retry"}}}
+                        check(travelReads==4)
+                        api.grant("host/trip")
+                        dispatch("Read travel",null){travelReads==5 && nodes(update.snapshot.tree).none{n->val p=n.getJSONArray("props");(0 until p.length()).map{p.getJSONObject(it)}.any{it.optString("stringValue") in listOf("Reading","Read failed; retry")}}}
+                        api.close(session!!);session=api.run(experience);update=api.next(session!!,"")
+                        check(metrics()==listOf("45","15:40","16:45") && travelReads==5 && departureCodeCalls==1 && api.source(experience)==source)
+                        api.close(session!!);session=null
+                        val cold=api.load("Departure exact reload",source)
+                        try {session=api.run(cold);update=api.next(session!!,"");check(metrics()==listOf("0","15:35","15:50") && travelReads==5 && api.source(cold)==source)}finally{session?.let{api.close(it)};session=null;api.forget(cold)}
+                    } finally {session?.let{api.close(it)};api.forget(experience)}
+                    check(api.saved().map{it.id}.toSet()==before)
                 }
             }
             // Failures and cancellation must not dispatch repair/whole fallback,
@@ -308,7 +384,7 @@ function view(state:AppState):ui.View {
                     }
                 }
             }
-            receipt.putString("portable", "PASS public arithmetic and budget generation → shared buildScreen → Android compilation/shared smoke → canonical publication/mount/edit/reopen/reload; budget over/under/equal, decimal comma and two editable inputs; departure reaches operational provenance refusal with disclosed Vehicle and no fabricated read/publication; provider/cancellation/unsupported failures never fallback; no live inference")
+            receipt.putString("portable", "PASS public arithmetic and budget generation → shared buildScreen → Android compilation/shared smoke → canonical publication/mount/edit/reopen/reload; budget over/under/equal, decimal comma and two editable inputs; departure invokes actual Vehicle, recomputes edited distance/start/buffers, handles failure/retry/revocation, retains state and reloads exact source; provider/cancellation/unsupported failures never fallback; no live inference")
             finish(0, receipt)
         } catch (error: Throwable) { receipt.putString("failure", android.util.Log.getStackTraceString(error)); finish(1, receipt) }
     }
