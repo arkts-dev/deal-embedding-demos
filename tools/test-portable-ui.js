@@ -103,8 +103,49 @@ function answer(state:`);
             assert.throws(() => lower.lower.$f(rejected, syntax), e => e.code === 'PORTABLE_UNSUPPORTED');
         }
         assert.throws(() => lower.lower.$f(actual.source + '\nfunction invalid(', syntax), e => e.code === 'PORTABLE_SYNTAX');
+        const listSource=`import * as ui from "std/ui";
+class Item { label: string; done: boolean; }
+class AppState { items: Item[]; }
+function init(): AppState { return {items: [{label: "🌍", done: false}]}; }
+function toggle(state: AppState, value: number): AppState {
+ let out: Item[] = []; let i: number = 0;
+ while (i < state.items.length()) { let it: Item = state.items[i]; if (i === value) { out.push({label: it.label, done: !it.done}); } else { out.push(it); } i = i + 1; }
+ return {items: out};
+}
+function view(state: AppState): ui.View {
+ let sections: ui.View[] = []; { let rows: ui.View[] = []; let i: number = 0;
+ while (i < state.items.length()) { let it: Item = state.items[i]; let detail: string = "open"; if (it.done) { detail = "done"; if (it.label.length() > 0) { detail = "checked"; } } else { detail = "pending"; }
+ rows.push(ui.ListItem("default", it.label, detail, "", "toggle", i, true, "list")); i = i + 1; }
+ sections.push(ui.Section("content", "List", "", [ui.ListGroup("default", "", rows)])); }
+ return ui.AppTheme("clean", "", sections);
+}`;
+        const listPair=lower.lower.$f(listSource,syntax);
+        assert.ok(listPair.deal.includes('state.items.length'));
+        assert.ok(listPair.deal.includes('presentation.length(it.label)'));
+        assert.ok(listPair.deal.includes('let it: Item = state.items[i]'));
+        assert.ok(listPair.deal.includes('else {\n'));
+        fs.writeFileSync(path.join(work,'list-reference.deal'),listSource);
+        const listDir=path.join(work,'list-candidate/src');fs.mkdirSync(listDir,{recursive:true});
+        fs.writeFileSync(path.join(listDir,'experience.deal'),listPair.deal);fs.writeFileSync(path.join(listDir,'experience.dealui'),listPair.dealui);
+        assert.throws(()=>lower.lower.$f(listSource.replace('sections.push(ui.Section','if (true) { sections.push(ui.Section').replace('[ui.ListGroup("default", "", rows)])); }','[ui.ListGroup("default", "", rows)])); } }'),syntax),e=>e.code==='PORTABLE_UNSUPPORTED');
+        assert.throws(()=>lower.lower.$f(listSource.replace('out.push(it);','let result: number = out.push(it);'),syntax),e=>e.code==='PORTABLE_UNSUPPORTED');
         console.log('PASS portable composer → checked-source lowering; unsupported components reject');
     })().catch(error => {console.error(error); process.exitCode = 1;});
+} else if(mode === 'list-session') {
+    require('../dependencies/deal-ui/runtime-js/session.js');
+    const output=path.join(work,'list-candidate/js'),entry=require(path.join(output,'experience_entry.js')),rt=require(path.join(output,'deal/runtime.js'));
+    const session=createDealUiSession(entry,rt,null,()=>{throw Error('Unexpected effect')});
+    const nodes=n=>[n,...n.children.flatMap(nodes)],prop=(n,k)=>n.props.find(p=>p.name===k);
+    const snap=s=>{const value=JSON.parse(s.snapshot());assert.equal(value.fault,'');return value;};
+    let item=nodes(snap(session).tree).find(n=>n.component==='ui.Item');assert.equal(prop(item,'detail').stringValue,'pending');
+    const button=nodes(item).find(n=>n.component==='ui.Button');session.dispatch(prop(button,'onClick').actionSlot,null);
+    item=nodes(snap(session).tree).find(n=>n.component==='ui.Item');assert.equal(prop(item,'detail').stringValue,'checked');
+    const saved=JSON.parse(session.state());
+    const restored=createDealUiSession(entry,rt,saved,()=>{throw Error('Unexpected effect')});
+    assert.equal(prop(nodes(snap(restored).tree).find(n=>n.component==='ui.Item'),'detail').stringValue,'checked');
+    const malformed=JSON.parse(session.state());malformed.app.items[0].done='wrong';
+    assert.throws(()=>createDealUiSession(entry,rt,malformed,()=>{}),/expected boolean/);
+    session.dispose();restored.dispose();console.log('PASS nested dynamic list projection, row actions and fresh checked array restoration');
 } else if(mode === 'sdk-session' || mode === 'chain-session') {
     (async()=>{
         const output=path.join(work,mode==='chain-session'?'chain-candidate/js':'sdk-candidate/js');require('../dependencies/deal-ui/runtime-js/session.js');

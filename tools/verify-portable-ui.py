@@ -34,7 +34,7 @@ def main():
     (work / 'reference.deal').write_text(fixture['expected']['source'])
     lower = work / 'lowering'
     (lower / 'src').mkdir(parents=True)
-    for name in ['portable-source-lowering', 'portable-state-reads', 'plan-decoding', 'source-literals']:
+    for name in ['portable-source-lowering', 'portable-view-lowering', 'portable-state-reads', 'plan-decoding', 'source-literals']:
         shutil.copyfile(EMBEDDING / f'core/{name}.deal', lower / f'src/{name}.deal')
     (lower / 'deal.json').write_text(json.dumps({'languageVersion': '1.5', 'backend': 'js', 'moduleRoots': ['src']}))
     run('javac', '--release', '21', '-cp', classes, '-d', work / 'classes', EMBEDDING / 'tools/PortableSyntax.java', ROOT / 'tools/PortableUiCompile.java')
@@ -44,7 +44,7 @@ def main():
     # The Android bridge compiles this small unit independently on JVM.
     jvm = work / 'jvm'
     (jvm / 'src/lowering').mkdir(parents=True)
-    for name in ['portable-backend', 'portable-source-lowering', 'portable-state-reads', 'plan-decoding', 'source-literals']:
+    for name in ['portable-backend', 'portable-source-lowering', 'portable-view-lowering', 'portable-state-reads', 'plan-decoding', 'source-literals']:
         shutil.copyfile(EMBEDDING / f'core/{name}.deal', jvm / f'src/lowering/{name}.deal')
     shutil.copyfile(EMBEDDING / 'core/backend/syntax.d.deal', jvm / 'syntax.d.deal')
     (jvm / 'deal.json').write_text(json.dumps({'languageVersion': '1.5', 'backend': 'jvm', 'moduleRoots': ['src'], 'externals': {'portable/syntax': {'declaration': 'syntax.d.deal'}}}))
@@ -113,6 +113,19 @@ def main():
         (chain / 'js' / directory).mkdir(parents=True, exist_ok=True)
         shutil.copyfile(sdk / 'js' / directory / name, chain / 'js' / directory / name)
     run('node', ROOT / 'tools/test-portable-ui.js', work, evidence, classes, 'chain-session')
+    listed = work / 'list-candidate'
+    list_pair = json.loads(subprocess.check_output(['java', '-cp', f'{work}/classes:{classes}', 'PortableBackendBridge', str(work / 'list-reference.deal')], text=True))
+    assert list_pair['deal'] == (listed / 'src/experience.deal').read_text()
+    assert list_pair['dealui'] == (listed / 'src/experience.dealui').read_text()
+    for name in ['portable-presentation', 'plan-decoding']:
+        shutil.copyfile(EMBEDDING / f'core/{name}.deal', listed / f'src/{name}.deal')
+    for name in ['portable-numbers.d.deal', 'deal.json']:
+        shutil.copyfile(candidate / name, listed / name)
+    run('java', '-cp', f'{work}/classes:{classes}', 'PortableUiCompile', listed, UI, EMBEDDING / 'ui/platform.dealui-pack')
+    run('java', f'-Ddeal.home={DEAL}', '-cp', classes, 'deal.Main', 'compile', listed / 'src/experience_entry.deal', '--backend', 'js', '--output', listed / 'js')
+    (listed / 'js/portable').mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(EMBEDDING / 'core/portable-numbers.js', listed / 'js/portable/numbers.js')
+    run('node', ROOT / 'tools/test-portable-ui.js', work, evidence, classes, 'list-session')
     print(f'Integration evidence: {work.relative_to(ROOT)}')
 
 

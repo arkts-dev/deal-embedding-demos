@@ -12,6 +12,7 @@
   <activity android:name=".RendererDefaultsActivity" android:exported="true" />
   <activity android:name=".ToolkitActivity" android:exported="true" />
   <service android:name=".ToolkitReadingService" android:exported="true" android:process=":reading"><intent-filter><action android:name="dev.deal.embedding.CAPABILITIES_V1" /></intent-filter></service>
+  <service android:name=".CatalogueReaderService" android:exported="true"><intent-filter><action android:name="dev.deal.embedding.CAPABILITIES_V1" /></intent-filter></service>
   <service android:name=".RemoteProbeService" android:exported="true" android:process=":provider"><intent-filter><action android:name="dev.deal.embedding.CAPABILITIES_V1" /></intent-filter></service>
  </application>
  <instrumentation android:name=".DiscoveryLiveInstrumentation" android:targetPackage="dev.deal.connectors.tests" />
@@ -44,6 +45,7 @@
  <instrumentation android:name=".PortableBackendInstrumentation" android:targetPackage="dev.deal.connectors.tests" />
  <instrumentation android:name=".PortableCommerceInstrumentation" android:targetPackage="dev.deal.connectors.tests" />
  <instrumentation android:name=".HardeningInstrumentation" android:targetPackage="dev.deal.connectors.tests" />
+ <instrumentation android:name=".CatalogueReaderInstrumentation" android:targetPackage="dev.deal.connectors.tests" />
  <instrumentation android:name=".CatalogueProvenanceInstrumentation" android:targetPackage="dev.deal.connectors.tests" />
  <instrumentation android:name=".BridgeTransferInstrumentation" android:targetPackage="dev.deal.connectors.tests" />
  <instrumentation android:name=".ProtocolInstrumentation" android:targetPackage="dev.deal.apps.organizer" />
