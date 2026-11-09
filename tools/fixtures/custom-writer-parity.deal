@@ -21,6 +21,7 @@ import * as playFixture from "./program-play-parity";
 import * as identities from "./construction-identities";
 import * as composition from "./compose-state";
 import * as composing from "./compose-screen";
+import * as aligning from "./compose-alignment";
 
 export async function inspect(input: string): Promise<string> {
     let raw: Record<string, unknown> = json.parse(input);
@@ -40,6 +41,23 @@ export async function inspect(input: string): Promise<string> {
         let unissued: string = ""; try { planning.resolve("custom.0"); } catch (caught) { unissued = (caught as Error).code; }
         let copied: string[] = planning.all(); copied[0] = "changed";
         return json.stringify({origins: origins, all: planning.all(), unissued: unissued, first: budget.remaining([origins[0]]), last: budget.remaining([origins[1]])}) as string;
+    }
+    if (decode.stringField(raw, "mode", "") === "cataloguePlanning") {
+        let value: sketch.Sketch = sketch.parseSketch("{}") as sketch.Sketch;
+        let comp: composition.Composition = composition.create(value, false);
+        composition.addCustom(comp, "same", "event.first"); composition.addCustom(comp, "same", "event.second");
+        let planning: identities.Planning = identities.planning(); planning.issue(comp.customOrigins);
+        let aligned: aligning.Result = aligning.create();
+        aligned.asked = [{need: "same", kind: "group", p: 1, rejected: ""}, {need: "same", kind: "group", p: 1, rejected: ""}];
+        aligning.applyAlignment(comp, aligned, [], true);
+        aligning.applyAlignment(comp, aligned, [], true);
+        let budget: writer.Budget = writer.createBudget(); let origins: string[] = comp.blockOrigins[0];
+        let resolved: string[] = []; for (let key of origins) { resolved[resolved.length] = planning.resolve(key); }
+        budget.charge(resolved); composition.addBlock(comp, "group", ["event.first"], true);
+        budget.charge([planning.resolve(comp.blockOrigins[0][0])]); budget.charge(resolved);
+        let failed: string = ""; try { planning.resolve("hole.renamed"); } catch (caught) { failed = (caught as Error).code; }
+        return json.stringify({blocks: comp.blocks, origins: comp.blockOrigins, custom: comp.custom,
+            first: budget.remaining(["event.first"]), second: budget.remaining(["event.second"]), failed: failed}) as string;
     }
     if (decode.stringField(raw, "mode", "") === "identities") {
         let registry: identities.Registry = identities.create(["request"]); let budget: writer.Budget = writer.createBudget();
@@ -161,7 +179,7 @@ export async function inspect(input: string): Promise<string> {
                 let result: catalogueHoles.Diagnostic[] = [];
                 if (i < sets.length) { for (let entry of decode.arrayOrEmpty(sets[i])) { let d: Record<string, unknown> = entry as Record<string, unknown>;
                     result[result.length] = {line: d.line as number, message: d.message as string}; } } return result;
-            }, function(hole: catalogueHoles.Instance): string { return "issued." + hole.key; }, writer.createBudget(), numberText, length);
+            }, function(hole: catalogueHoles.Instance): string[] { return ["issued." + hole.key]; }, writer.createBudget(), numberText, length);
         let pairs: unknown[] = []; for (let body of result.bodies) { pairs[pairs.length] = {key: body.key, value: body.value}; }
         let marked: unknown[] = []; let bySlot: unknown[] = [];
         for (let entries of catalogueHoles.holeValues(kinds, result.bodies, specs, numberText, true)) {

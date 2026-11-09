@@ -94,7 +94,7 @@ export async function inspect(input: string): Promise<string> {
             let request: fillFlow.Request = {kinds: kinds, prompt: "original", work: "rewrite", mode: raw.generationMode as string, realData: raw.realData as boolean,
                 offset: 2, slotValues: [], globals: [{key: "__TITLE__", value: "underlying"}, {key: "theme", value: "blue"}],
                 compose: function(values: template.Entry[][], globals: template.Entry[]): string { return "composed"; }};
-            for (let kind of kinds) { request.slotValues[request.slotValues.length] = [{key: "choice", value: "true"}]; }
+            let origins: string[][] = []; for (let kind of kinds) { request.slotValues[request.slotValues.length] = [{key: "choice", value: "true"}]; origins[origins.length] = ["fixture." + kind]; } request.originals = origins;
             let events: unknown[] = []; let tick: number = 0; let cancellations: number = 0;
             let calls: fillFlow.Calls = {
                 search: null, content: async function(system: string, user: string, budget: number): Promise<string | null> {
@@ -109,7 +109,7 @@ export async function inspect(input: string): Promise<string> {
                 cancelled: function(): boolean { cancellations = cancellations + 1; return cancellations === (raw.cancelAt as number); },
                 now: function(): number { tick = tick + 10; return tick; },
                 compile: function(source: string): catalogueHoles.Diagnostic[] { events[events.length] = {type: "compile", source: source}; return []; },
-                identity: function(hole: catalogueHoles.Instance): string { return "issued." + hole.key; }, budget: writer.createBudget()
+                identity: function(hole: catalogueHoles.Instance): string[] { return ["issued." + hole.key]; }, budget: writer.createBudget()
             };
             if (raw.hasSearch as boolean) { calls.search = async function(query: string, chars: number): Promise<string> {
                 events[events.length] = {type: "search", query: query, chars: chars}; return raw.search as string;

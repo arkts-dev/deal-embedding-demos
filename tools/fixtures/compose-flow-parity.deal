@@ -198,7 +198,7 @@ async function inspectCore(raw: Record<string, unknown>): Promise<string> {
                             trace[trace.length] = {type: "content", system: system, user: user, tokens: tokens}; return raw.contentReply as string; },
                             hole: async function(system: string, user: string, think: boolean): Promise<string | null> { throw {code: "FIXTURE", message: "Unexpected hole"}; },
                             sdkContext: async function(prompt: string): Promise<string> { return ""; }, status: status, cancelled: cancelled, now: now,
-                            compile: function(source: string): catalogueHoles.Diagnostic[] { throw {code: "FIXTURE", message: "Unexpected hole compile"}; }, identity: function(instance: catalogueHoles.Instance): string { return registry.issue("catalogue:" + instance.key, instance.key); }, budget: budget},
+                            compile: function(source: string): catalogueHoles.Diagnostic[] { throw {code: "FIXTURE", message: "Unexpected hole compile"}; }, identity: function(instance: catalogueHoles.Instance): string[] { return [registry.issue("catalogue:" + instance.key, instance.key)]; }, budget: budget},
                         settling: {language: "", askCode: null, cancelled: cancelled, status: status}};
                     if (raw.customReply !== undefined) {
                         host.holes.language = "language";

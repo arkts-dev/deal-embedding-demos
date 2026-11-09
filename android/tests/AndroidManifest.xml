@@ -44,6 +44,7 @@
  <instrumentation android:name=".PortableBackendInstrumentation" android:targetPackage="dev.deal.connectors.tests" />
  <instrumentation android:name=".PortableCommerceInstrumentation" android:targetPackage="dev.deal.connectors.tests" />
  <instrumentation android:name=".HardeningInstrumentation" android:targetPackage="dev.deal.connectors.tests" />
+ <instrumentation android:name=".CatalogueProvenanceInstrumentation" android:targetPackage="dev.deal.connectors.tests" />
  <instrumentation android:name=".BridgeTransferInstrumentation" android:targetPackage="dev.deal.connectors.tests" />
  <instrumentation android:name=".ProtocolInstrumentation" android:targetPackage="dev.deal.apps.organizer" />
  <instrumentation android:name=".ProtocolPolicyInstrumentation" android:targetPackage="dev.deal.apps.organizer" />

@@ -242,4 +242,8 @@ for(const original of [...cases]){
     const reply=JSON.stringify({mode:'planning'}),expected={origins:['event.first','event.last'],all:['event.first','event.middle','event.last'],unissued:'HOLE_IDENTITY',first:2,last:0};
     assert.deepEqual(JSON.parse(await generated.inspectWriter.$f(reply)),expected,'issued planning provenance survives compaction and renaming');cases.push({name:'issued planning provenance',reply,expected});
 }
+{
+    const reply=JSON.stringify({mode:'cataloguePlanning'}),expected={blocks:['group'],origins:[['event.first','event.second']],custom:[],first:0,second:1,failed:'HOLE_IDENTITY'};
+    assert.deepEqual(JSON.parse(await generated.inspectWriter.$f(reply)),expected,'catalogue grouping preserves every original allowance');cases.push({name:'catalogue planning provenance',reply,expected});
+}
 fs.writeFileSync(path.join(output,'writer-cases.json'),JSON.stringify(cases,null,2));console.log('PASS '+cases.length+' custom writer flows (approved three-call delta explicit)');})().catch(e=>{console.error(e);process.exit(1);});
