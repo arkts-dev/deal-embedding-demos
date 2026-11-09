@@ -86,6 +86,16 @@ function view(state: AppState): ui.View {
         fs.writeFileSync(path.join(work,'sdk-contracts.json'),JSON.stringify({modules}));
         const sdkDir=path.join(work,'sdk-candidate/src');fs.mkdirSync(sdkDir,{recursive:true});
         fs.writeFileSync(path.join(sdkDir,'experience.deal'),pairSdk.deal);fs.writeFileSync(path.join(sdkDir,'experience.dealui'),pairSdk.dealui);
+        const chainSource=sdkSource.replace('"answer");','"middle");').replace('function answer(state:', `function middle(state: AppState, value: string): AppState {
+ sdk.call("host/probe.read", ["value", value], "answer");
+ return {input: state.input, result: "second pending"};
+}
+function answer(state:`);
+        const chainPair=lower.lowerConfigured.$f(chainSource,syntax,typedModules);
+        fs.writeFileSync(path.join(work,'chain-reference.deal'),chainSource);
+        const chainDir=path.join(work,'chain-candidate/src');fs.mkdirSync(chainDir,{recursive:true});
+        fs.writeFileSync(path.join(chainDir,'experience.deal'),chainPair.deal);fs.writeFileSync(path.join(chainDir,'experience.dealui'),chainPair.dealui);
+        assert.throws(()=>lower.lowerConfigured.$f(chainSource.replace('["value", value], "answer"','["value", value], "middle"'),syntax,typedModules),e=>e.code==='PORTABLE_UNSUPPORTED' && /Cyclic/.test(e.message));
         for(const rejected of [sdkSource.replace('host/probe.read','host/absent.read'), sdkSource.replace(' sdk.call(', ' let local: number = value; sdk.call('), sdkSource.replace(' sdk.call(', ' if (value > 0) { sdk.call(').replace('"answer");','"answer"); }')]) {
             assert.throws(()=>lower.lowerConfigured.$f(rejected,syntax,typedModules),e=>e.code==='PORTABLE_UNSUPPORTED');
         }
@@ -95,9 +105,9 @@ function view(state: AppState): ui.View {
         assert.throws(() => lower.lower.$f(actual.source + '\nfunction invalid(', syntax), e => e.code === 'PORTABLE_SYNTAX');
         console.log('PASS portable composer → checked-source lowering; unsupported components reject');
     })().catch(error => {console.error(error); process.exitCode = 1;});
-} else if(mode === 'sdk-session') {
+} else if(mode === 'sdk-session' || mode === 'chain-session') {
     (async()=>{
-        const output=path.join(work,'sdk-candidate/js');require('../dependencies/deal-ui/runtime-js/session.js');
+        const output=path.join(work,mode==='chain-session'?'chain-candidate/js':'sdk-candidate/js');require('../dependencies/deal-ui/runtime-js/session.js');
         const pending=[];globalThis.portableTestRead=value=>new Promise((resolve,reject)=>pending.push({value,resolve,reject}));
         const entry=require(path.join(output,'experience_entry.js')),rt=require(path.join(output,'deal/runtime.js'));
         const jobs=[];const schedule=(invoke,complete,fail,exited)=>{const job=Promise.resolve(invoke()).then(complete).catch(fail).finally(exited);jobs.push(job);};
@@ -106,6 +116,15 @@ function view(state: AppState): ui.View {
         const snapshot=()=>{const s=JSON.parse(session.snapshot());assert.equal(s.fault,'');return s;};
         const text=()=>nodes(snapshot().tree).filter(n=>n.component==='ui.Text').map(n=>prop(n,'value').stringValue);
         const dispatch=value=>session.dispatch(prop(nodes(snapshot().tree).find(n=>n.component==='ui.IntField'),'onChange').actionSlot,String(value));
+        if(mode==='chain-session') {
+            const flush=()=>new Promise(resolve=>setImmediate(resolve));
+            dispatch(10);dispatch(20);assert.deepEqual(pending.map(p=>p.value),[10,20]);
+            pending[0].resolve(100);await flush();assert.equal(pending.length,2,'Stale first-stage completion must not dispatch downstream');
+            pending[1].resolve(200);await flush();assert.equal(pending.length,3);assert.equal(pending[2].value,200);assert.deepEqual(text(),['second pending']);
+            dispatch(30);pending[2].resolve(2000);await flush();assert.deepEqual(text(),['pending']);
+            pending[3].resolve(300);await flush();assert.equal(pending[4].value,300);pending[4].resolve(3000);await flush();assert.deepEqual(text(),['3000']);
+            session.dispose();console.log('PASS chained SDK completion sequencing, reply arguments and stale downstream suppression');return;
+        }
         dispatch(10);dispatch(20);assert.deepEqual(pending.map(p=>p.value),[10,20]);assert.deepEqual(text(),['pending']);
         pending[1].resolve(200);await jobs[1];assert.deepEqual(text(),['200']);
         pending[0].resolve(100);await jobs[0];assert.deepEqual(text(),['200']);

@@ -2,7 +2,7 @@
 kind: research
 id: constrained-generation-delivery
 created_at: 2026-11-01
-updated_at: 2026-11-07
+updated_at: 2026-11-09
 status: incomplete
 references:
   - framework-speed-retrace.md
@@ -21,7 +21,7 @@ gaps:
 
 # Production delivery plan
 
-Port studio machinery to readable DEAL; shared core owns policy, hosts supply mechanisms. Delete superseded policy; preserve APIs, UX and authority. Target: four correct scenarios within20 seconds combined; parity does not guarantee timing.
+Port studio machinery to DEAL; shared core owns policy, hosts supply mechanisms. Preserve APIs/UX/authority. Target: four correct scenarios within20 seconds combined.
 
 ## Mapping and implementation status
 
@@ -34,13 +34,13 @@ Port studio machinery to readable DEAL; shared core owns policy, hosts supply me
 | `AgentHole` / `AgentCustom` | Writer/checks, authority, partial retention, lookup/refusal reuse/splitting and notices tested. Original identities bound widening/final repairs. Integrated catalogue/custom path tested. |
 | `ScreenPlan` / `VeraBuildRoute` | State/slots, assembly, surface/whole fallback and budget exhaustion tested. Broad failure-chain/backend coverage remains. |
 | Supporting core | Catalogue filling, layouts/alignment, previews/questions, repairs, smoke/play policy, records and structural edits tested. Transitive coverage remains incomplete. |
-| Production | `generation.deal` invokes shared buildScreen with frozen disclosure/contracts and pinned catalogue data, then ordinary canonical admission. Public arithmetic/budget/departure and operational-failure fixtures pass. |
+| Production | `generation.deal` invokes shared buildScreen with frozen disclosure/contracts and pinned catalogue data, then ordinary canonical admission. All four public scenario fixtures and operational-failure checks pass deterministically. |
 
 ## Required recovery alignment
 
 Lifecycle: construction → checked provisional composition → canonical materialization. Provisional section checks do not establish canonical identity. After materialization, allow atomic revision/digest-bound exact edits only; stale/overlapping edits leave both files unchanged. Enforce maintained-neighbor preservation across construction and repair.
 
-Issue **UI-section holes**, not only pure functions: stable IDs, typed imports/exports, owned state/actions/views and capabilities. Admit only declared interfaces/writes/calls; reject neighbor mutation/missing imports. Retain checked sections.
+Issue **UI-section holes** with stable IDs, typed ports, owned state/actions/views/capabilities. Admit declared interfaces/writes/calls only; reject neighbor mutation/missing imports.
 
 **Approved budget:** three model invocations per stable need/request: initial → diagnostic repair → thinking-enabled repair; count dispatches, including failed calls. Group calls charge every participating need; splitting, renaming or re-entry never resets accounting. Record revision/diagnostic fingerprints. Cancellation/refusal/operational failure may exit early; exhaustion retains checked work and reports unresolved needs. This supersedes no-attempt-ceilings for local holes only; other ceilings remain unchanged.
 
@@ -56,9 +56,9 @@ Construct/check sections before canonical materialization; afterward use revisio
 
 ## Evidence and limitations
 
-Historical Build30 passed 15 host/nine device suites/seven installed hashes and dispatch/frame tests. Harness records errors and continues without retries. Cohort20 archived/purged six apps with retained data verified; all four rendered. Budget25.465s/Food58.235s passed semantics; Departure48.037s lacked calculations; Equipment188.689s completed comparison but budget representation was unsupported by assessor. Extraction consumed14.827/26.976/30.531/149.870s across7/6/8/21 calls respectively. No full-source fallback or exact edits. Full stages/tokens: ignored `benchmark-20/pipeline-stages.json`.
+Historical Build30 passed15 host/nine device suites/seven installed hashes and dispatch/frame tests; harness continues without retries. Cohort20 archived/purged six apps with retained data verified; all four rendered. Budget25.465s/Food58.235s passed semantics; Departure48.037s lacked calculations; Equipment188.689s completed comparison but budget representation was unsupported by assessor. Extraction consumed14.827/26.976/30.531/149.870s across7/6/8/21 calls respectively. No full-source fallback or exact edits. Full stages/tokens: ignored `benchmark-20/pipeline-stages.json`.
 
-JS/JVM differentials cover needs-to-source, catalogue/custom chains, records/edits and budgets; full compiler coverage remains unclaimed. Public `ApplicationProtocol.generate` reaches shared buildScreen, Android compilation/smoke and canonical publication. Arithmetic/budget mount, recompute, reopen and reload exact source; budget tests over/under/equal, decimal comma and both inputs. Departure now constructs custom source with issued planning provenance, calls actual Vehicle, recomputes edited distance/start/buffers, handles failure/retry/revocation, retains state and reloads exact source. Read analysis uses compiler AST and iterative DEAL traversal; nested JS/JVM regression catches recursive JVM slot clobbering. SDK lowering uses ordinary Deal UI effects with pre-update arguments and stale-completion fencing. Host tests cover out-of-order replies and disposal. Time/number lowering preserves Unicode/edge semantics; metrics reuse adaptive layout. Cancellation/provider/unsupported failures never fallback. Nine modules/three harnesses removed. Exact-edit/Guidance/gateway/Jev regressions pass. Evidence: ignored `build/portable-departure/device-sdk-10.log`, `host-sdk-7.log`, `provenance/` (505 JS/JVM writer/provenance cases,937 reader cases), prior `build/portable-budget/`, `build/portable-public/`, `build/portable-route/`, `build/portable-integration/`, `build/needs-plan-parity/`. No live inference. Reference-flow/screen timed out; boundaries need rebuilt packages. Catalogue provenance, broader effects/controls, search/questions and surface/play remain unfinished; unsupported constructs reject operationally. Food/equipment and live correctness/latency remain unproved.
+JS/JVM differentials cover needs-to-source, catalogue/custom chains, records/edits and budgets; full compiler coverage remains unclaimed. Public generation reaches shared buildScreen, Android compilation/smoke and canonical publication. Budget tests over/under/equal, decimal comma and both inputs. Departure invokes actual Vehicle and recomputes edited distance/start/buffers. Food invokes Pizza menu/delivery, checks six pizzas/vegan minimum/delivery-inclusive total, zero quantities, budget/deadline edits and late windows. Equipment selects by authoritative attributes/components and invokes two whole-basket Rental quotes; checks hire/deposit separation, budget boundaries, unavailable quotes and edited periods. Both cover failure/retry/revocation, retained reopen, exact reload and unchanged provider preferences. Injected responses/domain logic are test-only. Shared SDK lowering now chains answer-handler calls, shares freshness epochs, suppresses stale downstream dispatch and rejects cycles; ordinary Deal UI owns execution. Host JS/JVM lowering equality plus real sessions verify out-of-order replies, disposal and chaining. Read analysis uses iterative AST traversal; time/number lowering preserves Unicode/edges. Cancellation/provider/unsupported failures never fallback. Nine modules/three harnesses removed. Evidence: ignored `build/portable-commerce/{device-4.log,budget-departure-regression.log,host-4.log}`, earlier `build/portable-departure/`, `build/portable-public/`, `build/portable-integration/`, `build/needs-plan-parity/`. Initial device timeout retained; later passes. No inference/visual acceptance; reference-flow/screen timed out, boundaries need rebuilt packages. Catalogue provenance, broader effects/controls, quote-expiry/pending-edit coverage, search/questions and surface/play remain incomplete. Live correctness/latency remain unproved.
 
 ## Execution order and controlling checkpoint
 

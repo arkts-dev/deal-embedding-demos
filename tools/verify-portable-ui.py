@@ -99,6 +99,20 @@ def main():
     shutil.copyfile(EMBEDDING / 'core/portable-numbers.js', sdk / 'js/portable/numbers.js')
     (sdk / 'js/host/probe.js').write_text('exports.read = value => globalThis.portableTestRead(value);\n')
     run('node', ROOT / 'tools/test-portable-ui.js', work, evidence, classes, 'sdk-session')
+    chain = work / 'chain-candidate'
+    chain_pair = json.loads(subprocess.check_output(['java', '-cp', f'{work}/classes:{classes}', 'PortableBackendBridge', '--configured', str(work / 'chain-reference.deal'), str(work / 'sdk-contracts.json')], text=True))
+    assert chain_pair['deal'] == (chain / 'src/experience.deal').read_text()
+    assert chain_pair['dealui'] == (chain / 'src/experience.dealui').read_text()
+    for name in ['portable-presentation', 'plan-decoding']:
+        shutil.copyfile(EMBEDDING / f'core/{name}.deal', chain / f'src/{name}.deal')
+    for name in ['portable-numbers.d.deal', 'probe.d.deal', 'deal.json']:
+        shutil.copyfile(sdk / name, chain / name)
+    run('java', '-cp', f'{work}/classes:{classes}', 'PortableUiCompile', chain, UI, EMBEDDING / 'ui/platform.dealui-pack')
+    run('java', f'-Ddeal.home={DEAL}', '-cp', classes, 'deal.Main', 'compile', chain / 'src/experience_entry.deal', '--backend', 'js', '--output', chain / 'js')
+    for directory, name in [('portable', 'numbers.js'), ('host', 'probe.js')]:
+        (chain / 'js' / directory).mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(sdk / 'js' / directory / name, chain / 'js' / directory / name)
+    run('node', ROOT / 'tools/test-portable-ui.js', work, evidence, classes, 'chain-session')
     print(f'Integration evidence: {work.relative_to(ROOT)}')
 
 
