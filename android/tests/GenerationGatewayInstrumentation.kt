@@ -58,9 +58,9 @@ class GenerationGatewayInstrumentation : Instrumentation() {
                 check(runCatching { GenerationGatewayConfig(bad, "fixture") }.isFailure)
             }
             check(runCatching { GenerationGatewayConfig("https://example.com/generate", "bad\r\nheader") }.isFailure)
-            fun compact() = counterBehaviorPlan()
-            val emitted = BehaviorCandidate(emptyList()).assemble(compact())
-            val source = Source(emitted.getString("deal"), emitted.getString("dealui"))
+            // Actual shared-core public generation over local HTTP, not compact plans.
+            val needs = """{"title":"Gateway arithmetic","inputs":[{"id":"a","kind":"count","value":7},{"id":"b","kind":"count","value":1}],"needs":[{"type":"figure","id":"v","label":"Sum","formula":"a+b"}]}"""
+            val choices = """{"answers":{"expr.v":{"choice":"add:a:b","confidence":1}}}"""
             // Locality is mechanically measured with explicit baselines, not semantic acceptance.
             val telemetryBase=ExperienceSource("a\nb\nc","ui")
             val telemetryNext=ExperienceSource("a\nB\nc","ui")
@@ -87,15 +87,16 @@ class GenerationGatewayInstrumentation : Instrumentation() {
             check(catalog(false,parameters)==catalog(true,parameters))
             check(catalog(false,parameters)!=catalog(true,parameters.reversed()))
             val registry = CapabilityRegistry(targetContext, CapabilityDiscovery(targetContext) { false }, emptyList())
-            val pair = nativeSourceFixture(source.deal,source.dealui)
             EmbeddingLog.capture(targetContext, true)
-            Server(3) { client, headers, body ->
+            Server(2) { client, headers, body ->
                 check(headers.startsWith("POST /configured-generation HTTP/1.1"))
                 check(headers.contains("X-Deal-Generation-Backend: fixture-backend", true))
                 check(body.getBoolean("capture") && body.getString("input").contains("Gateway fixture"))
                 check(body.getString("previous").isEmpty())
                 check(body.get("diagnostics") is String)
-                reply(client, envelope(nativeGenerationPrelude(body.getString("input")) ?: pair), chunked = true)
+                val input=body.getString("input")
+                check(input.contains("\nPORTABLE COMPLETION\n") || input.contains("\nPORTABLE CHOICE\n"))
+                reply(client, envelope(if(input.contains("\nPORTABLE COMPLETION\n")) needs else choices), chunked = true)
             }.use { server ->
                 val config = RuntimeConfig("experience", emptyList(), "gateway-fixture-${UUID.randomUUID()}")
                 ApplicationProtocol(targetContext, Embedding(targetContext, registry, GatewayModelClient(GenerationGatewayConfig(server.endpoint, "fixture-backend")), config)).use { api ->
@@ -105,7 +106,8 @@ class GenerationGatewayInstrumentation : Instrumentation() {
                         runCatching { server.done.get(2, TimeUnit.SECONDS) }.onFailure(error::addSuppressed)
                         throw error
                     }
-                    check(api.source(experience) == source && experience.origin == "generated" && experience.attempts == 3)
+                    val source=api.source(experience)
+                    check(source.deal.isNotEmpty() && source.dealui.isNotEmpty() && experience.origin == "generated" && experience.attempts == 2)
                     val session = api.run(experience)
                     val initial = api.next(session, "")
                     fun action(node: JSONObject): Int? {
@@ -115,16 +117,18 @@ class GenerationGatewayInstrumentation : Instrumentation() {
                         for (i in 0 until children.length()) action(children.getJSONObject(i))?.let { return it }
                         return null
                     }
-                    api.dispatch(session, action(initial.snapshot.tree)!!, null)
+                    api.dispatch(session, action(initial.snapshot.tree)!!, "8")
                     val changed = api.next(session, initial.cursor)
-                    check(changed.snapshot.tree.toString().contains("\"numberValue\":8"))
+                    check(changed.cursor!=initial.cursor && changed.snapshot.version>initial.snapshot.version && changed.snapshot.fault.isEmpty())
+                    check(changed.snapshot.tree.toString().contains("9.0"))
+                    check(api.source(experience)==source)
                     EmbeddingLog.flush(targetContext)
                     val inspected = api.retainedEvents().inspection(experiences = setOf(experience.id))
-                    check(inspected.events.any { it.optString("stage") == "source" && it.optString("trace") == trace })
+                    check(inspected.events.any { it.optString("stage") == "plan" && it.optString("trace") == trace })
                     check(inspected.events.any { it.optString("stage") == "model-provider" && it.optString("outcome") == "completed" })
                     check(inspected.events.any { it.optString("stage") == "snapshot" && it.optString("artifact").isNotEmpty() })
                     val summaries=inspected.events.filter { it.optString("stage")=="request-summary" }.map { JSONObject(it.getString("target")) }
-                    check(summaries.any { it.getString("outcome")=="source_checked" && it.getInt("initialCalls")==3 && it.getInt("repairCalls")==0 })
+                    check(summaries.any { it.getString("outcome")=="source_checked" && it.getInt("initialCalls")==2 && it.getInt("repairCalls")==0 })
                     check(summaries.any { it.getString("outcome")=="runtime_mounted" && it.getBoolean("sourceChecked") && !it.getBoolean("snapshotPublished") && it.getString("testedBehavior")=="not_tested" })
                     check(summaries.all { it.getJSONObject("tokens").getJSONObject("initial").isNull("reasoning") && !it.getBoolean("telemetryComplete") })
                     api.close(session)
@@ -139,48 +143,8 @@ class GenerationGatewayInstrumentation : Instrumentation() {
                     for (outcome in listOf("request", "response")) check(provider.any { it.optString("outcome") == outcome && it.optString("artifact").isNotEmpty() })
                 }
             }
-            // Actual compiled delta orchestration, source windows and exact revision-bound patch.
-            val broken=Source(source.deal.replace("next.m_value = v1;","next.m_value = v1 +;"),source.dealui)
-            var repairCalls=0
-            val patchModel=object:ModelClient {
-                override fun complete(input:String,previous:String,diagnostics:String,cancellation:GenerationCancellation,log:EmbeddingLog):String {
-                    nativeGenerationPrelude(input)?.let{return it}
-                    repairCalls++
-                    if(repairCalls==1) { check(input.contains("SOURCE OPERATION\ninitial"));return nativeSourceFixture(broken.deal,broken.dealui) }
-                    check(repairCalls in 2..3 && input.contains("SOURCE OPERATION\nrepair")) { "Patch operation marker/call bound" }
-                    check(input.contains("smallest rejected source region") && input.contains("Clustered source; patch file:")) { "Patch diagnostic window missing at call $repairCalls" }
-                    check(JSONObject(previous).getString("deal")==broken.deal) { "Rejected patch changed base" }
-                    if(repairCalls==2)return nativePatchFixture("wrong-revision","next.m_value = v1 +;","next.m_value = v1;")
-                    check(input.contains("PATCH_NO_MATCH") && diagnostics.isNotBlank()) { "Patch failure or original diagnostics missing" }
-                    check(!input.contains("return both complete source strings"))
-                    val digestText="${broken.deal.length}:${broken.deal}${broken.dealui.length}:${broken.dealui}"
-                    val digest=java.security.MessageDigest.getInstance("SHA-256").digest(digestText.toByteArray()).joinToString("") { "%02x".format(it) }
-                    return nativePatchFixture(digest,"next.m_value = v1 +;","next.m_value = v1;")
-                }
-            }
-            ApplicationProtocol(targetContext,Embedding(targetContext,CapabilityRegistry(targetContext,CapabilityDiscovery(targetContext){false},emptyList()),patchModel,RuntimeConfig("experience",emptyList(),"patch-${UUID.randomUUID()}"))).use { api ->
-                val request=api.request("Patch fixture","Editable counter",api.snapshot(WireType("record"),"{}"))
-                val e=api.generate(request);check(repairCalls==3 && api.source(e)==source)
-                val s=api.run(e);val tree=api.next(s,"").snapshot.tree
-                fun actionSlot(node:JSONObject):Int? {
-                    val props=node.getJSONArray("props")
-                    (0 until props.length()).map{props.getJSONObject(it)}.firstOrNull{it.optString("kind")=="action"}?.let{return it.getInt("actionSlot")}
-                    val children=node.getJSONArray("children");for(i in 0 until children.length())actionSlot(children.getJSONObject(i))?.let{return it}
-                    return null
-                }
-                val action=checkNotNull(actionSlot(tree))
-                api.dispatch(s,action,null);check(api.next(s,"").snapshot.tree.toString().contains("\"numberValue\":8"));api.close(s);api.forget(e)
-                EmbeddingLog.flush(targetContext)
-                val records=api.retainedEvents().events.filter { it.optString("trace")==api.requestTrace(request) && it.optString("stage")=="repair-metrics" }.map { JSONObject(it.getString("target")) }
-                check(records.size==2) { "Expected exactly two repair records: $records" }
-                check(records[0].getString("patchOutcome")=="rejected" && records[0].getString("patchRejectionCode")=="PATCH_NO_MATCH" && records[0].getString("recheckOutcome")=="not_checked")
-                check(records[0].getString("baseRevision")==records[1].getString("baseRevision"))
-                check(records[1].getString("patchOutcome")=="applied" && records[1].getString("recheckOutcome")=="passed")
-                check(records[1].getBoolean("unchangedUi") && !records[1].getBoolean("unchangedDeal") && records[1].getInt("editCount")==1)
-                check(records[1].getJSONObject("immediate").getInt("addedLines")==1 && records[1].getJSONObject("cumulative").getInt("removedLines")==1)
-                check(records[1].getString("preservationOutcome")=="not_tested" && records[1].getJSONArray("remainingDiagnosticCodes").length()==0)
-                check(records.all { it.getLong("totalRepairMs")>=it.getLong("modelMs") })
-            }
+            // Exact source-repair atomicity is covered independently by test-source-repair.js.
+            // Do not resurrect the retired needs/tool/fallback protocol for transport tests.
             // Cancellation and operational failure finish summaries without inventing a check or mount.
             for(cancelledCase in listOf(true,false)) {
                 val failedModel=object:ModelClient {
@@ -196,19 +160,6 @@ class GenerationGatewayInstrumentation : Instrumentation() {
                     check(summary.getString("outcome")==if(cancelledCase)"cancelled" else "failed")
                     check(summary.getInt("initialCalls")==1 && !summary.getBoolean("sourceChecked") && summary.isNull("mountMs"))
                 }
-            }
-            // Invalid initial envelopes recover inside the same request without a user retry.
-            var invalidCalls=0
-            val invalidModel=object:ModelClient {
-                override fun complete(input:String,previous:String,diagnostics:String,cancellation:GenerationCancellation,log:EmbeddingLog):String { nativeGenerationPrelude(input)?.let{return it};invalidCalls++;if(invalidCalls==1)return "{\"deal\":\"missing view\"}";check(previous.isEmpty() && input.contains("Invalid tool response"));return pair }
-            }
-            ApplicationProtocol(targetContext,Embedding(targetContext,CapabilityRegistry(targetContext,CapabilityDiscovery(targetContext){false},emptyList()),invalidModel,RuntimeConfig("experience",emptyList(),"invalid-${UUID.randomUUID()}"))).use { api ->
-                val request=api.request("Invalid fixture","Counter",api.snapshot(WireType("record"),"{}"))
-                val recovered=api.generate(request)
-                check(invalidCalls==2 && api.source(recovered)==source)
-                EmbeddingLog.flush(targetContext)
-                val summary=api.retainedEvents().events.last { it.optString("trace")==api.requestTrace(request) && it.optString("stage")=="request-summary" }.let { JSONObject(it.getString("target")) }
-                check(summary.getString("outcome")=="source_checked" && summary.getBoolean("sourceChecked") && summary.isNull("mountMs") && summary.getString("testedBehavior")=="not_tested")
             }
             // Remote discovery uses the same transport but the unchanged strict discovery/admission path.
             val discoveryRegistry = CapabilityRegistry(targetContext, CapabilityDiscovery(targetContext) { false }, emptyList())

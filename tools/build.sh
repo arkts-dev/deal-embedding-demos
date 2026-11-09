@@ -215,7 +215,6 @@ for app in "${TARGETS[@]}"; do
         rm -rf "build/assets/$app"; mkdir -p "build/assets/$app"
         cp -r build/embedding-consumer/assets/* "build/assets/$app/"
         if [[ "$app" == organizer || "$app" == tests ]]; then python3 tools/build-organizer-policy.py; fi
-        if [[ "$app" == tests ]]; then python3 tools/behavior-fixtures.py "build/assets/$app/behavior-fixtures"; fi
     fi
     resource_link "$app" "build/$app/unsigned.apk"
     find "build/$app/rjava" -name '*.java' > build/r-sources.txt

@@ -14,14 +14,13 @@ assert {p.name for p in (library/'android/src/capabilities').glob('*.kt')} == {
     'CapabilityContract.kt','CapabilityCodec.kt','InvocationContext.kt','CapabilityRegistry.kt','CapabilityDiscovery.kt','CapabilityService.kt','CapabilityBindings.kt'}
 assert (library/'core/generation.deal').exists()
 assert not (library/'backends').exists()
-assert {p.name for p in (library/'core/host').glob('*.d.deal')} == {'portable.d.deal', 'composer.d.deal', 'checker.d.deal', 'discovery.d.deal', 'model.d.deal', 'chooser.d.deal', 'policy-data.d.deal', 'observer.d.deal', 'embedding.d.deal', 'catalogue-policy.d.deal', 'protocol.d.deal'}
-assert {p.name for p in (library/'android/src/compiler').glob('*.kt')} == {
-    'ExperienceCompiler.kt', 'BehaviorCandidate.kt', 'FragmentComposition.kt'}
-for adapter in ['BehaviorCandidate.kt', 'FragmentComposition.kt']:
-    text=(library/'android/src/compiler'/adapter).read_text()
-    assert 'StringBuilder' not in text and 'FragmentSyntax.' not in text and 'UiModel.' not in text, adapter
-assert 'CompositionBridge.lower(' in (library/'android/src/compiler/BehaviorCandidate.kt').read_text()
-assert 'CompositionBridge.expand(' in (library/'android/src/compiler/FragmentComposition.kt').read_text()
+assert {p.name for p in (library/'core/host').glob('*.d.deal')} == {'portable.d.deal', 'checker.d.deal', 'discovery.d.deal', 'model.d.deal', 'chooser.d.deal', 'policy-data.d.deal', 'observer.d.deal', 'embedding.d.deal', 'catalogue-policy.d.deal', 'protocol.d.deal'}
+assert {p.name for p in (library/'android/src/compiler').glob('*.kt')} == {'ExperienceCompiler.kt'}
+assert not (library/'core/composition').exists()
+assert not (library/'core/host/composer.d.deal').exists()
+assert 'embedding/composer' not in (library/'android/src/bindings/ExperienceGenerator.kt').read_text()
+assert 'portable.build(' in (library/'core/generation.deal').read_text()
+assert 'PortableBackendBridge.lower(' in (library/'android/src/compiler/ExperienceCompiler.kt').read_text()
 assert {p.name for p in (library/'android/src/bindings').glob('*.kt')} == {'DealSessionBindings.kt', 'ExperienceGenerator.kt', 'SandboxProgram.kt', 'EmbeddingLog.kt', 'ChoiceProtocol.kt', 'ApplicationProtocol.kt', 'ProtocolController.kt','ObservationPresentation.kt','DiagnosticFiles.kt','FailureEvidence.kt','TrustedProgram.kt','GenerationTelemetry.kt'}
 assert {p.name for p in (library/'android/src/inference').glob('*.kt')} == {'ModelClient.kt', 'GenerationGateway.kt'}
 assert {p.name for p in (library/'android/src/discovery').glob('*.kt')} == {'Discovery.kt', 'DiscoveryPolicy.kt', 'AssistanceController.kt', 'AssistanceHooks.kt', 'NanoDiscovery.kt', 'GatewayDiscovery.kt'}
@@ -81,10 +80,12 @@ with zipfile.ZipFile(os.environ.get('EMBEDDING_AAR', root / 'build/embedding-lib
         assert 'dev/deal/embedding/capabilities/ICapabilityService.class' in names
         assert 'dev/deal/embedding/discovery/Discovery.class' in names
         assert 'deal/Main.class' in names and 'deal/ui/UiSourceGenerator.class' in names
-        for unit in ['execution/CompositionExecution', 'compose/CompositionCompose', 'fragments/CompositionFragments',
-                     'view_binding/CompositionView_binding', 'lowering/CompositionLowering']:
-            assert 'dev/deal/embedding/composition/'+unit+'.class' in names, unit
-        assert not any(name.startswith(('dev/deal/embedding/MaintainedFormula', 'dev/deal/embedding/SelectionComposition')) for name in names)
+        for unit in ['portable/LoweringPortable_backend', 'portable/request/RequestPortable_request', 'portable/validation/ValidationPortable_validation']:
+            assert 'dev/deal/embedding/'+unit+'.class' in names, unit
+        assert not any(name.startswith(('dev/deal/embedding/composition/', 'dev/deal/embedding/BehaviorCandidate',
+                    'dev/deal/embedding/FragmentComposition', 'dev/deal/embedding/MaintainedFormula',
+                    'dev/deal/embedding/SelectionComposition', 'CompositionBridge', 'AuthoredFragments',
+                    'EmbeddingSyntax', 'FragmentStructure', 'FragmentSyntax')) for name in names)
         assert not any(name.startswith('dev/deal/apps/') for name in names)
         assert 'dev/deal/embedding/GenerationGatewayConfig.class' in names
         assert 'dev/deal/embedding/GatewayModelClient.class' in names
@@ -102,7 +103,7 @@ with zipfile.ZipFile(os.environ.get('EMBEDDING_AAR', root / 'build/embedding-lib
         contracts = app.read('assets/embedding/bindings/generation-contracts.js').decode()
         import json
         metadata = json.loads(contracts.removeprefix('configureDealCapabilities(').strip().removesuffix(');'))
-        assert {m['module'] for m in metadata} == {'embedding/composer', 'embedding/checker', 'embedding/model', 'embedding/discovery', 'embedding/chooser', 'embedding/observer'}
+        assert {m['module'] for m in metadata} == {'embedding/portable', 'embedding/checker', 'embedding/model', 'embedding/discovery', 'embedding/chooser', 'embedding/observer'}
         checker = next(m for m in metadata if m['module'] == 'embedding/checker')
         assert checker['functions'][0]['result'] == json.loads((library/'core/host/check-result.json').read_text())
         assert [p['name'] for p in checker['functions'][0]['parameters']] == ['deal', 'dealui']
@@ -121,8 +122,10 @@ with zipfile.ZipFile(os.environ.get('EMBEDDING_AAR', root / 'build/embedding-lib
         for declaration in ['embedding.d.deal','catalogue-policy.d.deal']:
             assert (library/'api'/declaration).read_bytes()==(library/'core/host'/declaration).read_bytes()
         assert 'getSharedPreferences' not in inspect
-        for module in ['candidate-check', 'generation-guidance', 'source-literals']:
+        for module in ['candidate-check', 'generation']:
             assert f'assets/generation/{module}.js' in app.namelist()
+        assert 'assets/ui/portable-catalogue.json' in app.namelist()
+        assert app.read('assets/ui/portable-catalogue.json') == (library/'ui/portable-catalogue.json').read_bytes()
         assert not any(n.startswith('assets/deal-backend/') for n in app.namelist())
 for provider, other in [('todo', 'vehicle'), ('vehicle', 'todo')]:
     with zipfile.ZipFile(root / f'build/{provider}.apk') as apk:

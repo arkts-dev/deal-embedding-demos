@@ -56,10 +56,11 @@ Gateway demo mode has no audit ceiling. Explicit --audit requires --counts <new-
 Inspect exposes Activity/Dialogue/Source/saved tools through public observation. Newest exchanges first; request → reply → observed feedback inside each. Explicit Capture future content is private/bounded/nonretroactive, excludes thoughts and is not lossless audit; disable afterward. ANDROID_SERIAL=<device> python3 tools/embedding-log.py --follow reads without inference.
 
 ```sh
-python3 tools/verify-behavior.py
-python3 tools/verify-selection.py
+python3 tools/verify-portable-ui.py <completed-parity-directory>
 python3 tools/verify-boundaries.py
 adb shell am instrument -w dev.deal.connectors.tests/.PortableBackendInstrumentation
+adb shell am instrument -w dev.deal.connectors.tests/.PortableCommerceInstrumentation
+adb shell am instrument -w dev.deal.connectors.tests/.BridgeTransferInstrumentation
 node tools/test-source-repair.js
 node tools/test-protocol.js
 node tools/test-framework-assistance.js
