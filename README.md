@@ -4,6 +4,12 @@ Organizer, Todo, Calendar, Rental, Pizza and Vehicle publish capabilities and ho
 
 [delivery.md](delivery.md)/research preserve history, not v1.5 acceptance. Separate build, host/device semantics, fresh inference and visual approval.
 
+## v0.8 realignment branches
+
+Fresh specification work uses `spec/v0.8` in this repo and all three dependency repos, starting from the local commits tagged `baseline/pre-v08`. The specification is [spec-v0.8.md](dependencies/deal-embedding/docs/spec-v0.8.md); existing implementation descriptions below are historical, not evidence of v0.8 compliance.
+
+[dependencies.lock.json](dependencies.lock.json) records exact dependency commits. Dependencies remain independent, ignored checkouts; the lockfile is a manifest, not an automatic checkout/build guard. Match its commits when reproducing an integration revision, and update the pins after committing dependency changes. Do not merge legacy port branches wholesale; review any cherry-pick against the specification. Existing main/master, feature and recovery refs remain preserved pending an explicit cleanup decision.
+
 ## Ownership and protocol
 
 Dependency direction is apps → embedding → Deal UI → DEAL. Public signatures are [embedding.d.deal](dependencies/deal-embedding/api/embedding.d.deal) and app-linked catalogue-policy; [API rules](dependencies/deal-embedding/api/README.md) define lifecycle/wire behavior. Native bootstrap supplies compiler, sandbox, storage, authenticated transport, renderer and observation mechanisms. Compiled core/generation owns orchestration, fallback and unlimited cancellation-aware exact repair. App-linked DEAL policy owns domain offers/lowering; Organizer equipment policy stays outside library inputs.

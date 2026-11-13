@@ -1,0 +1,20 @@
+{
+  "version": 1,
+  "dependencies": {
+    "deal-embedding": {
+      "path": "dependencies/deal-embedding",
+      "repository": "https://github.com/arkts-dev/deal-embedding.git",
+      "commit": "cead7386e143ba8d5f5e2f5dd39eb436ba58d5b5"
+    },
+    "deal-ui": {
+      "path": "dependencies/deal-ui",
+      "repository": "https://github.com/arkts-dev/deal-ui.git",
+      "commit": "ee27658b35b0d2a536d172e393734586b235d09a"
+    },
+    "deal": {
+      "path": "dependencies/deal",
+      "repository": "https://github.com/arkts-dev/deal.git",
+      "commit": "6ae488cbde2c18a91f1c66b64eb250d5d929ba0a"
+    }
+  }
+}
